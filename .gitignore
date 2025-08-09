@@ -164,4 +164,13 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-testfile/
+.github/
+.vscode/
+docker-compose.yml
+Dockerfile
+upload.py
+upload2.py
+miscellaneous/
+static/
+staticfiles/
+migrations/

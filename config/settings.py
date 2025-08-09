@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
-from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,9 +25,11 @@ SECRET_KEY = 'django-insecure-bqvh6de7mk*w9z%ll9mb&o^^4m!q4_@5!p5^d2sa_#2d&i85p4
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+#DEBUG = False
 
-ALLOWED_HOSTS = ['*']
-
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '49.165.232.7', 'dprimeedu.synology.me']
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'http')
+USE_X_FORWARDED_HOST = True
 
 # Application definition
 
@@ -81,47 +82,32 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-load_dotenv()
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'teamproject',  # 데이터베이스 이름
-        'USER': 'postgres',  # PostgreSQL 사용자
-        'PASSWORD': '1',   # 비밀번호
-        'HOST': 'localhost',           # 데이터베이스 서버 주소 (로컬에서 실행 중일 경우 'localhost' 사용)
-        'PORT': '5432',                # PostgreSQL 기본 포트
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv("DB_NAME"),  # 데이터베이스 이름
-#         'USER': os.getenv("DB_USER"),  # PostgreSQL 사용자
-#         'PASSWORD': os.getenv("DB_PASSWORD"),   # 비밀번호
-#         'HOST': os.getenv("DB_HOST"),           # 데이터베이스 서버 주소 (로컬에서 실행 중일 경우 'localhost' 사용)
-#         'PORT': os.getenv("DB_PORT"),                # PostgreSQL 기본 포트
-#     }
-# }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
-# AUTH_PASSWORD_VALIDATORS = [
-#     {
-#         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-#     },
-#     {
-#         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-#     },
-#     {
-#         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-#     },
-#     {
-#         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-#     },
-# ]
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
 
 
 # Internationalization
@@ -141,12 +127,10 @@ USE_TZ = False
 
 # 정적 파일 설정
 STATIC_URL = '/static/'
-STATIC_ROOT = '/home/ubuntu/TeamProject/staticfiles/'
-
 STATICFILES_DIRS = [
-    BASE_DIR / "static",  # 프로젝트의 static 폴더
-    BASE_DIR / "config" / "static",  # config 폴더의 static 폴더
+    BASE_DIR / "static"  # 프로젝트의 static 폴더
 ]
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # 미디어 파일 설정
 MEDIA_URL = '/media/'

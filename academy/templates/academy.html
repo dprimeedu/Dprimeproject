@@ -1,206 +1,204 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Academy Management UI</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f9f9f9;
-        }
+{% extends 'base.html' %}
+{% load static %}
+{% block extra_css %}
 
-        .container {
-            display: flex;
-            flex-direction: row;
-            padding: 20px;
-            gap: 20px;
-        }
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f9f9f9;
+    }
 
-        .card {
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            flex: 1;
-        }
+    .container {
+        display: flex;
+        flex-direction: row;
+        padding: 20px;
+        gap: 20px;
+    }
 
-        .card h2 {
-            font-size: 18px;
-            margin-bottom: 20px;
-        }
+    .card {
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        flex: 1;
+    }
 
-        .table-container {
-            overflow-x: auto;
-        }
+    .card h2 {
+        font-size: 18px;
+        margin-bottom: 20px;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+    .table-container {
+        overflow-x: auto;
+    }
 
-        table th, table td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
 
-        table th {
-            background-color: #f4f4f4;
-            font-weight: bold;
-        }
+    table th, table td {
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
 
-        .status-active {
-            color: green;
-            font-weight: bold;
-        }
+    table th {
+        background-color: #f4f4f4;
+        font-weight: bold;
+    }
 
-        .status-deactive {
-            color: red;
-            font-weight: bold;
-        }
+    .status-active {
+        color: green;
+        font-weight: bold;
+    }
 
-        .pagination {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 10px;
-        }
+    .status-deactive {
+        color: red;
+        font-weight: bold;
+    }
 
-        .pagination button {
-            background-color: #f4f4f4;
-            border: none;
-            border-radius: 4px;
-            margin: 0 5px;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 10px;
+    }
 
-        .pagination button:hover {
-            background-color: #e0e0e0;
-        }
+    .pagination button {
+        background-color: #f4f4f4;
+        border: none;
+        border-radius: 4px;
+        margin: 0 5px;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
 
-        .tags {
-            display: flex;
-            gap: 5px;
-        }
+    .pagination button:hover {
+        background-color: #e0e0e0;
+    }
 
-        .tag {
-            background-color: #e0f7fa;
-            color: #00796b;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
+    .tags {
+        display: flex;
+        gap: 5px;
+    }
 
-        .actions {
-            display: flex;
-            gap: 10px;
-        }
+    .tag {
+        background-color: #e0f7fa;
+        color: #00796b;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
 
-        .actions button {
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
+    .actions {
+        display: flex;
+        gap: 10px;
+    }
 
-        .actions .edit {
-            background-color: #4caf50;
-            color: white;
-        }
+    .actions button {
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 4px;
+    }
 
-        .actions .delete {
-            background-color: #f44336;
-            color: white;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card">
-            <h2>학원 및 선생님 등록 목록</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>이름</th>
-                            <th>상태</th>
-                            <th>학원 직책 및 담당</th>
-                            <th>이메일 주소</th>
-                            <th>전공 과목</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>
-                                <img src="profile-placeholder.png" alt="profile" style="width: 30px; height: 30px; border-radius: 50%;">
-                                홍길동
-                            </td>
-                            <td class="status-active">Active</td>
-                            <td>학원 대표 원장 (수학)</td>
-                            <td>like@lion12.com</td>
-                            <td>
-                                <div class="tags">
-                                    <span class="tag">영어</span>
-                                    <span class="tag">수학</span>
-                                    <span class="tag">과학</span>
-                                    <span class="tag">언어</span>
-                                </div>
-                            </td>
-                            <td class="actions">
-                                <button class="edit">Edit</button>
-                                <button class="delete">Delete</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="pagination">
-                <button>이전</button>
-                <button>1</button>
-                <button>2</button>
-                <button>다음</button>
-            </div>
+    .actions .edit {
+        background-color: #4caf50;
+        color: white;
+    }
+
+    .actions .delete {
+        background-color: #f44336;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card">
+        <h2>학원 및 선생님 등록 목록</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>이름</th>
+                        <th>상태</th>
+                        <th>학원 직책 및 담당</th>
+                        <th>이메일 주소</th>
+                        <th>전공 과목</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <img src="profile-placeholder.png" alt="profile" style="width: 30px; height: 30px; border-radius: 50%;">
+                            홍길동
+                        </td>
+                        <td class="status-active">Active</td>
+                        <td>학원 대표 원장 (수학)</td>
+                        <td>like@lion12.com</td>
+                        <td>
+                            <div class="tags">
+                                <span class="tag">영어</span>
+                                <span class="tag">수학</span>
+                                <span class="tag">과학</span>
+                                <span class="tag">언어</span>
+                            </div>
+                        </td>
+                        <td class="actions">
+                            <button class="edit">Edit</button>
+                            <button class="delete">Delete</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
-        <div class="card">
-            <h2>학원 수강생 목록</h2>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>학생 이름</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>
-                                <img src="profile-placeholder.png" alt="profile" style="width: 30px; height: 30px; border-radius: 50%;">
-                                김대빵
-                            </td>
-                            <td class="status-deactive">Deactive</td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <img src="profile-placeholder.png" alt="profile" style="width: 30px; height: 30px; border-radius: 50%;">
-                                김모닝
-                            </td>
-                            <td class="status-active">Active</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="pagination">
-                <button>이전</button>
-                <button>1</button>
-                <button>2</button>
-                <button>다음</button>
-            </div>
+        <div class="pagination">
+            <button>이전</button>
+            <button>1</button>
+            <button>2</button>
+            <button>다음</button>
         </div>
     </div>
-</body>
-</html>
+    <div class="card">
+        <h2>학원 수강생 목록</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>학생 이름</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <img src="profile-placeholder.png" alt="profile" style="width: 30px; height: 30px; border-radius: 50%;">
+                            김대빵
+                        </td>
+                        <td class="status-deactive">Deactive</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <img src="profile-placeholder.png" alt="profile" style="width: 30px; height: 30px; border-radius: 50%;">
+                            김모닝
+                        </td>
+                        <td class="status-active">Active</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button>이전</button>
+            <button>1</button>
+            <button>2</button>
+            <button>다음</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

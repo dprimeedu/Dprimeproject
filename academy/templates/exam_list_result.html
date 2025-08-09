@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% block content %}
-
+{% load static %}
+{% block extra_css %}
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -37,7 +37,9 @@
         }
     }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="pdf-container">
     <div class="header">
         <h1>시험 문제 목록</h1>

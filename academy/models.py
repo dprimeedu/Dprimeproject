@@ -6,8 +6,6 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 
 User = get_user_model()
 
-from django.db import models
-
 # models.py
 from django.db import models
 
@@ -47,7 +45,170 @@ class QuestionData(models.Model):
     def __str__(self):
         return f"{self.색인} - {self.문제[:20]}"
 
+class KeyTable(models.Model):
+    pk_number = models.IntegerField(db_column='PK_number', primary_key=True)
+    total_number = models.TextField(db_column='Total_number')
+    grade = models.TextField(db_column='grade')
+    year = models.TextField(db_column='year')
+    month = models.TextField(db_column='month')
+    number = models.TextField(db_column='number')
+    qtype = models.TextField(db_column='Qtype')
 
+    class Meta:
+        db_table = 'KEY_TABLE'
+
+
+class AdditionalText_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    additional_text = models.TextField(db_column='Additional_text')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+    class Meta:
+        db_table = 'Additional_text'
+        managed = False
+
+class DescriptiveQuestion_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    que_location = models.TextField(db_column='Que_Location')
+    ans_location = models.TextField(db_column='Ans_Location')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Descriptive_Question'
+        managed = False
+
+class DetailedExplanation_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    saved_location = models.TextField(db_column='Saved_location')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'DetailedExplanation'
+        managed = False
+
+class FillinBlank_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    sentence = models.TextField(db_column='Sentence')
+    options = models.TextField(db_column='Options')
+    answer = models.TextField(db_column='Answer')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'FillinBlank'
+        managed = False
+
+class Grammarlv1_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    answer = models.TextField(db_column='Answer')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Grammarlv1'
+        managed = False
+
+class Grammarlv2_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    answer = models.TextField(db_column='Answer')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Grammarlv2'
+        managed = False
+
+class Grammarlv3_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    answer = models.TextField(db_column='Answer')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Grammarlv3'
+        managed = False
+
+class ModifiedQuestions_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    qtype = models.TextField(db_column='Qtype')
+    sentence = models.TextField(db_column='Sentence')
+    option = models.TextField(db_column='Option')
+    answer = models.TextField(db_column='Answer')
+    modified = models.TextField(db_column='Modified')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Modified_Questions'
+        managed = False
+
+class OriginalQuestion_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    sentence = models.TextField(db_column='Sentence')
+    option = models.TextField(db_column='Option')
+    answer = models.TextField(db_column='Answer')
+    picture = models.TextField(db_column='Picture')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Original_Question'
+        managed = False
+
+class OriginalText_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    origin_text = models.TextField(db_column='Origin_text')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Original_text'
+        managed = False
+
+class RedBlue_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    origin_text = models.TextField(db_column='Origin_text') # OriginalText에서 가져오기 -> 정규화
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'RedBlue'
+        managed = False
+
+class SchoolExamTest_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    question = models.TextField(db_column='Question')
+    type = models.TextField(db_column='Type')
+    sentence = models.TextField(db_column='Sentence')
+    option = models.TextField(db_column='Option')
+    answer = models.TextField(db_column='Answer')
+    modified = models.TextField(db_column='Modified')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+    pre_question = models.TextField(db_column='Pre_Question')
+
+    class Meta:
+        db_table = 'SchoolExamtest'
+        managed = False
+
+class Translation_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    sentence = models.TextField(db_column='Sentence')
+    translation = models.TextField(db_column='Translation')
+    etc = models.TextField(db_column='ETC')
+    key_sentence = models.TextField(db_column='Key_sentence')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Translation'
+        managed = False
+
+class WordTest_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    word = models.TextField(db_column='word')
+    english_definition = models.TextField(db_column='english_definition')
+    korean_definition = models.TextField(db_column='korean_definition')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'WordTest'
+        managed = False
 
 
 class Academy(models.Model):

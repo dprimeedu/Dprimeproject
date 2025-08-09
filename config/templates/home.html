@@ -1,5 +1,51 @@
 {% extends 'base.html' %}
+{% load static %}
+{% block content %}
+<nav class="academybar">
+        <div class="academy-container">
+            <h1 class="title">영어의 해답은 멋쟁이 영어입니다</h1>
+            <p class="subtitle">기본문법 / 보안가 성적목표 커리큘럼 / 철저학력 관리</p>
+            
+            <div class="stats-container">
+                <div class="stat-item">
+                    <img src="{% static 'images/top.png' %}" alt="추천 수">
+                    <p>수능 기출영어 수석 수험생 1위</p>
+                </div>
+                <div class="stat-item">
+                    <img src="{% static 'images/likegood.png' %}" alt="만족 도">
+                    <p>멋쟁이 수강생 만족도 97%</p>
+                </div>
+                <div class="stat-item">
+                    <img src="{% static 'images/sell.png' %}" alt="배출 자">
+                    <p>6년 연속 영어 만점자 배출 1위</p>
+                </div>
+            </div>
+        
+            <div class="features-grid">
+                <div class="feature-item">
+                    <img src="{% static 'images/library.png' %}" alt="도서관">
+                    <p>쾌적하고 깔끔하신 강의실</p>
+                </div>
+                <div class="feature-item">
+                    <img src="{% static 'images/study.png' %}" alt="학습자료">
+                    <p>철저한 플랜과 분석자료</p>
+                </div>
+                <div class="feature-item">
+                    <img src="{% static 'images/writing.png' %}" alt="학습">
+                    <p>1:1 맞춤형 학습 지도</p>
+                </div>
+                <div class="feature-item">
+                    <img src="{% static 'images/classroom.png' %}" alt="강의실">
+                    <p>10-15명 소수정예 학습</p>
+                </div>
+            </div>
+        </div>
+    </nav>
 
-<footer class="fixed-bottom bg-info">
-    <p>© 2024 학원의 민족 - All Rights Reserved</p>
-</footer>
+    <!--
+    <div class="content-area">
+        <h1>나에게 맞는 학원을 찾아보세요</h1>
+         Add more content here as needed
+    </div> -->
+
+{% endblock %}

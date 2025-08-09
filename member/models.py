@@ -34,6 +34,7 @@ class Student(models.Model):
 class Profile(models.Model):
     user = models.OneToOneField(Member, on_delete=models.CASCADE)
     bio = models.TextField(blank=True)
+    # 유저 정보에 있음. user에서 끌어오면 됨
     phone_number = models.CharField(max_length=15, blank=True)
 
     def __str__(self):

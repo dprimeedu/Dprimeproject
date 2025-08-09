@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+    td {
+        max-width: 1000px;
+        white-space: normal;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="table-container">
+        <table class="exam-table">
+            <tr>
+                <th>Index</th>
+                <th>Additional_data</th>
+                <th>Number</th>
+            </tr>
+            {% for row in data %}
+            <tr>
+                <td> {{ row.index }} </td>
+                <td> {{ row.additional_text }} </td>
+                <td> {{ row.pk_number.total_number }} </td>
+            </tr>
+            {% endfor %}
+        </table>
+{% endblock %}

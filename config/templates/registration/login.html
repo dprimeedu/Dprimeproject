@@ -19,6 +19,7 @@
                 <div class="card-body p-4">
                     <form action="{% url 'login' %}" method="post">
                         {% csrf_token %}
+                        {% include "registration/login_errors.html" %}
                         <input type="hidden" name="next" value="{{ request.GET.next }}">
                         <div class="mb-3">
                             {{ form.username.label_tag }}

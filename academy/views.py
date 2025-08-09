@@ -1,14 +1,20 @@
 from django.shortcuts import render
 from django.db.models import Count
 from django.contrib.auth.decorators import login_required
-from .models import QuestionData
+from .models import *
 
 from django.http import HttpResponse
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+import os
 
+def additional_text_list(request):
+    data = AdditionalText_Data.objects.all()
+    for row in data:
+        row.additional_text = row.additional_text.replace('\\r\\n', '\r\n')
+    return render(request, 'additional_text.html', {'data': data})
 
 def academy_list(request):
 
@@ -194,6 +200,11 @@ def exam_list_result(request):
         else:
          questions = QuestionData.objects.none()  # 조건이 없을 경우 빈 쿼리셋 반환
 
+    for q in questions:
+        q.지문 = q.지문.replace('\\r\\n', '\r\n')
+        if q.보기:
+            q.보기 = q.보기.replace('\\r\\n', '\r\n')
+
     # 문제 데이터를 리스트화
     question_data = questions.values('색인', '문제', '지문', '보기')
     question_answer = questions.values('색인','정답')
@@ -216,7 +227,7 @@ def download_pdf(request):
     response['Content-Disposition'] = 'attachment; filename="exam_list.pdf"'
 
     # 한글 폰트 등록 (예: 나눔고딕)
-    pdfmetrics.registerFont(TTFont('NanumGothic', 'path/to/NanumGothic.ttf'))
+    pdfmetrics.registerFont(TTFont('NanumGothic', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'fonts', 'NanumSquareRoundR.ttf')))
 
     pdf = canvas.Canvas(response, pagesize=letter)
     pdf.setTitle("시험 문제 리스트")

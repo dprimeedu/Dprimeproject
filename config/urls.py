@@ -21,6 +21,11 @@ urlpatterns = [
     path('member/', include('member.urls')),
 ]
 
+handler404 = 'config.views.custom_404'
+handler500 = 'config.views.custom_500'
+handler403 = 'config.views.custom_403'
+handler400 = 'config.views.custom_400'
+
 # 개발 환경에서 정적 파일 제공
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

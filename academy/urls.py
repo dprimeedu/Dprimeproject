@@ -11,6 +11,7 @@ urlpatterns = [
     path('academy_list_result/', views.academy_list_result, name='academy_list_result'),
     path('exam_list_result/', views.exam_list_result, name='exam_list_result'),
     path('download_pdf/', download_pdf, name='download_pdf'),
+    path('additional_text/', views.additional_text_list, name='additional_text')
     #path('create/', views.academy_create, name='academy_create'),
     #path('<int:academy_id>/edit/', views.academy_edit, name='academy_edit'),
     #path('<int:academy_id>/delete/', views.academy_delete, name='academy_delete'),
