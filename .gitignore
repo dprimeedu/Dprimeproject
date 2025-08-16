@@ -174,3 +174,4 @@ miscellaneous/
 static/
 staticfiles/
 migrations/
+config/KEY.py
