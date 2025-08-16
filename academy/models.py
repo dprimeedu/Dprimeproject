@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.forms import ValidationError
 from course.models import Course
 from member.models import Member
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -57,6 +58,13 @@ class KeyTable(models.Model):
     class Meta:
         db_table = 'KEY_TABLE'
 
+
+class CountTable(models.Model):
+    table_name = models.TextField(db_column='Table_name')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+    count = models.TextField(db_column='Count')
+    class Meta:
+        db_table = 'Count_Table'
 
 class AdditionalText_Data(models.Model):
     index = models.CharField(max_length=255, db_column='Index')
