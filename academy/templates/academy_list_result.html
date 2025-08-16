@@ -2,46 +2,8 @@
 {% load static %}
 {% block content %}
 <div class="container">
-    <!-- 구분 -->
-    <div class="section" style="margin-top: 50px;">
-        <label><b>구분 : </b></label>
-        {% for category in categories %}
-            <input type="checkbox" id="category_{{ forloop.counter }}" class="screen-reader filter-checkbox" 
-            data-filter="grade" value="{{ grade.name }}" {% if category.checked %}checked{% endif %}
-            onchange="filterExams()">
-            <label class="label-box" for="category_{{ forloop.counter }}">
-                <span class="check-icon" aria-hidden="true"></span>
-            {{ category.name }} ({{ category.count }})
-            </label>
-        {% endfor %}
-    </div>
-    <!-- 학년 -->
-    <div class="section">
-        <label><b>학년 : </b></label>
-        {% for grade in grades %}
-        <input type="checkbox" id="grade_{{ forloop.counter }}" class="screen-reader filter-checkbox"
-            data-filter="grade" value="{{ grade.name }}" {% if grade.checked %}checked{% endif %}
-            onchange="filterExams()">
-        <label class="label-box" for="grade_{{ forloop.counter }}">
-            <span class="check-icon" aria-hidden="true"></span> {{ grade.name }}
-        </label>
-    {% endfor %}
-    </div>
-    <!-- 년도 -->
-    <div class="section" style="margin-bottom: 100px;">
-        <label><b>년도 : </b></label>
-        {% for year in years %}
-        <input type="checkbox" id="year_{{ forloop.counter }}" class="screen-reader filter-checkbox"
-            data-filter="year" value="{{ year.name }}" {% if year.checked %}checked{% endif %}
-            onchange="filterExams()">
-        <label class="label-box" for="year_{{ forloop.counter }}">
-            <span class="check-icon" aria-hidden="true"></span> {{ year.name }}
-        </label>
-    {% endfor %}
-    </div>
-
-    <div class="section" style="margin-bottom: 200px; text-align: center;"><h1>
-        선택한 문제 유형 : {{ selected_year|join:',' }} 년도 {{ selected_grade|join:',' }} 학년 {{ selected_category }}
+    <div class="section" style="margin-top: 50px; margin-bottom: 100px; text-align: center;"><h1>
+        선택한 문제 유형 : {{ selected_year|join:',' }} 년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월
     </h1></div>
 
     <div class="table-container" style="margin-bottom: 250px; text-align: center;">
@@ -50,6 +12,7 @@
                 <thead>
                     <tr>
                         <th>색인</th>
+                        <th>유형</th>
                         <th>지문(문제)</th>
                         <th>문제수</th>
                         <th>보기</th>
@@ -59,10 +22,12 @@
                     {% for exam in exams %}
                     <tr>
                         <td>{{ forloop.counter }}</td>
+                        <td>{{ exam.category }}
                         <td>{{ exam.question_list }}</td>
                         <td>{{ exam.question_counter }}</td>
                         <td>
-                        {% if exam.question_counter > 0 or exam.link %}  
+                        <!--- exam.category 확인해서 문제별로 링크를 다르게 생성하기 -->
+                        {% if 1 == 0 and exam.question_counter > 0 or exam.link %}  
                         <a href="{% url 'academy:exam_list_result' %}?year={{ exam.year|join:',' }}&grade={{ exam.grade|join:',' }}&month={{ exam.month|join:',' }}">PDF 문제</a>
                             {% else %}
                             -
@@ -83,5 +48,4 @@
         {% endif %}
     </div>
 </div>
-<script src="{% static 'js/filterExams.js' %}"></script>
 {% endblock %}

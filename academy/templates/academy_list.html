@@ -2,21 +2,8 @@
 {% load static %}
 {% block content %}
 <div class="container">
-    <!-- 구분 -->
-    <div class="section" style="margin-top: 50px;">
-        <label><b>구분 : </b></label>
-        {% for category in categories %}
-            <input type="checkbox" id="category_{{ forloop.counter }}" class="screen-reader filter-checkbox" 
-            data-filter="grade" value="{{ grade.name }}" {% if category.checked %}checked{% endif %}
-            onchange="filterExams()">
-            <label class="label-box" for="category_{{ forloop.counter }}">
-                <span class="check-icon" aria-hidden="true"></span>
-            {{ category.name }}
-            </label>
-        {% endfor %}
-
     <!-- 학년 -->
-    <div class="section">
+    <div class="section" style="margin-top: 50px;">
         <label><b>학년 : </b></label>
         {% for grade in grades %}
             <input type="checkbox" id="grade_{{ forloop.counter }}" class="screen-reader filter-checkbox"
@@ -57,7 +44,6 @@
                     <thead>
                         <tr>
                             <th>색인</th>
-                            <th>구분</th>
                             <th>학년</th>
                             <th>년도</th>
                             <th>월</th>
@@ -69,7 +55,6 @@
                         {% for exam in year_group.list %}
                             <tr>
                                 <td>{{ forloop.parentloop.counter }}</td>
-                                <td>{{ exam.category }}</td>
                                 <td>{{ exam.grade }}</td>
                                 <td>{{ exam.year }}년</td>
                                 <td>{{ exam.month }}월</td>
