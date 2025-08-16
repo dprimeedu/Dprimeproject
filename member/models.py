@@ -16,13 +16,18 @@ class Member(AbstractUser):
     is_academy = models.BooleanField(default=False)  # 학원 여부
     business_registration = models.FileField(upload_to='business_registrations/', null=True, blank=True)
 
+    username = models.CharField(max_length=150)
+    email = models.EmailField(unique=True)
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
     class Meta:
         db_table = 'member'
         verbose_name = '회원'
         verbose_name_plural = '회원들'
 
     def __str__(self):
-        return self.username
+        return self.email
 
 class Student(models.Model):
     user = models.OneToOneField(Member, on_delete=models.CASCADE)
