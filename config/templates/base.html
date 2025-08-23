@@ -72,7 +72,6 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                                 <li><a class="dropdown-item" href="{% url 'member:profile_view' %}" style="font-weight: 500;">프로필</a></li>
-                                <li><a class="dropdown-item" href="#" style="font-weight: 500;">메시지 박스</a></li>
                                 <li>
                                     <form method="post" action="{% url 'logout' %}" class="m-0">
                                         {% csrf_token %}
