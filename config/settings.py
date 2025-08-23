@@ -46,7 +46,7 @@ INSTALLED_APPS = [
     'member',
     'academy',
     'acad',
-
+    'common'
 ]
 
 MIDDLEWARE = [

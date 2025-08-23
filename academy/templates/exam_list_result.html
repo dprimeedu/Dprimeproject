@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block extra_css %}
+{% load common_filters %}
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -52,10 +53,10 @@
         {% for question in selected_questions %}
             <div class="question-box">
                 <h3>문제 {{ forloop.counter }}</h3>
-                <p><strong>지문:</strong> {{ question.지문 }}</p>
-                <p><strong>문제:</strong> {{ question.문제 }}</p>
+                <p><strong>{{ question.문제}}</strong></p>
+                <p>{{ question.지문|line_feed|safe }}</p>
                 {% if question.보기 %}
-                <p><strong>보기:</strong> {{ question.보기 }}</p>
+                <p><strong>보기:</strong> {{ question.보기|line_feed|safe }}</p>
                 {% endif %}
             </div>
         {% endfor %}
