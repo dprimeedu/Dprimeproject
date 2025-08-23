@@ -195,6 +195,19 @@ class SchoolExamTest_Data(models.Model):
         db_table = 'SchoolExamtest'
         managed = False
 
+class Summary_Data(models.Model):
+    index = models.CharField(max_length=255, db_column='Index')
+    origin_text = models.TextField(db_column='Origin_text')
+    red = models.TextField(db_column='Red')
+    blue = models.TextField(db_column='Blue')
+    summary = models.TextField(db_column='summary')
+    answer = models.TextField(db_column='Answer')
+    pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
+
+    class Meta:
+        db_table = 'Summary'
+        managed = False
+
 class Translation_Data(models.Model):
     index = models.CharField(max_length=255, db_column='Index')
     sentence = models.TextField(db_column='Sentence')
