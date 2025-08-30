@@ -174,6 +174,9 @@ class OriginalText_Data(models.Model):
 class RedBlue_Data(models.Model):
     index = models.CharField(max_length=255, db_column='Index')
     origin_text = models.TextField(db_column='Origin_text') # OriginalText에서 가져오기 -> 정규화
+    red = models.TextField(db_column='Red')
+    blue = models.TextField(db_column='Blue')
+    answer = models.TextField(db_column='Ans_location')
     pk_number = models.OneToOneField(KeyTable, to_field='pk_number', db_column='PK_number', on_delete=models.CASCADE, primary_key=True)
 
     class Meta:
