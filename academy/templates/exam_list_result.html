@@ -43,36 +43,141 @@
 {% block content %}
 <div class="pdf-container">
     <div class="header">
-        <h1>시험 문제 목록</h1>
+        <h1>문제 목록</h1>
         <h3>
-            <p><strong>{{ selected_year|join:',' }}년도 {{ selected_grade|join:',' }}학년 {{ selected_month|join:',' }}월</strong></p>
+            <p><strong>{{ selected_year|join:',' }}년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월 {{ selected_category|join:',' }}</strong></p>
         </h3>
     </div>
 
     {% if selected_questions %}
-        {% for question in selected_questions %}
-            <div class="question-box">
-                <h3>문제 {{ forloop.counter }}</h3>
-                <p><strong>{{ question.문제}}</strong></p>
-                <p>{{ question.지문|line_feed|safe }}</p>
-                {% if question.보기 %}
-                <p><strong>보기:</strong> {{ question.보기|line_feed|safe }}</p>
-                {% endif %}
-            </div>
-        {% endfor %}
+        {% if "원문추가" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>{{ question.total_number }}</h3>
+                    <p>{{ question.additional_text|line_feed|underline|safe }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "객관식빈칸" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
+                    <p><strong>{{ question.question }}</strong></p>
+                    <p>{{ question.sentence|line_feed|underline|safe }}</p>
+                    {% if question.options %}
+                        <p>{{ question.options|line_feed|underline|safe }}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "어법1단계" in selected_category or "어법2단계" in selected_category or "어법3단계" in selected_category%}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
+                    <p>{{ question.question|line_feed|underline|safe }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
+                    <!-- 내신TEST에만 있는 필드 -->
+                    {% if question.modified %}
+                        <p>{{ question.modified|line_feed|underline|safe }}</p>
+                    {% endif %}
+                    <p><strong>{{ question.question }}</strong></p>
+                    {% if question.sentence %}
+                        <p>{{ question.sentence|line_feed|underline|safe }}</p>
+                    {% endif %}
+                    {% if question.option %}
+                        <p>{{ question.option|line_feed|underline|safe }}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "원문" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>[{{ question.total_number }}]</h3>
+                    <p>{{ question.origin_text|line_feed|underline|safe }}</p>
+                </div>
+            {% endfor %}    
+        {% endif %}
+
+        {% if "내신빨파" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>[{{ question.total_number }}]</h3>
+                    <p>{{ question.origin_text|line_feed|underline|safe }}</p>
+                    {% if question.red %}
+                        <p>{{ question.red|line_feed|underline|safe }}</p>
+                    {% endif %}
+                    {% if question.blue %}
+                        <p>{{ question.blue|line_feed|underline|safe }}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "요약문완성" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
+                    <p>{{ question.origin_text|line_feed|underline|safe }}</p>
+                    {% if question.red %}
+                        <p>{{ question.red|line_feed|underline|safe }}</p>
+                    {% endif %}
+                    {% if question.blue %}
+                        <p>{{ question.blue|line_feed|underline|safe }}</p>
+                    {% endif %}
+                    {% if question.summary %}
+                        <p>{{ question.summary|line_feed|underline|safe }}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "중요영작" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>[{{ question.total_number }}]</h3>
+                    <p>{{ question.sentence|line_feed|underline|safe }}</p>
+                    <p>{{ question.translation|line_feed|underline|safe }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if "내신단어" in selected_category %}
+            {% for question in selected_questions %}
+                <div class="question-box">
+                    <h3>[{{ question.total_number }}]</h3>
+                    <p>{{ question.word|line_feed|underline|safe }}</p>
+                    <p>{{ question.english_definition|line_feed|underline|safe }}</p>
+                    <p>{{ question.korean_definition|line_feed|underline|safe }}</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+
     {% else %}
         <p>해당하는 문제가 없습니다.</p>
     {% endif %}
 
-    <div class="answers-section">
-        <h2>정답</h2>
-        {% for answer in selected_questions_answer %}
-            {% for question in selected_questions %}
-                {% if answer.색인 == question.색인 %}
-                    <p><strong>문제 {{ forloop.parentloop.counter }}:</strong> {{ answer.정답 }}</p>
-                {% endif %}
+    {% if selected_questions_answer %}
+        <div class="answers-section">
+            <h2>정답</h2>
+            {% for answer in selected_questions_answer %}
+                {% for question in selected_questions %}
+                    {% if answer.index == question.index %}
+                        <p><strong>문제 {{ forloop.parentloop.counter }}:</strong> {{ answer.answer }}</p>
+                    {% endif %}
+                {% endfor %}
             {% endfor %}
-        {% endfor %}
-    </div>
+        </div>
+    {% endif %}
 </div>
 {% endblock %}

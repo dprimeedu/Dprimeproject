@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.contrib.auth.decorators import login_required
 from .models import *
 
@@ -9,12 +9,6 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
-
-def additional_text_list(request):
-    data = AdditionalText_Data.objects.all()
-    for row in data:
-        row.additional_text = row.additional_text.replace('\\r\\n', '\r\n')
-    return render(request, 'additional_text.html', {'data': data})
 
 def academy_list(request):
     """
@@ -83,13 +77,13 @@ def academy_list_result(request):
     색인 / 카테고리 / PK / 개수
     얘는 주기적으로 업데이트 해주면 될듯
     """
-    TABLE_NAMES = ["Additional_text", "Descriptive_Question",
-                   "DetailedExplanation", "FillinBlank",
-                   "Grammarlv1", "Grammarlv2", "Grammarlv3",
-                   "Modified_Questions", "Original_Question",
-                   "Original_text", "RedBlue",
-                   "SchoolExamtest", "Summary",
-                   "Translation", "WordTest"]
+    TABLE_NAMES_DICT = {"Additional_text":"원문추가", "Descriptive_Question":"직보서술형",
+                       "DetailedExplanation":"상세해설", "FillinBlank":"객관식빈칸",
+                       "Grammarlv1":"어법1단계", "Grammarlv2":"어법2단계", "Grammarlv3":"어법3단계",
+                       "Modified_Questions":"변형문제", "Original_Question":"문제출력",
+                       "Original_text":"원문", "RedBlue":"내신빨파",
+                       "SchoolExamtest":"내신TEST", "Summary":"요약문완성",
+                       "Translation":"중요영작", "WordTest":"내신단어"}
     
     # 선택된 값 가져오기
     selected_year = request.GET.getlist("year", [])
@@ -97,26 +91,29 @@ def academy_list_result(request):
     selected_month = request.GET.getlist('month', [])
     
     # KEY_TABLE에서 PK number 가져오기 및 필터링
-    questions = KeyTable.objects.all()
+    keys = KeyTable.objects.all()
     if selected_year or selected_grade or selected_month:
         if selected_year:
-            questions = questions.filter(year__in=selected_year)
+            keys = keys.filter(year__in=selected_year)
         if selected_grade:
-            questions = questions.filter(grade__in=selected_grade)
+            keys = keys.filter(grade__in=selected_grade)
         if selected_month:
-            questions = questions.filter(month__in=selected_month)
+            keys = keys.filter(month__in=selected_month)
     else:
-        questions = KeyTable.objects.none()
+        keys = KeyTable.objects.none()
 
-    pk_key_numbers = questions.values_list('pk_number', flat=True)
+    pk_key_numbers = keys.values_list('pk_number', flat=True)
+    keytable_map = dict(keys.values_list('pk_number', 'total_number'))
+
     exams = []
-    for table in TABLE_NAMES:
+    for table, korname in TABLE_NAMES_DICT.items():
         counts = CountTable.objects.filter(pk_number__in=pk_key_numbers, table_name=table).values('pk_number', 'count')
-
+        for val in counts:
+            val['total_number'] = keytable_map.get(val['pk_number'])
         # 📌 (번호(개수)) 문자열 리스트 생성
         # question_list = ', '.join(f"{num['번호']}({num['count']})" for num in number_counts)
         question_list = [
-        {"번호": c["pk_number"], "count": c["count"]}
+        {"num": c["total_number"], "count": c["count"]}
         for c in counts] 
 
 
@@ -126,12 +123,12 @@ def academy_list_result(request):
             'question_counter': total_count,  # 총 문제 수
             #'link': ['색인']  # 필요에 따라 링크 설정
             'link': None,
-            'category': table
+            'category': korname
         })
 
     context = {
         "exams": exams,
-        "categories": TABLE_NAMES,
+        "categories": TABLE_NAMES_DICT,
         "selected_year": selected_year,
         "selected_grade": selected_grade,
         "selected_month" : selected_month,
@@ -142,38 +139,96 @@ def academy_list_result(request):
 
 
 @login_required(login_url='/accounts/login/')
-# 기존에 있는는 코딩한 내용
+# 기존에 있는 코딩한 내용
 def exam_list_result(request):
     selected_year = request.GET.getlist('year', [])
     selected_grade = request.GET.getlist('grade', [])
     selected_month = [m for m in request.GET.getlist('month', []) if m]
+    selected_category = request.GET.getlist('category', [])
 
-    # 필터링된 문제 가져오기
-    if selected_year and selected_grade:
-        questions = QuestionData.objects.filter(
-            연도__in=selected_year, 학년__in=selected_grade
-        )
-        # 선택된 카테고리에 따라 추가 필터링
-        if selected_month and all(m.isdigit() for m in selected_month):  # 숫자값만 필터링
-            questions = questions.filter(강__in=selected_month)
-
-    else:
-        questions = QuestionData.objects.none()  # 조건이 없을 경우 빈 쿼리셋 반환
-
-    # # 문제 데이터 가져오기
+    # KEY_TABLE에서 PK number 가져오기 및 필터링
+    # 여기서 번호도 따와야지 출력할 수 있음
+    pknum = KeyTable.objects.all()
     if selected_year and selected_grade and selected_month:
-        questions = QuestionData.objects.filter(연도=selected_year, 학년=selected_grade, 강=selected_month)
+        pknum = pknum.filter(Q(year__in=selected_year) & Q(grade__in=selected_grade) & Q(month__in=selected_month))
+    else:
+        pknum = KeyTable.objects.none()
+
+    selected_pk_number = pknum.values_list('pk_number', flat=True)
+    keytable_map = dict(pknum.values_list('pk_number', 'total_number'))
+
+    # 선택한 카테고리를 이용해서 DB를 결정
+    DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQuestion_Data,
+                "상세해설":DetailedExplanation_Data, "객관식빈칸":FillinBlank_Data,
+                "어법1단계":Grammarlv1_Data, "어법2단계":Grammarlv2_Data, "어법3단계":Grammarlv3_Data,
+                "변형문제":ModifiedQuestions_Data, "문제출력":OriginalQuestion_Data,
+                "원문":OriginalText_Data, "내신빨파":RedBlue_Data,
+                "내신TEST":SchoolExamTest_Data, "요약문완성":Summary_Data,
+                "중요영작":Translation_Data, "내신단어":WordTest_Data}
+    
+    if selected_category:
+        for category in selected_category:
+            database = DB_DICT[category]
+            questions = database.objects.filter(pk_number__in=selected_pk_number)
+            # 나중에 수정하기
+            # 이유 -> 외부자료 불러와야 하기 때문
+            if category == '직보서술형' or category == '상세해설':
+                question_data = questions.none()
+                question_answer = questions.none()
+
+            if category == '원문추가':
+                question_data = questions.values('index', 'additional_text', 'pk_number')
+                question_answer = questions.none()
+
+            if category == '객관식빈칸':
+                question_data = questions.values('index', 'question', 'sentence', 'options', 'pk_number')
+                question_answer = questions.values('index', 'answer')   
+
+            if category == '어법1단계' or category == "어법2단계" or category == '어법3단계':
+                question_data = questions.values('index', 'question', 'pk_number')
+                question_answer = questions.values('index', 'answer')
+
+            if category == '변형문제':
+                # 문제 데이터를 리스트화
+                question_data = questions.values('index', 'question', 'sentence', 'option', 'pk_number')
+                question_answer = questions.values('index', 'answer')
+
+            if category == '문제출력':
+                # 문제 데이터를 리스트화
+                question_data = questions.values('index', 'question', 'sentence', 'option', 'pk_number')
+                question_answer = questions.values('index', 'answer')
+
+            if category == '원문':
+                # 문제 데이터를 리스트화
+                question_data = questions.values('index', 'origin_text', 'pk_number')
+                question_answer = questions.none()
+
+            if category == '내신빨파':
+                question_data = questions.values('index', 'origin_text', 'red', 'blue', 'pk_number')
+                question_answer = questions.none()
+
+            if category == '내신TEST':
+                question_data = questions.values('index', 'question', 'sentence', 'option', 'modified', 'pk_number')
+                question_answer = questions.values('index', 'answer')
+
+            if category == '요약문완성':
+                question_data = questions.values('index', 'origin_text', 'red', 'blue', 'summary', 'pk_number')
+                question_answer = questions.values('index', 'answer')
+
+            if category == '중요영작':
+                question_data = questions.values('index', 'sentence', 'translation', 'etc', 'key_sentence', 'pk_number')
+                question_answer = questions.none()
+
+            if category == '내신단어':
+                question_data = questions.values('index', 'word', 'english_definition', 'korean_definition', 'pk_number')
+                question_answer = questions.none()
+            
+            for val in question_data:
+                val['total_number'] = keytable_map.get(val['pk_number'])
     else:
         questions = QuestionData.objects.none()  # 조건이 없을 경우 빈 쿼리셋 반환
 
-    for q in questions:
-        q.지문 = q.지문.replace('\\r\\n', '\r\n')
-        if q.보기:
-            q.보기 = q.보기.replace('\\r\\n', '\r\n')
 
-    # 문제 데이터를 리스트화
-    question_data = questions.values('색인', '문제', '지문', '보기')
-    question_answer = questions.values('색인','정답')
 
     context = {
         "selected_questions": question_data,
@@ -181,6 +236,7 @@ def exam_list_result(request):
         "selected_year": selected_year,
         "selected_grade": selected_grade,
         "selected_month": selected_month,
+        "selected_category": selected_category
     }    
 
     return render(request, "exam_list_result.html", context)

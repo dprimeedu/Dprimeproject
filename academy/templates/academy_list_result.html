@@ -23,15 +23,19 @@
                     <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>{{ exam.category }}
-                        <td>{{ exam.question_list }}</td>
+                        <td>
+                            {% for number in exam.question_list %}
+                                {{ number.num }} : {{ number.count }}문항, 
+                            {% endfor %}
+                        </td>
                         <td>{{ exam.question_counter }}</td>
                         <td>
                         <!--- exam.category 확인해서 문제별로 링크를 다르게 생성하기 -->
-                        {% if 1 == 0 and exam.question_counter > 0 or exam.link %}  
-                        <a href="{% url 'academy:exam_list_result' %}?year={{ exam.year|join:',' }}&grade={{ exam.grade|join:',' }}&month={{ exam.month|join:',' }}">PDF 문제</a>
-                            {% else %}
-                            -
-                            {% endif %}
+                        {% if exam.question_counter > 0 or exam.link %}  
+                        <a href="{% url 'academy:exam_list_result' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}&category={{ exam.category }}">PDF 문제</a>
+                        {% else %}
+                        -
+                        {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
