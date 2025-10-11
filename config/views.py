@@ -28,10 +28,10 @@ class UserCreateView(generic.CreateView):
 
         if user_type == 'academy':
             user.is_academy = True
-            user.is_active = True  # 학원은 기본적으로 활성화
+            user.is_active = False  # 학원은 기본적으로 활성화
         else:
             user.is_academy = False
-            user.is_active = True  # 학생은 활성화 상태로 설정
+            user.is_active = False  # 학생은 활성화 상태로 설정
 
         user.save()  # 사용자 객체를 DB에 저장
         auth_login(self.request, user)  # 로그인 처리
