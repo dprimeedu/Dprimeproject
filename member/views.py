@@ -1,11 +1,10 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, update_session_auth_hash
-from django.contrib.auth.forms import UserCreationForm, PasswordChangeForm
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.decorators import login_required
-from django.views.generic import TemplateView
+from django.contrib import messages
 from .models import Profile, Member
-from .forms import SignupForm, ProfileForm, MemberProfileEditForm
-
+from .forms import SignupForm, MemberProfileEditForm
 
 def signup(request):
     if request.method == 'POST':
@@ -23,12 +22,17 @@ def signup(request):
             if user.is_academy and request.FILES.get('business_registration'):
                 business_registration = request.FILES['business_registration']
                 user.business_registration.save(business_registration.name, business_registration)
-
+        
+            messages.info(request, "회원가입이 완료되었습니다. 관리자 승인 후 로그인해주세요.")
+            return redirect("login")
+            
+            """
             login(request, user)  # 자동 로그인 처리
             if user.is_academy:
                 return redirect('academy_dashboard')  # 학원 대시보드로 리디렉션
             else:
                 return redirect('student_academy_selection')  # 수강생 학원 선택 페이지로 리디렉션
+            """
     else:
         form = SignupForm()
 

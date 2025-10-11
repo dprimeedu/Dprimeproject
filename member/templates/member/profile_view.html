@@ -25,7 +25,7 @@
                         <h5 class="text-primary">기본 정보</h5>
                         <div class="row mb-3">
                             <div class="col-sm-4"><strong>아이디:</strong></div>
-                            <div class="col-sm-8">{{ member.username }}</div>
+                            <div class="col-sm-8">{{ member.email }}</div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-sm-4"><strong>회원 타입:</strong></div>
@@ -38,26 +38,10 @@
                             <div class="col-sm-4"><strong>전화번호:</strong></div>
                             <div class="col-sm-8">{{ member.phone }}</div>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-sm-4"><strong>주소:</strong></div>
-                            <div class="col-sm-8">{{ member.address }}</div>
-                        </div>
                     </div>
                     <div class="profile-section mb-4 p-3 border rounded bg-light">
                         <h5 class="text-primary">기타 정보</h5>
                         <div class="row mb-3">
-                            <div class="col-sm-4"><strong>나이:</strong></div>
-                            <div class="col-sm-8">{{ member.age }}</div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-sm-4"><strong>GPS 사용 여부:</strong></div>
-                            <div class="col-sm-8">
-                                {% if member.gps_enabled %}
-                                    <span class="badge bg-success">활성화됨</span>
-                                {% else %}
-                                    <span class="badge bg-danger">비활성화되지 않음</span>
-                                {% endif %}
-                            </div>
                         </div>
                     </div>
                     {% if member.is_academy %}
