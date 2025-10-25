@@ -3,11 +3,12 @@
 {% load common_filters %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/printStyle.css' %}">
+<script src="{% static 'js/grading.js' %}"></script>
 {% endblock %}
 
 {% block content %}
 <div class="pdf-container">
-    <div class="header">
+    <div class="header" data-year="{{ selected_year|join:',' }}" data-grade="{{ selected_grade|join:',' }}" data-month="{{ selected_month|join:',' }}" data-category="{{ selected_category|join:',' }}">
         <h1>문제 목록</h1>
         <h3>
             <p><strong>{{ selected_year|join:',' }}년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월 {{ selected_category|join:',' }}</strong></p>
@@ -48,7 +49,7 @@
 
             {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category %}
                 {% for question in selected_questions %}
-                    <div class="question-box">
+                    <div class="question-box" data-index="{{ question.index }}" data-pk_number="{{ question.pk_number }}">
                         <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
                         <!-- 내신TEST에만 있는 필드 -->
                         {% if question.modified %}
@@ -61,6 +62,11 @@
                         {% if question.option %}
                             <p>{{ question.option|line_feed|underline|safe }}</p>
                         {% endif %}
+                        <p> <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="1"> 1번 </label>
+                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="2"> 2번 </label>
+                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="3"> 3번 </label>
+                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="4"> 4번 </label>
+                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="5"> 5번 </label> </p>
                     </div>
                 {% endfor %}
             {% endif %}
@@ -132,18 +138,21 @@
             <p>해당하는 문제가 없습니다.</p>
         {% endif %}
     </div>
+    <button type="button" id="gradeBtn"> 제출 </button>
 
-    {% if selected_questions_answer %}
-        <div class="answers-section">
-            <h2>{{ selected_year|join:',' }}년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월 {{ selected_category|join:',' }} 정답</h2>
-            {% for answer in selected_questions_answer %}
-                {% for question in selected_questions %}
-                    {% if answer.index == question.index %}
-                        <p><strong>문제 {{ forloop.parentloop.counter }}:</strong> {{ answer.answer }}</p>
-                    {% endif %}
+    {% if user.is_staff or user.is_admin or user.is_academy %}
+        {% if selected_questions_answer %}
+            <div class="answers-section">
+                <h2>{{ selected_year|join:',' }}년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월 {{ selected_category|join:',' }} 정답</h2>
+                {% for answer in selected_questions_answer %}
+                    {% for question in selected_questions %}
+                        {% if answer.index == question.index %}
+                            <p><strong>문제 {{ forloop.parentloop.counter }}:</strong> {{ answer.answer }}</p>
+                        {% endif %}
+                    {% endfor %}
                 {% endfor %}
-            {% endfor %}
-        </div>
+            </div>
+        {% endif %}
     {% endif %}
 </div>
 {% endblock %}

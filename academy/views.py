@@ -1,14 +1,24 @@
 from django.shortcuts import render
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.contrib.auth.decorators import login_required
 from .models import *
 
 from django.http import HttpResponse
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
+
+
+# 선택한 카테고리를 이용해서 DB를 결정
+DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQuestion_Data,
+            "상세해설":DetailedExplanation_Data, "객관식빈칸":FillinBlank_Data,
+            "어법1단계":Grammarlv1_Data, "어법2단계":Grammarlv2_Data, "어법3단계":Grammarlv3_Data,
+            "변형문제":ModifiedQuestions_Data, "문제출력":OriginalQuestion_Data,
+            "원문":OriginalText_Data, "내신빨파":RedBlue_Data,
+            "내신TEST":SchoolExamTest_Data, "요약문완성":Summary_Data,
+            "중요영작":Translation_Data, "내신단어":WordTest_Data}
 
 def academy_list(request):
     """
@@ -141,6 +151,8 @@ def academy_list_result(request):
 @login_required(login_url='/accounts/login/')
 # 기존에 있는 코딩한 내용
 def exam_list_result(request):
+    if request.method == "POST":
+        return grading(request)
     selected_year = request.GET.getlist('year', [])
     selected_grade = request.GET.getlist('grade', [])
     selected_month = [m for m in request.GET.getlist('month', []) if m]
@@ -156,15 +168,6 @@ def exam_list_result(request):
 
     selected_pk_number = pknum.values_list('pk_number', flat=True)
     keytable_map = dict(pknum.values_list('pk_number', 'total_number'))
-
-    # 선택한 카테고리를 이용해서 DB를 결정
-    DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQuestion_Data,
-                "상세해설":DetailedExplanation_Data, "객관식빈칸":FillinBlank_Data,
-                "어법1단계":Grammarlv1_Data, "어법2단계":Grammarlv2_Data, "어법3단계":Grammarlv3_Data,
-                "변형문제":ModifiedQuestions_Data, "문제출력":OriginalQuestion_Data,
-                "원문":OriginalText_Data, "내신빨파":RedBlue_Data,
-                "내신TEST":SchoolExamTest_Data, "요약문완성":Summary_Data,
-                "중요영작":Translation_Data, "내신단어":WordTest_Data}
     
     if selected_category:
         for category in selected_category:
@@ -228,8 +231,6 @@ def exam_list_result(request):
     else:
         questions = QuestionData.objects.none()  # 조건이 없을 경우 빈 쿼리셋 반환
 
-
-
     context = {
         "selected_questions": question_data,
         "selected_questions_answer": question_answer,
@@ -238,9 +239,36 @@ def exam_list_result(request):
         "selected_month": selected_month,
         "selected_category": selected_category
     }    
-
     return render(request, "exam_list_result.html", context)
 
+def grading(request):
+    from django.http import JsonResponse
+    import json
+    if request.method == "POST":
+        selected_category = request.GET.getlist('category', [])
+        data = json.loads(request.body)
+        answers = data.get("answers", [])
+        correct_list = []
+        wrong_list = []
+        for item in answers:
+            index = item.get("index")
+            pk_number = item.get("pk_number")
+            user_answer = item.get("answer")
+            try:
+                for category in selected_category:
+                    question = DB_DICT[category].objects.get(index=index, pk_number=pk_number)
+                    if user_answer and str(question.answer) == str(user_answer):
+                        correct_list.append(question.index)
+                    else:
+                        wrong_list.append(question.index)
+            except:
+                pass
+
+        response = {
+            "correct_list" : correct_list,
+            "wrong_list": wrong_list,
+        }
+        return JsonResponse(response)
 
 
 @login_required(login_url='/accounts/login/')
@@ -251,7 +279,7 @@ def download_pdf(request):
     # 한글 폰트 등록 (예: 나눔고딕)
     pdfmetrics.registerFont(TTFont('NanumGothic', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'fonts', 'NanumSquareRoundR.ttf')))
 
-    pdf = canvas.Canvas(response, pagesize=letter)
+    pdf = canvas.Canvas(response, pagesize=A4)
     pdf.setTitle("시험 문제 리스트")
     
     y_position = 750
