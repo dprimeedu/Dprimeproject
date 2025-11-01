@@ -1,0 +1,62 @@
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f4f4f4;
+}
+.pdf-container {
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: white;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.question-section {
+    column-count: 2;
+    column-rule: 1px dotted black;
+    column-gap: 50px;
+}
+.question-box {
+    margin-bottom: 20px;
+    page-break-inside: avoid;
+    break-after: auto;
+}
+.answers-section {
+    display: block;
+    column-count: 2;
+    column-rule: 1px dotted black;
+    column-gap: 50px;
+    margin-top: 50px;
+    border-top: 2px solid #333;
+    padding-top: 20px;
+}
+@page {
+    size: A4;
+    margin: 20mm;
+}
+@media print {
+    body {
+        background-color: white;
+    }
+    .pdf-container {
+        box-shadow: none;
+    }
+    .answers-section {
+        /*break-before 태그가 작동 안함*/
+        break-before: always;
+        page-break-before: always;
+    }
+    .container, .navbar {
+        display: none;
+    }
+    .button {
+        display: none;
+    }
+    .radioButton {
+        display: none;
+    }
+}

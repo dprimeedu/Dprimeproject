@@ -171,7 +171,6 @@ Dockerfile
 upload.py
 upload2.py
 miscellaneous/
-static/
 staticfiles/
 migrations/
 config/KEY.py
