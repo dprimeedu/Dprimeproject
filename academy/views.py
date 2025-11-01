@@ -248,6 +248,13 @@ def grading(request):
         selected_category = request.GET.getlist('category', [])
         data = json.loads(request.body)
         answers = data.get("answers", [])
+        # 채점하는 카테고리가 아닌 경우
+        if not len(answers):
+            response = {
+                "correct_list" : [],
+                "wrong_list": [],
+            }
+            return JsonResponse(response)
         correct_list = []
         wrong_list = []
         for item in answers:
@@ -273,6 +280,11 @@ def grading(request):
 
 @login_required(login_url='/accounts/login/')
 def download_pdf(request):
+    """
+    이것도 카테고리에 따라 출력 양식을 지정하거나 해야 함
+    -> 굳이 필요한가? 기존 출력 양식을 그대로 뽑으면?
+    어떻게? POST요청?
+    """
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = 'attachment; filename="exam_list.pdf"'
 

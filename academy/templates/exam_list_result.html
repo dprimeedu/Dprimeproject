@@ -25,19 +25,6 @@
                 {% endfor %}
             {% endif %}
 
-            {% if "객관식빈칸" in selected_category %}
-                {% for question in selected_questions %}
-                    <div class="question-box">
-                        <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
-                        <p><strong>{{ question.question }}</strong></p>
-                        <p>{{ question.sentence|line_feed|underline|safe }}</p>
-                        {% if question.options %}
-                            <p>{{ question.options|line_feed|underline|safe }}</p>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            {% endif %}
-
             {% if "어법1단계" in selected_category or "어법2단계" in selected_category or "어법3단계" in selected_category%}
                 {% for question in selected_questions %}
                     <div class="question-box">
@@ -47,26 +34,37 @@
                 {% endfor %}
             {% endif %}
 
-            {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category %}
+            {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category or "객관식빈칸" in selected_category %}
                 {% for question in selected_questions %}
                     <div class="question-box" data-index="{{ question.index }}" data-pk_number="{{ question.pk_number }}">
-                        <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
-                        <!-- 내신TEST에만 있는 필드 -->
-                        {% if question.modified %}
-                            <p>{{ question.modified|line_feed|underline|safe }}</p>
-                        {% endif %}
-                        <p><strong>{{ question.question }}</strong></p>
+                        <div class="question" data-index="{{ question.index }}" data-pk_number="{{ question.pk_number }}">
+                            <h3>문제 {{ forloop.counter }} [{{ question.total_number }}]</h3>
+                            <!-- 내신TEST에만 있는 필드 -->
+                            {% if question.modified %}
+                                <p>{{ question.modified|line_feed|underline|safe }}</p>
+                            {% endif %}
+                            <p><strong>{{ question.question }}</strong></p>
+                        </div>
+
                         {% if question.sentence %}
                             <p>{{ question.sentence|line_feed|underline|safe }}</p>
                         {% endif %}
+
                         {% if question.option %}
                             <p>{{ question.option|line_feed|underline|safe }}</p>
                         {% endif %}
-                        <p> <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="1"> 1번 </label>
-                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="2"> 2번 </label>
-                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="3"> 3번 </label>
-                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="4"> 4번 </label>
-                        <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="5"> 5번 </label> </p>
+
+                        <!-- 객관식빈칸 이름 options로 되어 있음 -->
+                        {% if question.options %}
+                            <p>{{ question.options|line_feed|underline|safe }}</p>
+                        {% endif %}
+                        <div class="radioButton">
+                            <p> <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="1"> 1번 </label>
+                            <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="2"> 2번 </label>
+                            <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="3"> 3번 </label>
+                            <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="4"> 4번 </label>
+                            <label> <input type="radio" name="q{{ question.index }}" data-pk_number="{{ question.pk_number }}" value="5"> 5번 </label> </p>
+                        </div>
                     </div>
                 {% endfor %}
             {% endif %}
@@ -138,7 +136,13 @@
             <p>해당하는 문제가 없습니다.</p>
         {% endif %}
     </div>
-    <button type="button" id="gradeBtn"> 제출 </button>
+    <div class="button">
+        {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category or "객관식빈칸" in selected_category %}
+        <button type="button" id="gradeBtn"> 채점하기 </button>
+        {% endif %}
+        <button type="button" id="pdfDownloadBtn"> PDF 다운로드 </button>
+    </div>
+    
 
     {% if user.is_staff or user.is_admin or user.is_academy %}
         {% if selected_questions_answer %}
