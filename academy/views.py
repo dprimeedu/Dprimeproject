@@ -3,12 +3,14 @@ from django.db.models import Count, Q, F
 from django.contrib.auth.decorators import login_required
 from .models import *
 
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
+import json
+import re
 
 
 # 선택한 카테고리를 이용해서 DB를 결정
@@ -276,6 +278,100 @@ def grading(request):
             "wrong_list": wrong_list,
         }
         return JsonResponse(response)
+
+
+def translation_select(request):
+    """영작 연습 시작 전 년도/학년/월 선택 페이지"""
+    translation_pk_numbers = Translation_Data.objects.values_list('pk_number', flat=True)
+    keytable_qs = KeyTable.objects.filter(pk_number__in=translation_pk_numbers)
+
+    grades = sorted(keytable_qs.values_list('grade', flat=True).distinct())
+    years = sorted(keytable_qs.values_list('year', flat=True).distinct())
+    months = sorted(keytable_qs.values_list('month', flat=True).distinct(), key=lambda m: int(m))
+
+    context = {
+        'grades': grades,
+        'years': years,
+        'months': months,
+    }
+    return render(request, 'translation_select.html', context)
+
+
+def _clean_sentence(text):
+    """sentence/translation 필드의 특수마커(밑줄, 개행)를 제거해 순수 텍스트로 반환"""
+    text = text.replace('￰', '')
+    text = text.replace('\\r\\n', ' ').replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
+    return ' '.join(text.split())
+
+
+@login_required(login_url='/accounts/login/')
+def translation_practice(request):
+    selected_year = request.GET.getlist('year', [])
+    selected_grade = request.GET.getlist('grade', [])
+    selected_month = [m for m in request.GET.getlist('month', []) if m]
+
+    pknum = KeyTable.objects.all()
+    if selected_year and selected_grade and selected_month:
+        pknum = pknum.filter(
+            Q(year__in=selected_year) &
+            Q(grade__in=selected_grade) &
+            Q(month__in=selected_month)
+        )
+    else:
+        pknum = KeyTable.objects.none()
+
+    selected_pk_numbers = list(pknum.values_list('pk_number', flat=True))
+    keytable_map = dict(pknum.values_list('pk_number', 'total_number'))
+
+    questions_qs = Translation_Data.objects.filter(pk_number__in=selected_pk_numbers)
+    questions = []
+    for idx, q in enumerate(questions_qs):
+        if not q.sentence or not q.translation:
+            continue
+        clean_eng = _clean_sentence(q.sentence)
+        words = clean_eng.split()
+        if not words:
+            continue
+        questions.append({
+            'num': idx + 1,
+            'pk_number': q.pk_number_id,
+            'total_number': keytable_map.get(q.pk_number_id, ''),
+            'korean': _clean_sentence(q.translation),
+            'englishWords': words,
+        })
+
+    context = {
+        'questions_json': json.dumps(questions, ensure_ascii=False),
+        'selected_year': selected_year,
+        'selected_grade': selected_grade,
+        'selected_month': selected_month,
+        'question_count': len(questions),
+    }
+    return render(request, 'translation_practice.html', context)
+
+
+@login_required(login_url='/accounts/login/')
+def save_translation_log(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error'}, status=400)
+    data = json.loads(request.body)
+    logs = data.get('logs', [])
+    log_objects = [
+        TranslationLog(
+            student=request.user,
+            question_num=log.get('questionNum', 0),
+            word_index=log.get('wordIndex', 0),
+            input_value=log.get('input', '')[:255],
+            correct_answer=log.get('correctAnswer', '')[:255],
+            is_correct=log.get('isCorrect', False),
+            attempt_num=log.get('attemptNum', 0),
+            time_taken=log.get('timeTaken', 0),
+            pk_number=log.get('pk_number', 0),
+        )
+        for log in logs
+    ]
+    TranslationLog.objects.bulk_create(log_objects)
+    return JsonResponse({'status': 'ok'})
 
 
 @login_required(login_url='/accounts/login/')

@@ -1,0 +1,362 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}영작 연습{% endblock %}
+
+{% block extra_css %}
+<style>
+  .practice-wrap {
+    max-width: 960px;
+    margin: 30px auto;
+    padding: 0 20px 60px;
+  }
+
+  /* 상태 바 */
+  .status-bar {
+    background: #fff;
+    padding: 14px 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .status-bar .meta { color: #888; font-size: 13px; margin-left: 8px; }
+  .timer-label { font-weight: 600; color: #555; font-size: 15px; }
+  .score-label { font-weight: 700; color: #333; font-size: 15px; }
+
+  /* 문제 카드 */
+  .question-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.09);
+    padding: 32px 36px 28px;
+  }
+  .progress-info {
+    color: #999;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  #koreanText {
+    font-size: 1.25rem;
+    color: #222;
+    font-weight: 700;
+    line-height: 1.7;
+    margin-bottom: 28px;
+  }
+
+  /* 단어 입력 영역 */
+  #quizArea {
+    line-height: 3.2;
+    min-height: 100px;
+  }
+  .word-wrapper {
+    display: inline-block;
+    position: relative;
+    margin: 30px 8px 12px 8px;
+    text-align: center;
+  }
+  .feedback-msg {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+    display: none;
+  }
+  .feedback-msg.perfect  { color: #007bff; display: block !important; }
+  .feedback-msg.wrong-x  { color: #ff4d4d; display: block !important; }
+  .feedback-msg.final-hint {
+    color: #ff4d4d;
+    display: block !important;
+    font-size: 13px;
+    text-decoration: underline;
+  }
+
+  .word-input {
+    border: none;
+    border-bottom: 2px solid #ccc;
+    padding: 8px 4px;
+    width: 110px;
+    text-align: center;
+    font-size: 17px;
+    background: transparent;
+    transition: border-color 0.25s;
+  }
+  .word-input:focus         { outline: none; border-bottom-color: #4285f4; }
+  .word-input.is-correct    { color: #28a745; border-bottom-color: #28a745; font-weight: 700; }
+  .word-input.is-wrong      { color: #dc3545; border-bottom-color: #dc3545; }
+  .word-input:disabled      { background: #f3f4f6; border-radius: 4px; cursor: not-allowed; }
+  .word-input.final-fail    { color: #dc3545 !important; }
+
+  /* 다음 버튼 */
+  #confirmNextBtn {
+    display: none;
+    margin: 36px auto 0;
+    padding: 14px 44px;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    transition: background 0.2s;
+  }
+  #confirmNextBtn:hover { background: #0056b3; }
+
+  /* 완료 화면 */
+  .complete-screen {
+    text-align: center;
+    padding: 70px 20px;
+  }
+  .complete-screen h2 { color: #007bff; margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="practice-wrap">
+
+  <!-- 상태 바 -->
+  <div class="status-bar">
+    <div>
+      <strong>{{ user.username }}</strong>
+      <span class="meta">
+        {{ selected_year|join:',' }}년&nbsp;{{ selected_grade|join:',' }}&nbsp;{{ selected_month|join:',' }}월
+        &nbsp;·&nbsp; 총 {{ question_count }}문항
+      </span>
+    </div>
+    <div class="timer-label">
+      ⏱ 문항: <span id="pageTimer">0</span>초 &nbsp;|&nbsp; ⏳ 전체: <span id="totalTimer">0</span>초
+    </div>
+    <div class="score-label">점수: <span id="scoreDisplay">0 / 0</span></div>
+  </div>
+
+  <!-- 문제 카드 -->
+  <div class="question-card" id="questionCard">
+    <div class="progress-info" id="progressInfo"></div>
+    <h4 id="koreanText">문제를 불러오는 중...</h4>
+    <div id="quizArea"></div>
+    <div style="text-align:center;">
+      <button id="confirmNextBtn" onclick="nextQuestion()">
+        확인 후 다음 문장으로 &rarr; &nbsp;<small>(Enter)</small>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const RETRY_LIMIT   = 3;
+  const CSRF_TOKEN    = '{{ csrf_token }}';
+  const LOG_URL       = "{% url 'academy:save_translation_log' %}";
+
+  var questions      = {{ questions_json|safe }};
+  var currentIndex   = 0;
+  var totalCorrect   = 0;
+  var totalAttempted = 0;
+
+  var pageSeconds  = 0;
+  var totalSeconds = 0;
+  var timerInterval;
+
+  var attemptTracker = {};
+  var logsToSend     = [];
+
+  /* ── 타이머 ── */
+  function startTimers() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      pageSeconds++;
+      totalSeconds++;
+      document.getElementById('pageTimer').innerText = pageSeconds;
+      document.getElementById('totalTimer').innerText = totalSeconds;
+    }, 1000);
+  }
+
+  /* ── 문제 로드 ── */
+  function loadQuestion(index) {
+    if (index >= questions.length) {
+      clearInterval(timerInterval);
+      document.getElementById('questionCard').outerHTML = `
+        <div class="question-card complete-screen">
+          <h2>🎉 테스트 완료!</h2>
+          <p style="font-size:18px;">최종 소요 시간: <strong>${totalSeconds}초</strong></p>
+          <p style="font-size:18px;">정답 수: <strong>${totalCorrect} / ${totalAttempted}</strong></p>
+          <a href="javascript:history.back()" class="btn btn-primary mt-3">돌아가기</a>
+        </div>`;
+      return;
+    }
+
+    pageSeconds = 0;
+    startTimers();
+    document.getElementById('confirmNextBtn').style.display = 'none';
+
+    var q = questions[index];
+    document.getElementById('progressInfo').innerText =
+      `${index + 1} / ${questions.length}  [${q.total_number || ''}]`;
+    document.getElementById('koreanText').innerText = q.korean;
+
+    var area = document.getElementById('quizArea');
+    area.innerHTML = '';
+    attemptTracker = {};
+    logsToSend     = [];
+
+    q.englishWords.forEach((word, i) => {
+      var wrapper  = document.createElement('div');
+      wrapper.className = 'word-wrapper';
+
+      var feedback  = document.createElement('div');
+      feedback.className = 'feedback-msg';
+      feedback.id = 'feedback' + i;
+
+      var input = document.createElement('input');
+      input.type        = 'text';
+      input.className   = 'word-input';
+      input.id          = 'word' + i;
+      input.dataset.answer = word;
+      input.autocomplete   = 'off';
+
+      /* blur 시 채점 */
+      input.addEventListener('blur', () => checkWord(i, word));
+
+      /* Tab / Enter 처리 */
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Tab' || e.key === 'Enter') {
+          checkWord(i, word);
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            focusNext(i);
+          }
+        }
+      });
+
+      wrapper.appendChild(feedback);
+      wrapper.appendChild(input);
+      area.appendChild(wrapper);
+      attemptTracker[i] = 0;
+    });
+
+    /* 첫 번째 칸으로 포커스 */
+    setTimeout(() => {
+      var first = document.getElementById('word0');
+      if (first) first.focus();
+    }, 80);
+  }
+
+  function focusNext(currentI) {
+    var nextI = currentI + 1;
+    var nextEl = document.getElementById('word' + nextI);
+    while (nextEl && nextEl.disabled) {
+      nextI++;
+      nextEl = document.getElementById('word' + nextI);
+    }
+    if (nextEl) nextEl.focus();
+  }
+
+  /* ── 단어 채점 ── */
+  function checkWord(i, correctWord) {
+    var inputEl = document.getElementById('word' + i);
+    if (!inputEl || inputEl.disabled || inputEl.classList.contains('is-correct')) return;
+
+    var studentVal = inputEl.value.trim();
+    if (studentVal === '') return;
+
+    attemptTracker[i]++;
+
+    var cleanInput   = studentVal.replace(/[.,?!;:'"]/g, '').toLowerCase();
+    var cleanCorrect = correctWord.replace(/[.,?!;:'"]/g, '').toLowerCase();
+    var isCorrect    = (cleanInput === cleanCorrect);
+    var feedbackEl   = document.getElementById('feedback' + i);
+    var q            = questions[currentIndex];
+
+    logsToSend.push({
+      questionNum:   currentIndex + 1,
+      wordIndex:     i,
+      input:         studentVal,
+      correctAnswer: correctWord,
+      isCorrect:     isCorrect,
+      attemptNum:    attemptTracker[i],
+      timeTaken:     pageSeconds,
+      pk_number:     q.pk_number
+    });
+
+    if (isCorrect) {
+      inputEl.classList.remove('is-wrong');
+      inputEl.classList.add('is-correct');
+      inputEl.disabled = true;
+      feedbackEl.innerText   = 'PERFECT!';
+      feedbackEl.className   = 'feedback-msg perfect';
+      totalCorrect++;
+      checkSentenceComplete();
+    } else {
+      inputEl.classList.add('is-wrong');
+      feedbackEl.innerText = 'X';
+      feedbackEl.className = 'feedback-msg wrong-x';
+
+      if (attemptTracker[i] >= RETRY_LIMIT) {
+        inputEl.disabled = true;
+        inputEl.classList.add('final-fail');
+        checkSentenceComplete();
+      }
+    }
+
+    totalAttempted++;
+    document.getElementById('scoreDisplay').innerText =
+      totalCorrect + ' / ' + totalAttempted;
+  }
+
+  /* ── 문장 전체 완료 체크 ── */
+  function checkSentenceComplete() {
+    var inputs  = document.querySelectorAll('.word-input');
+    var allDone = Array.from(inputs).every(el => el.disabled);
+    if (!allDone) return;
+
+    /* 틀린 칸에 정답 힌트 표시 */
+    inputs.forEach((el, idx) => {
+      if (!el.classList.contains('is-correct')) {
+        var fb = document.getElementById('feedback' + idx);
+        fb.innerText   = el.dataset.answer;
+        fb.className   = 'feedback-msg final-hint';
+      }
+    });
+
+    /* 로그 저장 */
+    if (logsToSend.length > 0) {
+      fetch(LOG_URL, {
+        method:  'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken':  CSRF_TOKEN
+        },
+        body: JSON.stringify({ logs: logsToSend })
+      });
+    }
+
+    document.getElementById('confirmNextBtn').style.display = 'block';
+    document.getElementById('confirmNextBtn').focus();
+  }
+
+  /* ── 다음 문제 ── */
+  function nextQuestion() {
+    currentIndex++;
+    loadQuestion(currentIndex);
+  }
+
+  /* Enter 키로 다음 문제 이동 */
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      var btn = document.getElementById('confirmNextBtn');
+      if (btn && btn.style.display === 'block') nextQuestion();
+    }
+  });
+
+  window.onload = () => loadQuestion(0);
+</script>
+{% endblock %}

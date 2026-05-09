@@ -235,6 +235,22 @@ class WordTest_Data(models.Model):
         managed = False
 
 
+class TranslationLog(models.Model):
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='translation_logs')
+    question_num = models.IntegerField()
+    word_index = models.IntegerField()
+    input_value = models.CharField(max_length=255)
+    correct_answer = models.CharField(max_length=255)
+    is_correct = models.BooleanField()
+    attempt_num = models.IntegerField()
+    time_taken = models.IntegerField()
+    pk_number = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'translation_log'
+
+
 class Academy(models.Model):
     admin = models.OneToOneField(Member, on_delete=models.CASCADE, related_name='academy', limit_choices_to={'member_type': 'academy_admin'}, null=True, blank=True, default=None)
     name = models.CharField(max_length=255)

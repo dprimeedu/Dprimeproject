@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}영작 연습 선택{% endblock %}
+
+{% block extra_css %}
+<style>
+  .select-wrap {
+    max-width: 720px;
+    margin: 50px auto 100px;
+    padding: 0 20px;
+  }
+  .select-wrap h2 {
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .select-wrap .subtitle {
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+
+  .filter-section {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    padding: 28px 32px;
+    margin-bottom: 20px;
+  }
+  .filter-section h5 {
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 16px;
+    font-size: 15px;
+  }
+
+  .chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .chip-group input[type="checkbox"] {
+    display: none;
+  }
+  .chip-group label {
+    padding: 8px 18px;
+    border: 2px solid #dee2e6;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.18s;
+    user-select: none;
+  }
+  .chip-group input[type="checkbox"]:checked + label {
+    background: #007bff;
+    border-color: #007bff;
+    color: #fff;
+  }
+  .chip-group label:hover {
+    border-color: #007bff;
+    color: #007bff;
+  }
+
+  .start-btn {
+    display: block;
+    width: 100%;
+    padding: 16px;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 30px;
+    transition: background 0.2s;
+  }
+  .start-btn:hover { background: #0056b3; }
+  .start-btn:disabled { background: #adb5bd; cursor: not-allowed; }
+
+  .no-data {
+    text-align: center;
+    color: #aaa;
+    padding: 60px 20px;
+    font-size: 16px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="select-wrap">
+  <h2><i class="fas fa-pen me-2" style="color:#007bff;"></i>영작 연습</h2>
+  <p class="subtitle">년도 · 학년 · 월을 선택하고 시작하세요. 여러 개 중복 선택이 가능합니다.</p>
+
+  {% if grades and years and months %}
+  <form method="get" action="{% url 'academy:translation_practice' %}" id="selectForm">
+
+    <!-- 학년 -->
+    <div class="filter-section">
+      <h5>학년</h5>
+      <div class="chip-group">
+        {% for grade in grades %}
+          <input type="checkbox" name="grade" value="{{ grade }}" id="g_{{ forloop.counter }}">
+          <label for="g_{{ forloop.counter }}">{{ grade }}</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 년도 -->
+    <div class="filter-section">
+      <h5>년도</h5>
+      <div class="chip-group">
+        {% for year in years %}
+          <input type="checkbox" name="year" value="{{ year }}" id="y_{{ forloop.counter }}">
+          <label for="y_{{ forloop.counter }}">{{ year }}년</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 월 -->
+    <div class="filter-section">
+      <h5>월</h5>
+      <div class="chip-group">
+        {% for month in months %}
+          <input type="checkbox" name="month" value="{{ month }}" id="m_{{ forloop.counter }}">
+          <label for="m_{{ forloop.counter }}">{{ month }}월</label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit" class="start-btn" id="startBtn" disabled>
+      조건을 선택하면 시작할 수 있습니다
+    </button>
+  </form>
+
+  {% else %}
+  <div class="no-data">
+    <i class="fas fa-database fa-2x mb-3" style="display:block;"></i>
+    등록된 영작 데이터가 없습니다.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  var form = document.getElementById('selectForm');
+  var btn  = document.getElementById('startBtn');
+  if (form) {
+    form.addEventListener('change', function() {
+      var gradeChecked = form.querySelectorAll('input[name="grade"]:checked').length > 0;
+      var yearChecked  = form.querySelectorAll('input[name="year"]:checked').length > 0;
+      var monthChecked = form.querySelectorAll('input[name="month"]:checked').length > 0;
+      if (gradeChecked && yearChecked && monthChecked) {
+        btn.disabled = false;
+        btn.textContent = '시작하기 →';
+      } else {
+        btn.disabled = true;
+        btn.textContent = '조건을 선택하면 시작할 수 있습니다';
+      }
+    });
+  }
+</script>
+{% endblock %}

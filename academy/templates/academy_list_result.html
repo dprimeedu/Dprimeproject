@@ -30,9 +30,12 @@
                         </td>
                         <td>{{ exam.question_counter }}</td>
                         <td>
-                        <!--- exam.category 확인해서 문제별로 링크를 다르게 생성하기 -->
-                        {% if exam.question_counter > 0 or exam.link %}  
+                        {% if exam.question_counter > 0 or exam.link %}
                         <a href="{% url 'academy:exam_list_result' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}&category={{ exam.category }}">PDF 문제</a>
+                        {% if exam.category == '중요영작' %}
+                        &nbsp;|&nbsp;
+                        <a href="{% url 'academy:translation_practice' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}" style="color:#007bff; font-weight:600;">영작 연습</a>
+                        {% endif %}
                         {% else %}
                         -
                         {% endif %}
