@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'index' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>메인으로</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-download me-2"></i>모고 데이터 다운로드</h3>
+        <p class="section-desc">학년/연도/월을 선택해 모의고사 문제를 조회·다운로드합니다.</p>
+    </div>
+
+    <form action="{% url 'academy:academy_list_result' %}" method="get" class="quick-search">
+        <input type="hidden" name="grade" value="고1">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto"><label>연도</label></div>
+            <div class="col-auto">
+                <select name="year" class="form-select form-select-sm" required>
+                    <option value="">선택</option>
+                    {% for y in years %}
+                        <option value="{{ y }}">{{ y }}년</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto"><label>월</label></div>
+            <div class="col-auto">
+                <select name="month" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for m in months %}
+                        <option value="{{ m }}">{{ m }}월</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fas fa-search me-1"></i>검색
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="exam-grid">
+            <thead>
+                <tr>
+                    <th>연도</th>
+                    {% for m in months %}
+                        <th>{{ m }}월</th>
+                    {% endfor %}
+                    <th>전체</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for y in years %}
+                <tr>
+                    <td>{{ y }}년</td>
+                    {% for m in months %}
+                    <td>
+                        <a href="{% url 'academy:academy_list_result' %}?grade=고1&year={{ y }}&month={{ m }}" class="btn-exam">조회</a>
+                    </td>
+                    {% endfor %}
+                    <td>
+                        <a href="{% url 'academy:academy_list_result' %}?grade=고1&year={{ y }}" class="btn-exam btn-exam-all">전체</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

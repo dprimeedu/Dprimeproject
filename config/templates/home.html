@@ -1,5 +1,32 @@
 {% extends 'base.html' %}
+{% load static %}
 
-<footer class="fixed-bottom bg-info">
-    <p>© 2024 학원의 민족 - All Rights Reserved</p>
-</footer>
+{% block content %}
+<div class="home-wrap">
+    <div class="home-header text-center">
+        <h2>프라임에듀</h2>
+        <p class="subtitle">메뉴를 선택해주세요</p>
+    </div>
+
+    <div class="row g-4 home-menu-grid">
+        <div class="col-md-6">
+            <a href="{% url 'mock_exam' %}" class="big-menu-card">
+                <div class="big-menu-num">MENU 01</div>
+                <div class="big-menu-icon"><i class="fas fa-download"></i></div>
+                <h3>모고 데이터 다운로드</h3>
+                <p>학년별 모의고사 문제 조회 및 다운로드</p>
+                <span class="big-menu-arrow">들어가기 →</span>
+            </a>
+        </div>
+        <div class="col-md-6">
+            <a href="{% url 'training' %}" class="big-menu-card">
+                <div class="big-menu-num">MENU 02</div>
+                <div class="big-menu-icon"><i class="fas fa-user-graduate"></i></div>
+                <h3>재원생 메뉴</h3>
+                <p>재원생을 위한 학습 훈련 도구</p>
+                <span class="big-menu-arrow">들어가기 →</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

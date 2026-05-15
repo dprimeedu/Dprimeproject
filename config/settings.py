@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'member',
     'academy',
     'acad',
+    'writing',
 
 ]
 
@@ -159,3 +160,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'member.Member'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+
+# 대용량 단원(수백 문제) admin 편집 허용
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 50000

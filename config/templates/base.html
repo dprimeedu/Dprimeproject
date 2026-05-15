@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>학원의 민족</title>
+    <title>프라임에듀</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Add Font Awesome for icons -->
@@ -16,35 +16,11 @@
 <body>
     <nav class="navbar navbar-expand-lg sticky-top">
         <div class="container">
-            <a class="nav-link active" href="{% url 'index' %}"><i class="fas fa-home me-1"></i>
-                학원의 민족
-            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="http://127.0.0.1:8000/academy_list"><i class="fas fa-school me-1"></i>문제 리스트</a>
-                    </li>
-                    <!-- <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="fas fa-plus-circle me-1"></i>학원등록</a>
-                    </li> -->
-                </ul>
-                <ul class="navbar-nav ms-3">
-                    {% if user.is_authenticated %}
-                        {% if user.is_academy %}
-                            <li class="nav-item">
-                                <a class="nav-link text-danger fw-bold" href="{% url 'acad:dashboard' %}">학원관리자</a>
-                            </li>
-                        {% else %}
-                            <!-- 학생일 경우 다른 메뉴를 추가할 수 있습니다. -->
-                            <li class="nav-item">
-                                <a class="nav-link" href="{% url 'course:my_courses' %}">내 강의실</a>
-                            </li>
-                        {% endif %}
-                    {% endif %}
-                </ul>                
+                <div class="me-auto"></div>
                 <div class="d-flex align-items-center gap-2">
                     {% if user.is_authenticated %}
                         <div class="dropdown">
@@ -67,71 +43,16 @@
                         <a class="btn btn-outline-primary small-btn" href="{% url 'register' %}"><i class="fas fa-user-plus me-1"></i>회원가입</a>
                     {% endif %}
                 </div>
-                
-                <form class="d-flex search-bar ms-3" role="search" action="#" method="get">
-                    <div class="input-group">
-                        <input class="form-control" type="search" id='searchInput' placeholder="검색하기..." aria-label="Search" name="query">
-                        <button class="btn btn-primary" type="submit"><i class="fas fa-search me-1"></i></button>
-                    </div>
-                </form>
             </div>
         </div>
     </nav>
 
-    {% block content %}
-
-    <nav class="academybar">
-        <div class="academy-container">
-            <h1 class="title">영어의 해답은 멋쟁이 영어입니다</h1>
-            <p class="subtitle">기본문법 / 보안가 성적목표 커리큘럼 / 철저학력 관리</p>
-            
-            <div class="stats-container">
-                <div class="stat-item">
-                    <img src="{% static 'images/top.png' %}" alt="추천 수">
-                    <p>수능 기출영어 수석 수험생 1위</p>
-                </div>
-                <div class="stat-item">
-                    <img src="{% static 'images/likegood.png' %}" alt="만족 도">
-                    <p>멋쟁이이 수강생 만족도 97%</p>
-                </div>
-                <div class="stat-item">
-                    <img src="{% static 'images/sell.png' %}" alt="배출 자">
-                    <p>6년 연속 영어 만점자 배출출 1위</p>
-                </div>
-            </div>
-        
-            <div class="features-grid">
-                <div class="feature-item">
-                    <img src="{% static 'images/library.png' %}" alt="도서관">
-                    <p>쾌적하고 깔끔하신 강의실</p>
-                </div>
-                <div class="feature-item">
-                    <img src="{% static 'images/study.png' %}" alt="학습자료">
-                    <p>철저한 플랜과 분석자료</p>
-                </div>
-                <div class="feature-item">
-                    <img src="{% static 'images/writing.png' %}" alt="학습">
-                    <p>1:1 맞춤형 학습 지도</p>
-                </div>
-                <div class="feature-item">
-                    <img src="{% static 'images/classroom.png' %}" alt="강의실">
-                    <p>10-15명 소수정예 학습</p>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <!--
-    <div class="content-area">
-        <h1>나에게 맞는 학원을 찾아보세요</h1>
-         Add more content here as needed
-    </div> -->
-    {% endblock %}
+    {% block content %}{% endblock %}
 
     {% block footer %}
     <footer>
         <div class="container">
-            <p>© 2024 학원의 민족 - 최고의 학원을 최고의 선생님과 함께</p>
+            <p>© 2024 프라임에듀</p>
         </div>
     </footer>
     {% endblock %}

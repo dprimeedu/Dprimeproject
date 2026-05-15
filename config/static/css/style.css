@@ -1,6 +1,9 @@
 :root {
-    --primary-color: #FF6B6B;
-    --secondary-color: #4ECDC4;
+    --primary-color: #7c3aed;
+    --primary-dark: #6d28d9;
+    --primary-light: #a78bfa;
+    --primary-bg: #f5f3ff;
+    --secondary-color: #a78bfa;
     --dark-color: #2C3E50;
     --light-color: #F7F9FC;
 }
@@ -51,7 +54,7 @@ html, body {
 }
 
 .nav-link:hover {
-    background-color: rgba(255, 107, 107, 0.1);
+    background-color: rgba(124, 58, 237, 0.1);
     color: var(--primary-color) !important;
 }
 
@@ -87,7 +90,7 @@ html, body {
 }
 
 .search-bar .btn-primary:hover {
-    background-color: #ff5252;
+    background-color: var(--primary-dark);
 }
 
 /* Content Area Styles */
@@ -442,6 +445,297 @@ html, body {
 
 
 
+/* Home Page List/Table */
+.home-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.home-header {
+    margin-bottom: 2rem;
+}
+
+.home-header h2 {
+    font-weight: 800;
+    color: var(--primary-color);
+    margin-bottom: 0.25rem;
+    letter-spacing: -0.02em;
+}
+
+.home-header .subtitle {
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
+.home-section {
+    margin-bottom: 3rem;
+}
+
+.section-header {
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--primary-color);
+}
+
+.section-header h3 {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin: 0;
+    font-size: 1.35rem;
+}
+
+.section-header .section-desc {
+    color: #6b7280;
+    font-size: 0.85rem;
+    margin: 0.25rem 0 0;
+}
+
+.menu-grid {
+    margin-top: 0;
+}
+
+.menu-card {
+    display: block;
+    background: white;
+    padding: 1.75rem 1.25rem;
+    border-radius: 10px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--dark-color);
+    border: 1px solid #e5e7eb;
+    transition: all 0.2s ease;
+    height: 100%;
+    position: relative;
+}
+
+.menu-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.15);
+    transform: translateY(-2px);
+    color: var(--dark-color);
+}
+
+.menu-card-icon {
+    font-size: 2.25rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.menu-card h4 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    color: var(--dark-color);
+}
+
+.menu-card p {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin: 0;
+}
+
+.menu-card.coming-soon {
+    opacity: 0.75;
+}
+
+.menu-card.coming-soon::before {
+    content: '준비중';
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--primary-bg);
+    color: var(--primary-color);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+/* Big top-level menu cards on homepage */
+.home-menu-grid {
+    margin-top: 2rem;
+}
+
+.big-menu-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: white;
+    padding: 3rem 2rem;
+    border-radius: 16px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--dark-color);
+    border: 2px solid #e5e7eb;
+    transition: all 0.25s ease;
+    min-height: 280px;
+    height: 100%;
+    position: relative;
+}
+
+.big-menu-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.18);
+    transform: translateY(-4px);
+    background: var(--primary-bg);
+    color: var(--dark-color);
+}
+
+.big-menu-card .big-menu-num {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+}
+
+.big-menu-card .big-menu-icon {
+    font-size: 3.5rem;
+    color: var(--primary-color);
+    margin-bottom: 1.25rem;
+}
+
+.big-menu-card h3 {
+    color: var(--dark-color);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    font-size: 1.4rem;
+}
+
+.big-menu-card p {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin-bottom: 1.25rem;
+}
+
+.big-menu-card .big-menu-arrow {
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 0.95rem;
+    opacity: 0.7;
+    transition: all 0.2s ease;
+}
+
+.big-menu-card:hover .big-menu-arrow {
+    opacity: 1;
+    transform: translateX(4px);
+}
+
+/* Back link on sub-pages */
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    color: var(--primary-color);
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+.back-link:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+.quick-search {
+    background: var(--primary-bg);
+    border: 1px solid #e9d5ff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin: 1.25rem 0 1.75rem;
+}
+
+.quick-search label {
+    font-weight: 600;
+    color: var(--dark-color);
+    font-size: 0.9rem;
+    margin: 0 0.25rem;
+}
+
+.quick-search .form-select-sm,
+.quick-search .btn-sm {
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.exam-grid {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.exam-grid thead th {
+    background: var(--primary-color);
+    color: white;
+    font-weight: 600;
+    padding: 0.9rem 0.5rem;
+    text-align: center;
+    border: none;
+    font-size: 0.95rem;
+}
+
+.exam-grid thead th:first-child {
+    text-align: left;
+    padding-left: 1.5rem;
+}
+
+.exam-grid tbody td {
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: middle;
+}
+
+.exam-grid tbody td:first-child {
+    text-align: left;
+    padding-left: 1.5rem;
+    font-weight: 600;
+    color: var(--dark-color);
+}
+
+.exam-grid tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.exam-grid tbody tr:hover {
+    background-color: var(--primary-bg);
+}
+
+.exam-grid .btn-exam {
+    background: white;
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    padding: 0.3rem 0.9rem;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.exam-grid .btn-exam:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+.exam-grid .btn-exam-all {
+    background: var(--primary-color);
+    color: white;
+    border: 1px solid var(--primary-color);
+}
+
+.exam-grid .btn-exam-all:hover {
+    background: var(--primary-dark);
+    border-color: var(--primary-dark);
+}
+
 /* Footer Styles */
 footer {
     background-color: white;
@@ -486,6 +780,6 @@ footer p {
     color: var(--dark-color) !important; /* 글꼴 색상 */
 }
 .dropdown-item:hover {
-    background-color: rgba(255, 107, 107, 0.1) !important; /* 호버 시 배경색 변경 */
+    background-color: rgba(124, 58, 237, 0.1) !important; /* 호버 시 배경색 변경 */
     color: var(--primary-color) !important; /* 호버 시 글꼴 색상 변경 */
 }

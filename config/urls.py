@@ -8,6 +8,8 @@ from .views import CustomLoginView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("", views.HomeView.as_view(), name='index'),
+    path('mock-exam/', views.MockExamView.as_view(), name='mock_exam'),
+    path('training/', views.TrainingView.as_view(), name='training'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('accounts/register/', views.UserCreateView.as_view(), name='register'),
     path('accounts/register/done/', views.UserCreateDoneTV.as_view(), name='register_done'),
@@ -19,6 +21,7 @@ urlpatterns = [
     path('', include('academy.urls')),
     path('course/', include('course.urls')),
     path('member/', include('member.urls')),
+    path('training/writing/', include('writing.urls')),
 ]
 
 # 개발 환경에서 정적 파일 제공
