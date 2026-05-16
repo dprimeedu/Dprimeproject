@@ -7,7 +7,8 @@ import re
 from typing import List, Dict
 from google import genai
 from django.conf import settings
-
+from dotenv import load_dotenv
+load_dotenv()
 
 _client = None
 MODEL_NAME = 'gemini-2.5-flash-lite'  # thinking 없는 빠른 모델
