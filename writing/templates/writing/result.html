@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+    .result-wrap { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+    .result-hero {
+        background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+        color: white;
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(124,58,237,.3);
+    }
+    .result-hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: .5rem; }
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    .stat-card {
+        background: rgba(255,255,255,.15);
+        backdrop-filter: blur(8px);
+        border-radius: 10px;
+        padding: 1rem;
+    }
+    .stat-card .label { font-size: .8rem; opacity: .9; }
+    .stat-card .value { font-size: 1.8rem; font-weight: 800; margin-top: .25rem; }
+
+    .badge-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,.06);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .badge-card .icon { font-size: 2.5rem; }
+    .badge-card .name { font-weight: 700; font-size: 1.1rem; color: var(--primary-color); }
+    .badge-card .desc { color: #6b7280; font-size: .9rem; }
+</style>
+
+<div class="result-wrap">
+    <a href="{% url 'writing:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>영작훈련 홈</a>
+
+    <div class="result-hero">
+        <div style="font-size: 3rem; margin-bottom: .5rem;">🎉</div>
+        <h1>단원 완료!</h1>
+        <p class="opacity-75 mb-0">{{ unit.title }}</p>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="label">획득 점수</div>
+                <div class="value">{{ session.total_score }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">정답률</div>
+                <div class="value">{{ accuracy }}%</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">최고 콤보</div>
+                <div class="value">🔥 {{ session.max_word_combo }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">현재 레벨</div>
+                <div class="value">Lv {{ profile.level }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">상세 결과</h5>
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <div class="text-muted small">시도한 단어</div>
+                    <div class="h4 mb-0">{{ total_words }}개</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted small">1차 정답</div>
+                    <div class="h4 mb-0 text-success">{{ correct_first_try }}개</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted small">Perfect 문장</div>
+                    <div class="h4 mb-0">{{ session.perfect_sentences }}개</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted small">총 XP</div>
+                    <div class="h4 mb-0">{{ profile.total_xp }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if earned_badges %}
+    <h5 class="mb-3">🏆 이번 회차 획득 배지</h5>
+    {% for ea in earned_badges %}
+    <div class="badge-card">
+        <div class="icon">{{ ea.achievement.icon }}</div>
+        <div>
+            <div class="name">{{ ea.achievement.name }}</div>
+            <div class="desc">{{ ea.achievement.description }}</div>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="d-flex gap-2 mt-4">
+        <a href="{% url 'writing:home' %}" class="btn btn-outline-primary flex-fill">
+            <i class="fas fa-home me-1"></i>홈으로
+        </a>
+        <a href="{% url 'writing:start_session' unit.id %}" class="btn btn-primary flex-fill">
+            <i class="fas fa-redo me-1"></i>다시 풀기
+        </a>
+    </div>
+</div>
+{% endblock %}

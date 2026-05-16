@@ -45,14 +45,29 @@
                 </tbody>
             </table>
 
-        {% else %}
-        <div class="section" style="margin-bottom: 200px; text-align: center;"><h1>
-                선택 문제 유형 년도: {{ selected_year }} 구분: {{ selected_category }} 학년: {{ selected_grade }} 
-        </h1></div>
-        <div class="section"  style="margin-bottom: 200px;">
-            <p class="no-data-message" style="text-align: center;">조건에 맞는 테이블이 없습니다.</p>
-        </div>   
-        {% endif %}
-    </div>
-</div>
-{% endblock %}
+    {% else %}
+    <div class="section" style="margin-bottom: 200px; text-align: center;"><h1>
+            선택 문제 유형 년도: {{ selected_year }} 구분: {{ selected_category }} 학년: {{ selected_grade }} 
+    </h1></div>
+    <div class="section"  style="margin-bottom: 200px;">
+        <p class="no-data-message" style="text-align: center;">조건에 맞는 테이블이 없습니다.</p>
+    </div>   
+    {% endif %}
+      
+       
+  </div>
+  
+    {% endblock %}
+
+    {% block footer %}
+    <footer>
+        <div class="container" style="text-align: center;">
+            <p>© 2024 프라임에듀</p>
+        </div>
+    </footer>
+    {% endblock %}
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+</body>
+</html>

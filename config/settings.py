@@ -47,6 +47,8 @@ INSTALLED_APPS = [
     'academy',
     'acad',
     'common'
+    'writing',
+
 ]
 
 MIDDLEWARE = [
@@ -147,3 +149,5 @@ LOGOUT_REDIRECT_URL = '/'
 
 CSRF_COOKIE_HTTPONLY = True
 CSRF_USE_SESSIONS = False
+# 대용량 단원(수백 문제) admin 편집 허용
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 50000

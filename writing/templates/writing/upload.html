@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'index' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>메인으로</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-upload me-2"></i>영작 단원 업로드</h3>
+        <p class="section-desc">엑셀 파일에서 영작 문제를 불러와 단원을 만듭니다.</p>
+    </div>
+
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">{{ form.title.label }}</label>
+                    {{ form.title }}
+                    {% if form.title.errors %}<div class="text-danger small">{{ form.title.errors.0 }}</div>{% endif %}
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">{{ form.grade.label }}</label>
+                        {{ form.grade }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">{{ form.publisher.label }}</label>
+                        {{ form.publisher }}
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">{{ form.description.label }}</label>
+                    {{ form.description }}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">{{ form.excel_file.label }}</label>
+                    {{ form.excel_file }}
+                    {% if form.excel_file.errors %}<div class="text-danger small">{{ form.excel_file.errors.0 }}</div>{% endif %}
+                    <div class="form-text">
+                        엑셀 컬럼: 1열 색인 | 2열 한글 및 힌트 | 3열 영어 (정답)
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'writing:unit_list' %}" class="btn btn-outline-secondary">목록으로</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload me-1"></i>업로드
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="alert alert-info mt-4">
+        <strong>📌 사용 팁</strong>
+        <ul class="mb-0 mt-2">
+            <li>업로드 후 단원 상세 페이지에서 "AI 한글뜻 생성" 버튼을 누르면 단어별 한글뜻이 자동 생성됩니다.</li>
+            <li>AI 생성 후 잘못된 뜻이 있으면 admin 페이지에서 수정 가능합니다.</li>
+            <li>한 단원당 약 1~5원의 API 비용이 발생합니다 (무료 한도 내에선 비용 없음).</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

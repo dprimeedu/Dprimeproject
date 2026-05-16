@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'index' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>메인으로</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-user-graduate me-2"></i>재원생 메뉴</h3>
+        <p class="section-desc">재원생을 위한 학습 훈련 도구</p>
+    </div>
+
+    <div class="row g-3 menu-grid">
+        <div class="col-md-4 col-sm-6">
+            <a href="{% url 'writing:home' %}" class="menu-card">
+                <div class="menu-card-icon"><i class="fas fa-pen-nib"></i></div>
+                <h4>영작훈련</h4>
+                <p>단어별 빈칸 채우기 학습</p>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

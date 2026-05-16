@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+
+    <!-- 학생 프로필 카드 -->
+    <div class="card mb-4" style="background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%); color: white;">
+        <div class="card-body p-4">
+            <div class="row align-items-center">
+                <div class="col-md-7">
+                    <h3 class="mb-1">{{ request.user.username }}님</h3>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="badge bg-light text-dark" style="font-size: 1rem; padding: 8px 12px;">
+                            Lv {{ profile.level }} {{ profile.title }}
+                        </span>
+                        <span>🔥 최고 콤보: {{ profile.max_word_combo_ever }}</span>
+                        {% if profile.login_streak_days >= 2 %}
+                        <span>📅 {{ profile.login_streak_days }}일 연속</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <div>XP {{ profile.xp_in_current_level }} / 100 (다음 레벨까지 {{ profile.xp_to_next_level }})</div>
+                    <div class="progress mt-2" style="height: 8px; background: rgba(255,255,255,0.3);">
+                        <div class="progress-bar bg-light" style="width: {{ profile.xp_in_current_level }}%"></div>
+                    </div>
+                    <small class="d-block mt-1 opacity-75">총 XP: {{ profile.total_xp }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-header">
+        <h3><i class="fas fa-pen-nib me-2"></i>영작훈련 단원</h3>
+        <p class="section-desc">
+            {% if is_assigned_view %}
+            배정받은 단원을 선택해서 풀어보세요.
+            {% else %}
+            (관리자 모드) 모든 활성 단원이 표시됩니다.
+            {% endif %}
+        </p>
+    </div>
+
+    {% if unit_info %}
+    <div class="row g-3">
+        {% for info in unit_info %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">{{ info.unit.title }}</h5>
+                    <p class="text-muted small mb-2">
+                        {{ info.unit.grade }} · 문제 {{ info.unit.problem_count }}개
+                        {% if info.unit.publisher %} · {{ info.unit.publisher }}{% endif %}
+                    </p>
+                    {% if info.last_started %}
+                    <p class="small text-muted mb-3">
+                        마지막 점수: <strong>{{ info.last_score }}</strong>점
+                        <br>({{ info.attempts_count }}회 시도)
+                    </p>
+                    {% else %}
+                    <p class="small text-success mb-3">✨ 첫 도전 단원</p>
+                    {% endif %}
+                    <a href="{% url 'writing:start_session' info.unit.id %}" class="btn btn-primary w-100">
+                        <i class="fas fa-play me-1"></i>풀기 시작
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        {% if is_assigned_view %}
+        아직 배정받은 단원이 없습니다. 선생님께 단원 배정을 요청하세요.
+        {% else %}
+        등록된 단원이 없습니다. 먼저 단원을 업로드해주세요.
+        <br><a href="{% url 'writing:upload' %}" class="btn btn-primary mt-3">단원 업로드</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if not is_assigned_view %}
+    <div class="text-end mt-3">
+        <a href="{% url 'writing:unit_list' %}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-cog me-1"></i>단원 관리
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

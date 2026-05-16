@@ -11,11 +11,19 @@ from member.views import profile_edit_view
 class HomeView(generic.TemplateView):
     template_name = 'home.html'
 
+
+class MockExamView(generic.TemplateView):
+    template_name = 'mock_exam.html'
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # 'member:profile_view'를 사용하여 URL을 찾습니다.
-        context['profile_url'] = reverse('member:profile_view')
+        context['years'] = ['2024', '2023', '2022', '2021', '2020', '2019']
+        context['months'] = ['3', '6', '9', '11']
         return context
+
+
+class TrainingView(generic.TemplateView):
+    template_name = 'training.html'
 
 class UserCreateView(generic.CreateView):
     template_name = 'registration/register.html'

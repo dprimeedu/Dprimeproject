@@ -67,14 +67,41 @@
                                     {% endif %}
                                 </td>
                             </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% endfor %}
-        {% endwith %}
-    {% else %}
-        <div class="section" style="margin-bottom: 380px;">
-            <p class="no-data-message" style="text-align: center;">조건에 맞는 테이블이 없습니다.</p>
+                        </thead>
+                        <tbody>
+                            {% for exam in year_group.list %}
+                                <tr>
+                                    <td>{{ forloop.parentloop.counter }}</td>
+                                    <td>{{ exam.category }}</td>
+                                    <td>{{ exam.grade }}</td>
+                                    <td>{{ exam.year }}년</td>
+                                    <td>{{ exam.month }}월</td>
+                                    <td>{{ exam.title }}</td>
+                                    <td>
+                                        {% if exam.link %}
+                                            <a href="{% url 'academy:academy_list_result' %}?year={{ exam.year }}&grade={{ exam.grade }}&month={{ exam.month }}">클릭</a>
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endfor %}
+            {% endwith %}
+        {% else %}
+            <div class="section" style="margin-bottom: 380px;">
+                <p class="no-data-message" style="text-align: center;">조건에 맞는 테이블이 없습니다.</p>
+            </div>
+        {% endif %}
+    </div>
+    {% endblock %}
+
+    {% block footer %}
+    <footer>
+        <div class="container" style="text-align: center;">
+            <p>© 2024 프라임에듀</p>
         </div>
     {% endif %}
 </div>
