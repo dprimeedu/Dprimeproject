@@ -608,10 +608,12 @@ async function onAllWordsDone() {
         actionRow.style.display = 'flex';
 
         if (data.passed) {
+            // 합격 시 재시도 숨김 (점수 farming 방지)
             nextBtn.style.display = 'inline-block';
-            retryBtn.style.display = 'inline-block';
+            retryBtn.style.display = 'none';
             nextBtn.focus();
         } else {
+            // 불합격 시 재시도 강조 + 다음 진행도 허용
             retryBtn.style.display = 'inline-block';
             nextBtn.style.display = 'inline-block';
             retryBtn.focus();

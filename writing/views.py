@@ -518,14 +518,22 @@ def complete_problem_api(request):
     session.save()
     profile.save()
 
-    # 이 문장의 점수 비율 계산 (자동 채우기 제외)
+    # 이 문장의 점수 비율 계산 (자동 채우기 제외, base 점수만 — speed/콤보 보너스 제외)
     words = problem.english_words
     non_auto_count = sum(1 for i, w in enumerate(words) if not _should_auto_fill(w, i))
-    sentence_max = non_auto_count * scoring.SCORE_BY_HINT_LEVEL[0]
-    sentence_earned = sum(
-        a.score_earned for a in attempts
-        if not (a.is_correct and a.score_earned == 0)
-    )
+    sentence_max = non_auto_count * scoring.SCORE_BY_HINT_LEVEL[0]  # 단어당 10점 만점
+
+    sentence_earned = 0
+    for a in attempts:
+        if a.is_correct and a.score_earned == 0:
+            continue  # 자동 채우기
+        if a.is_correct:
+            # PERFECT(10) / GREAT(6) / GOOD(3) — base만
+            sentence_earned += scoring.SCORE_BY_HINT_LEVEL.get(a.hint_level, 0)
+        elif a.hint_level == 3:
+            # BOO~ (정답 공개) +1
+            sentence_earned += scoring.SCORE_REVEAL
+
     if forfeit:
         sentence_earned = 0
     sentence_pct = (sentence_earned / sentence_max * 100) if sentence_max > 0 else 100
