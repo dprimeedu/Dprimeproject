@@ -137,27 +137,45 @@
         100% { opacity: 0; transform: translate(-50%, -30px); }
     }
 
-    /* 콤보/레벨업 큰 오버레이 */
-    .big-popup {
-        position: fixed;
-        top: 50%; left: 50%;
-        transform: translate(-50%, -50%) scale(0);
-        background: linear-gradient(135deg, var(--primary-color), #a78bfa);
-        color: white;
-        padding: 2rem 3rem;
-        border-radius: 16px;
-        text-align: center;
-        z-index: 9999;
+    /* 자동 채우기 단어 (관사 등) */
+    .word-input.is-auto {
+        color: #6b7280;
+        border-bottom-color: #d1d5db;
+        background: rgba(156,163,175,.08);
+        border-radius: 4px;
+        font-weight: 500;
+    }
+
+    /* 보상 인라인 토스트 (학습 영역 가리지 않음) */
+    .reward-rail {
+        margin-top: 1rem;
+        min-height: 2.2rem;
+        display: flex;
+        flex-direction: column;
+        gap: .35rem;
+        align-items: stretch;
+    }
+    .reward-toast {
+        background: linear-gradient(90deg, rgba(124,58,237,.10), rgba(167,139,250,.10));
+        border-left: 4px solid var(--primary-color);
+        color: #4c1d95;
+        padding: .55rem .9rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: .95rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
         opacity: 0;
-        transition: all .3s cubic-bezier(.5, 1.5, .5, 1);
-        box-shadow: 0 10px 40px rgba(124,58,237,.4);
+        transform: translateY(-4px);
+        transition: opacity .2s ease, transform .2s ease;
     }
-    .big-popup.show {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
-    }
-    .big-popup .title { font-size: 2.5rem; font-weight: 800; margin-bottom: .5rem; }
-    .big-popup .sub { font-size: 1.1rem; opacity: .9; }
+    .reward-toast.show { opacity: 1; transform: translateY(0); }
+    .reward-toast .sub { font-weight: 500; opacity: .85; font-size: .85rem; }
+    .reward-toast.combo  { border-left-color: #f59e0b; color: #92400e; background: linear-gradient(90deg, rgba(245,158,11,.10), rgba(252,211,77,.10)); }
+    .reward-toast.level  { border-left-color: #10b981; color: #065f46; background: linear-gradient(90deg, rgba(16,185,129,.10), rgba(110,231,183,.10)); }
+    .reward-toast.badge  { border-left-color: #ef4444; color: #991b1b; background: linear-gradient(90deg, rgba(239,68,68,.10), rgba(252,165,165,.10)); }
 
     /* 다음 버튼 */
     #nextBtn {
@@ -210,16 +228,12 @@
         <div class="problem-counter" id="problemNumber">Q1.</div>
         <div class="korean-text" id="koreanText">불러오는 중...</div>
         <div class="words-row" id="wordsRow"></div>
+        <!-- 보상 인라인 영역 (학습 영역 아래) -->
+        <div class="reward-rail" id="rewardRail"></div>
         <button id="nextBtn" class="btn btn-primary" onclick="nextProblem()">
             다음 문제로 ➔ (Enter)
         </button>
     </div>
-</div>
-
-<!-- 콤보/레벨업 팝업 -->
-<div class="big-popup" id="bigPopup">
-    <div class="title" id="popupTitle"></div>
-    <div class="sub" id="popupSub"></div>
 </div>
 
 <form style="display:none">{% csrf_token %}</form>
@@ -238,12 +252,24 @@ let wordStates = {};     // {wordIdx: {done, attempt, hintLevel}}
 
 function $(id) { return document.getElementById(id); }
 
-function showPopup(title, sub) {
-    const p = $('bigPopup');
-    $('popupTitle').textContent = title;
-    $('popupSub').textContent = sub || '';
-    p.classList.add('show');
-    setTimeout(() => p.classList.remove('show'), 1500);
+// 인라인 보상 토스트 (학습 영역 아래에 잠깐 표시, 화면 안 가림)
+function showReward(text, sub, type) {
+    const rail = $('rewardRail');
+    if (!rail) return;
+    const el = document.createElement('div');
+    el.className = 'reward-toast' + (type ? ' ' + type : '');
+    el.innerHTML = `<span>${text}</span>` + (sub ? `<span class="sub">${sub}</span>` : '');
+    rail.prepend(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 250);
+    }, 2200);
+}
+
+function clearRewards() {
+    const rail = $('rewardRail');
+    if (rail) rail.innerHTML = '';
 }
 
 function updateStatusFromResponse(data) {
@@ -263,18 +289,14 @@ function updateStatusFromResponse(data) {
         }
     }
     if (data.combo_bonus && data.combo_bonus > 0) {
-        showPopup('🔥 ' + data.current_word_combo + ' COMBO!', '+' + data.combo_bonus + ' 보너스');
+        showReward('🔥 ' + data.current_word_combo + ' COMBO!', '+' + data.combo_bonus + ' 보너스', 'combo');
     }
     if (data.level_up) {
-        setTimeout(() => {
-            showPopup('🎉 LEVEL UP!', 'Lv ' + data.level + ' ' + data.title);
-        }, 600);
+        showReward('🎉 LEVEL UP!', 'Lv ' + data.level + ' ' + data.title, 'level');
     }
     if (data.badges_earned && data.badges_earned.length > 0) {
-        data.badges_earned.forEach((b, i) => {
-            setTimeout(() => {
-                showPopup(b.icon + ' ' + b.name, b.description);
-            }, 1500 + i * 1700);
+        data.badges_earned.forEach(b => {
+            showReward(b.icon + ' ' + b.name, b.description, 'badge');
         });
     }
 }
@@ -287,6 +309,7 @@ function loadProblem(idx) {
     currentProblemIdx = idx;
     wordStates = {};
     wordTimeStart = {};
+    clearRewards();
 
     const p = PROBLEMS[idx];
     $('problemNumber').textContent = 'Q' + (idx + 1) + '.';
@@ -298,7 +321,11 @@ function loadProblem(idx) {
     const row = $('wordsRow');
     row.innerHTML = '';
 
+    const wordsMeta = p.words || [];
+    let firstFocusIdx = -1;
+
     for (let i = 0; i < p.word_count; i++) {
+        const meta = wordsMeta[i] || { auto: false };
         const cell = document.createElement('div');
         cell.className = 'word-cell';
 
@@ -315,25 +342,60 @@ function loadProblem(idx) {
         inp.autocomplete = 'off';
         inp.spellcheck = false;
 
-        inp.addEventListener('focus', () => {
-            if (!wordTimeStart[i]) wordTimeStart[i] = Date.now();
-        });
-        inp.addEventListener('keydown', (e) => {
-            if (e.isComposing || e.keyCode === 229) return;
-            if (e.key === 'Tab' || e.key === 'Enter') {
-                e.preventDefault();
-                submitWord(i);
-            }
-        });
-
         cell.appendChild(fb);
         cell.appendChild(inp);
         row.appendChild(cell);
 
-        wordStates[i] = { done: false, attempt: 0, hintLevel: 0 };
+        if (meta.auto) {
+            // 자동 채우기 단어 (관사 등): 미리 채우고 잠그고 서버에도 자동 등록
+            inp.value = meta.value || '';
+            inp.disabled = true;
+            inp.classList.add('is-auto');
+            fb.textContent = '자동';
+            fb.className = 'word-feedback hint-korean';
+            wordStates[i] = { done: true, attempt: 1, hintLevel: 0, auto: true };
+            // 백그라운드 서버 등록 (점수/통계 일관성 유지). 응답은 무시.
+            autoSubmitWord(i, meta.value || '');
+        } else {
+            inp.addEventListener('focus', () => {
+                if (!wordTimeStart[i]) wordTimeStart[i] = Date.now();
+            });
+            inp.addEventListener('keydown', (e) => {
+                if (e.isComposing || e.keyCode === 229) return;
+                if (e.key === 'Tab' || e.key === 'Enter') {
+                    e.preventDefault();
+                    submitWord(i);
+                }
+            });
+            wordStates[i] = { done: false, attempt: 0, hintLevel: 0 };
+            if (firstFocusIdx === -1) firstFocusIdx = i;
+        }
     }
 
-    setTimeout(() => $('w0')?.focus(), 80);
+    // 첫 비-자동 단어로 즉시 포커스 (지연 제거)
+    if (firstFocusIdx >= 0) {
+        $('w' + firstFocusIdx)?.focus();
+    } else {
+        // 모든 단어가 자동인 경우 → 바로 완료 처리
+        onAllWordsDone();
+    }
+}
+
+// 자동 채우기 단어를 서버에 등록 (점수/통계 일관성)
+async function autoSubmitWord(wordIdx, value) {
+    try {
+        await fetch('{% url "writing:api_check_word" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                problem_id: PROBLEMS[currentProblemIdx].id,
+                word_index: wordIdx,
+                input: value,
+                time_taken_seconds: 0,
+            }),
+        });
+    } catch (e) { /* silent */ }
 }
 
 async function submitWord(wordIdx) {
@@ -473,7 +535,7 @@ async function onAllWordsDone() {
                 title: data.title,
             });
             if (data.was_perfect_sentence) {
-                showPopup('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
+                showReward('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
             }
         }
     } catch (e) { console.error(e); }

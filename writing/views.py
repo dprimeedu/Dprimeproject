@@ -125,6 +125,15 @@ def start_session(request, unit_id):
     return redirect('writing:session', session_id=session.id)
 
 
+IGNORED_WORDS = {'a', 'an', 'the'}
+
+
+def _is_ignored_word(word):
+    """학습 가치가 낮아 자동으로 채워줄 단어인지 (관사 등)"""
+    cleaned = word.strip(',.!?;:"\'()[]{}').lower()
+    return cleaned in IGNORED_WORDS
+
+
 @login_required
 def session_view(request, session_id):
     """실제 풀이 화면"""
@@ -142,15 +151,23 @@ def session_view(request, session_id):
     profile = get_or_create_profile(request.user)
     problems = list(session.unit.problems.all().order_by('index'))
 
-    # 클라이언트에 보낼 문제 데이터 (영어 정답은 빼고!)
+    # 클라이언트에 보낼 문제 데이터
+    # 관사(a/an/the)만 정답값을 노출 — 학습 가치 낮은 단어는 자동 채우기
     problems_data = []
     for p in problems:
         words = p.english_words
+        word_meta = []
+        for w in words:
+            if _is_ignored_word(w):
+                word_meta.append({'auto': True, 'value': w})
+            else:
+                word_meta.append({'auto': False})
         problems_data.append({
             'id': p.id,
             'index': p.index,
             'korean': p.korean,
             'word_count': len(words),
+            'words': word_meta,
         })
 
     return render(request, 'writing/session.html', {
