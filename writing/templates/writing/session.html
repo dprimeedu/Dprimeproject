@@ -538,7 +538,11 @@ async function onAllWordsDone() {
             if (data.was_perfect_sentence) {
                 showReward('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
             } else if (data.forfeit) {
-                showReward('⚠️ 이번 문장 0점', '한 단어라도 직접 맞춰야 점수가 인정됩니다 (회수: ' + data.forfeit_amount + ')', 'badge');
+                showReward(
+                    '⚠️ 이번 문장 0점',
+                    '너무 빠르게 통과 (평균 ' + data.avg_time_per_attempt + '초/시도, 회수: -' + data.forfeit_amount + ')',
+                    'badge'
+                );
             }
         }
     } catch (e) { console.error(e); }

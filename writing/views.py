@@ -6,7 +6,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Avg
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
@@ -412,9 +412,20 @@ def complete_problem_api(request):
         return JsonResponse({'error': 'not_all_words_done'}, status=400)
 
     # 사람이 실제로 맞춘 단어 수 (자동 채우기 = score_earned=0 제외)
-    # 0이면 = 모든 단어가 정답 공개로 끝남 = 무지성 엔터로 점수만 챙긴 케이스
     human_correct_count = attempts.filter(is_correct=True, score_earned__gt=0).count()
-    forfeit = (human_correct_count == 0)
+
+    # 무지성 통과 판정: 정답 0개 + 시도당 평균 시간이 너무 짧음
+    # (자동 채우기는 is_correct=True AND score_earned=0 으로 식별)
+    non_auto_attempts = attempts.exclude(is_correct=True, score_earned=0)
+    non_auto_count = non_auto_attempts.count()
+    avg_time = (
+        non_auto_attempts.aggregate(Avg('time_taken_seconds'))['time_taken_seconds__avg'] or 0
+    )
+    forfeit = (
+        human_correct_count == 0
+        and non_auto_count > 0
+        and avg_time < scoring.NO_THINK_THRESHOLD_SEC
+    )
 
     # 무실수 문장 = 모든 단어가 1차 시도 정답 (단, 무지성 케이스는 제외)
     all_first_try = (
@@ -461,6 +472,7 @@ def complete_problem_api(request):
         'sentence_combo_bonus': sentence_combo_bonus,
         'forfeit': forfeit,
         'forfeit_amount': forfeit_amount,
+        'avg_time_per_attempt': round(avg_time, 1),
         'current_sentence_combo': profile.current_sentence_combo,
         'total_score': session.total_score,
         'total_xp': profile.total_xp,

@@ -14,6 +14,8 @@ SCORE_BY_HINT_LEVEL = {
 SCORE_REVEAL = 1            # 3번에서 정답 공개 (학습 인정)
 SPEED_BONUS = 2             # 3초 안에 1차 정답
 SPEED_THRESHOLD_SEC = 3
+# 시도당 평균 시간이 이 미만이고 정답을 하나도 못 맞추면 "무지성 통과"로 판정
+NO_THINK_THRESHOLD_SEC = 2
 
 # 콤보 마일스톤 보너스
 WORD_COMBO_BONUSES = {5: 10, 10: 20, 20: 40, 50: 100, 100: 200}
