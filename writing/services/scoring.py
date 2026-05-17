@@ -24,11 +24,11 @@ PERFECT_SENTENCE_BONUS = 20
 
 
 def normalize(text):
-    """단어 정규화: 구두점 제거 + 소문자"""
+    """단어 정규화: 영문자/숫자만 남기고 소문자 (구두점/아포스트로피/공백/괄호 등 모두 제거)"""
     if text is None:
         return ''
     text = str(text).strip().lower()
-    text = re.sub(r'[.,?!;:"]', '', text)
+    text = re.sub(r'[^a-z0-9]', '', text)
     return text
 
 
