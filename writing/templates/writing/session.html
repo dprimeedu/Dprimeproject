@@ -381,7 +381,7 @@ function loadProblem(idx) {
     }
 }
 
-// 자동 채우기 단어를 서버에 등록 (점수/통계 일관성)
+// 자동 채우기 단어를 서버에 등록 (auto:true → 점수 0)
 async function autoSubmitWord(wordIdx, value) {
     try {
         await fetch('{% url "writing:api_check_word" %}', {
@@ -393,6 +393,7 @@ async function autoSubmitWord(wordIdx, value) {
                 word_index: wordIdx,
                 input: value,
                 time_taken_seconds: 0,
+                auto: true,
             }),
         });
     } catch (e) { /* silent */ }
@@ -469,16 +470,16 @@ function applyWordResponse(wordIdx, data) {
             // 힌트 다음 단계
             inp.classList.add('is-wrong');
             inp.value = '';
-            if (data.next_hint) {
-                if (data.next_hint.type === 'korean_meaning') {
-                    fb.textContent = data.next_hint.content;
-                    fb.className = 'word-feedback hint-korean';
-                } else if (data.next_hint.type === 'first_letter') {
-                    fb.textContent = data.next_hint.content;
-                    fb.className = 'word-feedback hint-letter';
-                }
+            const content = (data.next_hint && data.next_hint.content) ? data.next_hint.content : '';
+            if (content && data.next_hint.type === 'korean_meaning') {
+                fb.textContent = content;
+                fb.className = 'word-feedback hint-korean';
+            } else if (content && data.next_hint.type === 'first_letter') {
+                fb.textContent = content;
+                fb.className = 'word-feedback hint-letter';
             } else {
-                fb.textContent = '✗';
+                // 한글뜻 데이터가 비어 있는 경우 fallback
+                fb.textContent = '✗ 다시';
                 fb.className = 'word-feedback x';
             }
             wordTimeStart[wordIdx] = Date.now();
@@ -536,6 +537,8 @@ async function onAllWordsDone() {
             });
             if (data.was_perfect_sentence) {
                 showReward('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
+            } else if (data.forfeit) {
+                showReward('⚠️ 이번 문장 0점', '한 단어라도 직접 맞춰야 점수가 인정됩니다 (회수: ' + data.forfeit_amount + ')', 'badge');
             }
         }
     } catch (e) { console.error(e); }

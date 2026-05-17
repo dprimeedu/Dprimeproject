@@ -167,6 +167,10 @@ def compute_title(level):
         return '영작신'
 
 
+def _first_letter_hint(correct_word):
+    return {'type': 'first_letter', 'content': correct_word[0] + '_' * (len(correct_word) - 1)}
+
+
 def get_hint_content(problem, word_index, hint_level):
     """
     힌트 단계별 내용 반환.
@@ -178,14 +182,16 @@ def get_hint_content(problem, word_index, hint_level):
     correct_word = words[word_index]
 
     if hint_level == 1:
-        # 한글뜻
+        # 한글뜻 — 비어 있으면 첫글자 힌트로 폴백 (빈 화면 방지)
         hints = problem.word_hints or []
         if word_index < len(hints) and isinstance(hints[word_index], dict):
-            return {'type': 'korean_meaning', 'content': hints[word_index].get('meaning', '?')}
-        return {'type': 'korean_meaning', 'content': '(뜻 미생성)'}
+            meaning = (hints[word_index].get('meaning') or '').strip()
+            if meaning:
+                return {'type': 'korean_meaning', 'content': meaning}
+        return _first_letter_hint(correct_word)
     elif hint_level == 2:
         # 첫글자
-        return {'type': 'first_letter', 'content': correct_word[0] + '_' * (len(correct_word) - 1)}
+        return _first_letter_hint(correct_word)
     elif hint_level == 3:
         # 정답
         return {'type': 'answer', 'content': correct_word}

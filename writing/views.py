@@ -234,6 +234,7 @@ def check_word_api(request):
         word_index = int(data['word_index'])
         student_input = str(data.get('input', ''))
         time_taken = int(data.get('time_taken_seconds', 0))
+        is_auto_fill = bool(data.get('auto', False))
     except (json.JSONDecodeError, KeyError, ValueError):
         return HttpResponseBadRequest('Invalid request')
 
@@ -249,6 +250,10 @@ def check_word_api(request):
         return HttpResponseBadRequest('Invalid word_index')
 
     correct_word = words[word_index]
+
+    # 자동 채우기는 서버 측에서도 단어가 실제 ignored인지 검증 (악용 방지)
+    if is_auto_fill and not _is_ignored_word(correct_word):
+        is_auto_fill = False
 
     # 이 단어에 대한 이전 시도 횟수
     prev_attempts = WritingAttempt.objects.filter(
@@ -277,12 +282,15 @@ def check_word_api(request):
         # 정답
         word_done = True
         hint_level_to_show = attempt_num - 1  # 0/1/2
-        score_earned = scoring.calculate_word_score(attempt_num, time_taken)
-        # 콤보 업데이트
-        new_combo, hit_milestone = scoring.update_word_combo(profile, True, False)
-        if hit_milestone:
-            combo_bonus = scoring.WORD_COMBO_BONUSES.get(new_combo, 0)
-            score_earned += combo_bonus
+        if is_auto_fill:
+            # 자동 채우기는 점수/콤보 없음 (학생이 노력한 게 아님)
+            score_earned = 0
+        else:
+            score_earned = scoring.calculate_word_score(attempt_num, time_taken)
+            new_combo, hit_milestone = scoring.update_word_combo(profile, True, False)
+            if hit_milestone:
+                combo_bonus = scoring.WORD_COMBO_BONUSES.get(new_combo, 0)
+                score_earned += combo_bonus
     else:
         # 오답
         if attempt_num >= 3:
@@ -403,11 +411,31 @@ def complete_problem_api(request):
     if distinct_words_done < total_words:
         return JsonResponse({'error': 'not_all_words_done'}, status=400)
 
-    # 무실수 문장 = 모든 단어가 1차 시도 정답
-    all_first_try = attempts.filter(is_correct=True, attempt_num=1).count() == total_words
+    # 사람이 실제로 맞춘 단어 수 (자동 채우기 = score_earned=0 제외)
+    # 0이면 = 모든 단어가 정답 공개로 끝남 = 무지성 엔터로 점수만 챙긴 케이스
+    human_correct_count = attempts.filter(is_correct=True, score_earned__gt=0).count()
+    forfeit = (human_correct_count == 0)
+
+    # 무실수 문장 = 모든 단어가 1차 시도 정답 (단, 무지성 케이스는 제외)
+    all_first_try = (
+        not forfeit
+        and attempts.filter(is_correct=True, attempt_num=1).count() == total_words
+    )
 
     profile = get_or_create_profile(request.user)
-    new_sent_combo, milestone = scoring.update_sentence_combo(profile, all_first_try)
+
+    forfeit_amount = 0
+    if forfeit:
+        # 이 문장에서 얻은 모든 점수 회수 (자동 채우기 +0은 영향 없음)
+        forfeit_amount = sum(a.score_earned for a in attempts)
+        if forfeit_amount > 0:
+            session.total_score = max(0, session.total_score - forfeit_amount)
+            profile.total_xp = max(0, profile.total_xp - forfeit_amount)
+        # 문장 콤보도 끊김
+        scoring.update_sentence_combo(profile, False)
+        new_sent_combo, milestone = 0, False
+    else:
+        new_sent_combo, milestone = scoring.update_sentence_combo(profile, all_first_try)
 
     extra_score = 0
     perfect_bonus = 0
@@ -431,6 +459,8 @@ def complete_problem_api(request):
         'was_perfect_sentence': all_first_try,
         'perfect_bonus': perfect_bonus,
         'sentence_combo_bonus': sentence_combo_bonus,
+        'forfeit': forfeit,
+        'forfeit_amount': forfeit_amount,
         'current_sentence_combo': profile.current_sentence_combo,
         'total_score': session.total_score,
         'total_xp': profile.total_xp,
