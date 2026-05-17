@@ -92,6 +92,9 @@
         min-height: 1em;
     }
     .word-feedback.perfect { color: var(--primary-color); font-weight: 800; }
+    .word-feedback.great   { color: #10b981; font-weight: 800; }       /* 초록 */
+    .word-feedback.good    { color: #3b82f6; font-weight: 800; }       /* 파랑 */
+    .word-feedback.boo     { color: #ef4444; font-weight: 800; }       /* 빨강 (답 공개) */
     .word-feedback.x { color: #ef4444; font-size: 1rem; }
     .word-feedback.hint-korean { color: #6b7280; font-weight: 500; font-size: .8rem; }
     .word-feedback.hint-letter { color: #f59e0b; font-family: monospace; font-size: 1rem; letter-spacing: 2px; }
@@ -441,8 +444,17 @@ function applyWordResponse(wordIdx, data) {
         inp.disabled = true;
         inp.classList.remove('is-wrong');
         inp.classList.add('is-correct');
-        fb.textContent = 'PERFECT!';
-        fb.className = 'word-feedback perfect';
+        // 시도 횟수에 따라 라벨 변경
+        if (data.attempt_num === 1) {
+            fb.textContent = 'PERFECT!';
+            fb.className = 'word-feedback perfect';
+        } else if (data.attempt_num === 2) {
+            fb.textContent = 'GREAT';
+            fb.className = 'word-feedback great';
+        } else {
+            fb.textContent = 'GOOD';
+            fb.className = 'word-feedback good';
+        }
         state.done = true;
 
         if (data.score_earned > 0) {
@@ -455,12 +467,13 @@ function applyWordResponse(wordIdx, data) {
     } else {
         state.attempt = data.attempt_num;
         if (data.word_done) {
+            // 3차에서 답 공개됨
             inp.disabled = true;
             inp.classList.remove('is-wrong');
             inp.classList.add('is-revealed');
             inp.value = data.next_hint?.content || '';
-            fb.textContent = '정답: ' + (data.next_hint?.content || '');
-            fb.className = 'word-feedback answer';
+            fb.textContent = 'BOO~';
+            fb.className = 'word-feedback boo';
             state.done = true;
         } else {
             inp.classList.add('is-wrong');
