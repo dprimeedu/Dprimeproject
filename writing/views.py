@@ -363,7 +363,7 @@ def check_word_api(request):
         score_earned=score_earned,
     )
 
-    # 세션 점수 / 프로필 XP 업데이트
+    # 세션 점수 / 프로필 XP 업데이트 (단어마다, 가볍게)
     session.total_score += score_earned
     if profile.current_word_combo > session.max_word_combo:
         session.max_word_combo = profile.current_word_combo
@@ -374,37 +374,10 @@ def check_word_api(request):
     new_level = scoring.compute_level(profile.total_xp)
     level_up = new_level > old_level
 
-    # 배지 체크 (간단 버전)
-    perfect_count_total = WritingAttempt.objects.filter(
-        session__student=request.user,
-        is_correct=True,
-        attempt_num=1,
-    ).count()
-
-    earned_codes = scoring.check_badges(profile, {
-        'is_correct_first_try': is_correct and attempt_num == 1,
-        'perfect_count_total': perfect_count_total,
-        'was_perfect_sentence': False,
-        'was_perfect_unit': False,
-        'speed_bonus_count': 0,  # TODO
-        'current_hour': datetime.now().hour,
-    })
-
-    profile.save()
-
-    # 신규 배지 부여
-    newly_earned = []
-    if earned_codes:
-        for code in earned_codes:
-            ach = Achievement.objects.filter(code=code).first()
-            if ach:
-                sa, created = StudentAchievement.objects.get_or_create(
-                    student=request.user, achievement=ach,
-                )
-                if created:
-                    newly_earned.append({
-                        'icon': ach.icon, 'name': ach.name, 'description': ach.description,
-                    })
+    # update_fields로 필수 컬럼만 (배지/통계는 complete_problem에서 일괄)
+    profile.save(update_fields=[
+        'total_xp', 'current_word_combo', 'max_word_combo_ever',
+    ])
 
     return JsonResponse({
         'is_correct': is_correct,
@@ -421,7 +394,7 @@ def check_word_api(request):
         'title': scoring.compute_title(new_level),
         'level_up': level_up,
         'xp_in_level': profile.xp_in_current_level,
-        'badges_earned': newly_earned,
+        'badges_earned': [],  # 배지는 문장 끝에 일괄 처리
     })
 
 
@@ -504,6 +477,35 @@ def complete_problem_api(request):
     if profile.current_sentence_combo > session.max_sentence_combo:
         session.max_sentence_combo = profile.current_sentence_combo
 
+    # ── 배지 체크 (문장 단위, 단어마다 안 함) ──
+    perfect_count_total = WritingAttempt.objects.filter(
+        session__student=request.user,
+        is_correct=True,
+        attempt_num=1,
+    ).count()
+
+    earned_codes = scoring.check_badges(profile, {
+        'is_correct_first_try': all_first_try,
+        'perfect_count_total': perfect_count_total,
+        'was_perfect_sentence': all_first_try,
+        'was_perfect_unit': False,
+        'speed_bonus_count': 0,
+        'current_hour': datetime.now().hour,
+    })
+
+    newly_earned = []
+    if earned_codes:
+        for code in earned_codes:
+            ach = Achievement.objects.filter(code=code).first()
+            if ach:
+                sa, created = StudentAchievement.objects.get_or_create(
+                    student=request.user, achievement=ach,
+                )
+                if created:
+                    newly_earned.append({
+                        'icon': ach.icon, 'name': ach.name, 'description': ach.description,
+                    })
+
     session.save()
     profile.save()
 
@@ -515,6 +517,7 @@ def complete_problem_api(request):
         'forfeit_amount': forfeit_amount,
         'avg_time_per_attempt': round(avg_time, 1),
         'current_sentence_combo': profile.current_sentence_combo,
+        'badges_earned': newly_earned,
         'total_score': session.total_score,
         'total_xp': profile.total_xp,
         'level': scoring.compute_level(profile.total_xp),

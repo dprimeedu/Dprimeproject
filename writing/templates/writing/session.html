@@ -137,12 +137,6 @@
         100% { opacity: 0; transform: translate(-50%, -30px); }
     }
 
-    /* AJAX 응답 대기 중 (낙관적 UI) */
-    .word-input.is-pending {
-        opacity: .55;
-        font-style: italic;
-    }
-
     /* 자동 채우기 단어 (관사 등) */
     .word-input.is-auto {
         color: #6b7280;
@@ -417,43 +411,33 @@ async function submitWord(wordIdx) {
     const startTime = wordTimeStart[wordIdx] || Date.now();
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
 
-    // ★ Optimistic UI: 응답 기다리지 않고 즉시 다음 칸으로 포커스 이동
-    inp.disabled = true;
-    inp.classList.add('is-pending');
-    focusNext(wordIdx);
-
-    // 백그라운드 AJAX — 응답 오면 사후에 정답/오답 표시
-    fetch('{% url "writing:api_check_word" %}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({
-            session_id: SESSION_ID,
-            problem_id: PROBLEMS[currentProblemIdx].id,
-            word_index: wordIdx,
-            input: val,
-            time_taken_seconds: timeTaken,
-        }),
-    }).then(r => {
+    try {
+        const r = await fetch('{% url "writing:api_check_word" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                problem_id: PROBLEMS[currentProblemIdx].id,
+                word_index: wordIdx,
+                input: val,
+                time_taken_seconds: timeTaken,
+            }),
+        });
         if (!r.ok) {
-            inp.disabled = false;
-            inp.classList.remove('is-pending');
-            return null;
+            console.warn('check-word failed', r.status);
+            return;
         }
-        return r.json();
-    }).then(data => {
-        if (data) applyWordResponse(wordIdx, data);
-    }).catch(e => {
-        inp.disabled = false;
-        inp.classList.remove('is-pending');
+        const data = await r.json();
+        applyWordResponse(wordIdx, data);
+    } catch (e) {
         console.error(e);
-    });
+    }
 }
 
 function applyWordResponse(wordIdx, data) {
     const inp = $('w' + wordIdx);
     const fb  = $('fb' + wordIdx);
     const state = wordStates[wordIdx];
-    inp.classList.remove('is-pending');
 
     if (data.is_correct) {
         inp.disabled = true;
@@ -473,7 +457,6 @@ function applyWordResponse(wordIdx, data) {
     } else {
         state.attempt = data.attempt_num;
         if (data.word_done) {
-            // 3차에서 답 공개됨
             inp.disabled = true;
             inp.classList.remove('is-wrong');
             inp.classList.add('is-revealed');
@@ -482,8 +465,6 @@ function applyWordResponse(wordIdx, data) {
             fb.className = 'word-feedback answer';
             state.done = true;
         } else {
-            // 힌트 다음 단계 — 학생이 다시 시도해야 함
-            inp.disabled = false;
             inp.classList.add('is-wrong');
             inp.value = '';
             const content = (data.next_hint && data.next_hint.content) ? data.next_hint.content : '';
@@ -498,35 +479,18 @@ function applyWordResponse(wordIdx, data) {
                 fb.className = 'word-feedback x';
             }
             wordTimeStart[wordIdx] = Date.now();
-            // 포커스는 빼앗지 않음 (학생이 이미 다음 칸 입력 중일 수 있음)
+            inp.focus();
         }
     }
 
     updateStatusFromResponse(data);
 
-    // 모든 단어 완료 체크 (응답마다)
-    const allDone = Object.values(wordStates).every(s => s.done);
-    if (allDone) {
-        onAllWordsDone();
-    } else if (state.done) {
-        // 이 칸 끝났지만 다른 미완료 칸 있음 → 학생이 현재 머무는 칸이 done이면
-        // 미완료 칸으로 자동 이동
-        const focused = document.activeElement;
-        const focusedIsActive = focused
-            && focused.classList.contains('word-input')
-            && !focused.disabled;
-        if (!focusedIsActive) {
-            focusFirstUndone();
-        }
-    }
-}
-
-function focusFirstUndone() {
-    const keys = Object.keys(wordStates).map(Number).sort((a,b)=>a-b);
-    for (const j of keys) {
-        if (!wordStates[j].done) {
-            $('w' + j)?.focus();
-            return;
+    if (state.done) {
+        const allDone = Object.values(wordStates).every(s => s.done);
+        if (allDone) {
+            onAllWordsDone();
+        } else {
+            focusNext(wordIdx);
         }
     }
 }
@@ -565,6 +529,7 @@ async function onAllWordsDone() {
                 xp_in_level: data.xp_in_level,
                 level: data.level,
                 title: data.title,
+                badges_earned: data.badges_earned,
             });
             if (data.was_perfect_sentence) {
                 showReward('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
