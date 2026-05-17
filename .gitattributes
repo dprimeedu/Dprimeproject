@@ -1,0 +1,27 @@
+# 모든 텍스트 파일을 LF로 통일 (Windows ↔ Linux EOL 충돌 방지)
+* text=auto eol=lf
+
+# 셸 스크립트는 반드시 LF
+*.sh text eol=lf
+
+# 바이너리 파일은 변환 안 함
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.xlsx binary
+*.xls binary
+*.xlsm binary
+*.hwp binary
+*.pptx binary
+*.pptm binary
+*.docx binary
+*.sqlite3 binary
