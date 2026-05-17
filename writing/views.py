@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from datetime import date, datetime
 
@@ -127,10 +128,50 @@ def start_session(request, unit_id):
 
 IGNORED_WORDS = {'a', 'an', 'the'}
 
+# 약자 패턴 (Mt., Dr., Mr., Mrs., Ms., St., Jr., Sr., Prof., Inc., Ltd., Co., vs., etc.)
+_ABBREV_PATTERN = re.compile(
+    r'^(Mt|Dr|Mr|Mrs|Ms|St|Jr|Sr|Prof|Inc|Ltd|Co|vs|etc|Ave|Blvd|Rd)\.?$',
+    re.IGNORECASE,
+)
+# 숫자 (1815, 5, 1st, 2nd, 1990s 등)
+_NUMBER_PATTERN = re.compile(r'^\d+(st|nd|rd|th|s)?$', re.IGNORECASE)
 
+_PUNCT = ',.!?;:"\'()[]{}'
+
+
+def _should_auto_fill(word, position):
+    """
+    학습 가치가 낮아 자동으로 채워줄 단어인지 판정.
+    position: 문장 내 단어 인덱스 (0부터)
+    """
+    if not word:
+        return False
+    cleaned = word.strip(_PUNCT)
+    if not cleaned:
+        return False
+
+    # 관사
+    if cleaned.lower() in IGNORED_WORDS:
+        return True
+    # 숫자 (서수/연도 포함)
+    if _NUMBER_PATTERN.match(cleaned):
+        return True
+    # 약자 (Mt., Dr. 등)
+    if _ABBREV_PATTERN.match(cleaned):
+        return True
+    # 모두 대문자 (USA, AI, NASA 등) — 2글자 이상
+    if len(cleaned) >= 2 and cleaned.isupper():
+        return True
+    # 문장 첫 단어가 아니면서 대문자 시작 → 고유명사로 간주 ('I' 제외)
+    if position > 0 and cleaned[0].isupper() and cleaned != 'I':
+        return True
+
+    return False
+
+
+# 하위 호환 — 다른 곳에서 쓰일 수 있으므로 유지
 def _is_ignored_word(word):
-    """학습 가치가 낮아 자동으로 채워줄 단어인지 (관사 등)"""
-    cleaned = word.strip(',.!?;:"\'()[]{}').lower()
+    cleaned = word.strip(_PUNCT).lower()
     return cleaned in IGNORED_WORDS
 
 
@@ -152,13 +193,13 @@ def session_view(request, session_id):
     problems = list(session.unit.problems.all().order_by('index'))
 
     # 클라이언트에 보낼 문제 데이터
-    # 관사(a/an/the)만 정답값을 노출 — 학습 가치 낮은 단어는 자동 채우기
+    # 관사/고유명사/숫자/약자는 자동 채우기 — 정답값을 노출하지만 학습 가치 낮은 단어들
     problems_data = []
     for p in problems:
         words = p.english_words
         word_meta = []
-        for w in words:
-            if _is_ignored_word(w):
+        for i, w in enumerate(words):
+            if _should_auto_fill(w, i):
                 word_meta.append({'auto': True, 'value': w})
             else:
                 word_meta.append({'auto': False})
@@ -251,8 +292,8 @@ def check_word_api(request):
 
     correct_word = words[word_index]
 
-    # 자동 채우기는 서버 측에서도 단어가 실제 ignored인지 검증 (악용 방지)
-    if is_auto_fill and not _is_ignored_word(correct_word):
+    # 자동 채우기는 서버 측에서도 그 단어가 실제 자동 대상인지 검증 (악용 방지)
+    if is_auto_fill and not _should_auto_fill(correct_word, word_index):
         is_auto_fill = False
 
     # 이 단어에 대한 이전 시도 횟수
