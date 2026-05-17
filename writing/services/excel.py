@@ -5,14 +5,14 @@ from typing import List, Dict
 import openpyxl
 
 
-REQUIRED_COLUMNS = ['색인', '한글', '영어']
+REQUIRED_COLUMNS = ['색인', '영어', '한글']
 
 
 def parse_writing_excel(file) -> Dict:
     """
     엑셀 파일에서 영작 문제 파싱.
 
-    엑셀 형식: 1행에 헤더 (색인 | 한글 및 힌트 | 영어)
+    엑셀 형식: 1행에 헤더 (색인 | 영어 | 한글 및 힌트)
               2행부터 데이터
 
     Returns:
@@ -36,7 +36,7 @@ def parse_writing_excel(file) -> Dict:
         # 헤더 검증 (느슨하게 — 컬럼명 포함만 확인)
         header = [str(c or '').strip() for c in rows[0]]
         if len(header) < 3:
-            errors.append('컬럼이 최소 3개 필요합니다 (색인, 한글, 영어).')
+            errors.append('컬럼이 최소 3개 필요합니다 (색인, 영어, 한글).')
 
         # 데이터 행 파싱
         for row_num, row in enumerate(rows[1:], start=2):
@@ -44,13 +44,11 @@ def parse_writing_excel(file) -> Dict:
                 continue
 
             index_val = row[0] if len(row) > 0 else None
-            korean_val = row[1] if len(row) > 1 else None
-            english_val = row[2] if len(row) > 2 else None
+            english_val = row[1] if len(row) > 1 else None
+            korean_val = row[2] if len(row) > 2 else None
 
-            # 헤더가 다시 등장하면 skip
-            if isinstance(korean_val, str) and korean_val.strip() == '한글 및 힌트':
-                continue
-            if isinstance(korean_val, str) and korean_val.strip() == '한글':
+            # 헤더가 다시 등장하면 skip (영어 컬럼 기준)
+            if isinstance(english_val, str) and english_val.strip() in ('영어', '영어 정답'):
                 continue
 
             if not korean_val or not english_val:

@@ -173,3 +173,7 @@ upload2.py
 miscellaneous/
 staticfiles/
 migrations/
+
+# 로컬/운영 환경 전용 파일
+config/settings_dump.py
+writing_data*.json
