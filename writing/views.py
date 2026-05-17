@@ -347,7 +347,16 @@ def check_word_api(request):
             # 다음 힌트 보여줌 (1 또는 2)
             hint_level_to_show = attempt_num
             score_earned = 0
-            next_hint = scoring.get_hint_content(problem, word_index, hint_level_to_show)
+            # 학생 입력이 정답의 70% 이상 prefix 매칭이면 정답 markup으로 (한글뜻 건너뜀)
+            match_ratio = scoring.prefix_match_ratio(student_input, correct_word)
+            if match_ratio >= scoring.NEAR_MISS_THRESHOLD:
+                next_hint = {
+                    'type': 'near_miss',
+                    'content': correct_word,
+                    'student': student_input.strip(),
+                }
+            else:
+                next_hint = scoring.get_hint_content(problem, word_index, hint_level_to_show)
 
     # WritingAttempt 저장
     WritingAttempt.objects.create(

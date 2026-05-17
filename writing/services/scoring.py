@@ -37,6 +37,28 @@ def check_correctness(student_input, correct_answer):
     return normalize(student_input) == normalize(correct_answer)
 
 
+def prefix_match_ratio(student_input, correct_answer):
+    """
+    학생 입력과 정답의 prefix 매칭 비율 (대소문자/구두점 무시).
+    예: 정답 'huge' + 학생 'hug' → 3/4 = 0.75
+    첫 mismatch 시점까지의 prefix만 인정.
+    """
+    s = normalize(student_input)
+    c = normalize(correct_answer)
+    if not c:
+        return 0.0
+    common = 0
+    for i in range(min(len(s), len(c))):
+        if s[i] == c[i]:
+            common += 1
+        else:
+            break
+    return common / len(c)
+
+
+NEAR_MISS_THRESHOLD = 0.7  # 70% 이상 prefix 매칭 시 정답 markup 표시
+
+
 def calculate_word_score(attempt_num, time_taken_seconds):
     """
     단어 1개에 대한 점수 계산.

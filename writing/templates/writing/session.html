@@ -99,6 +99,14 @@
     .word-feedback.hint-korean { color: #6b7280; font-weight: 500; font-size: .8rem; }
     .word-feedback.hint-letter { color: #f59e0b; font-family: monospace; font-size: 1rem; letter-spacing: 2px; }
     .word-feedback.answer { color: #ef4444; text-decoration: underline; font-weight: 700; }
+    .word-feedback.near-miss {
+        font-family: monospace;
+        font-size: 1.05rem;
+        letter-spacing: 1.5px;
+        font-weight: 800;
+    }
+    .word-feedback.near-miss .near-ok { color: #6b7280; }
+    .word-feedback.near-miss .near-x  { color: #ef4444; }
 
     .word-input {
         border: none;
@@ -478,12 +486,28 @@ function applyWordResponse(wordIdx, data) {
         } else {
             inp.classList.add('is-wrong');
             inp.value = '';
-            const content = (data.next_hint && data.next_hint.content) ? data.next_hint.content : '';
-            if (content && data.next_hint.type === 'korean_meaning') {
-                fb.textContent = content;
+            const hint = data.next_hint;
+            if (hint && hint.type === 'near_miss' && hint.content) {
+                // 70%+ 정답 매칭 — 학생 친 부분 회색 + 빠진/틀린 글자 빨강
+                const correct = hint.content;
+                const student = (hint.student || '');
+                let html = '';
+                for (let i = 0; i < correct.length; i++) {
+                    const c = correct[i];
+                    const s = student[i] || '';
+                    if (s && s.toLowerCase() === c.toLowerCase()) {
+                        html += '<span class="near-ok">' + c + '</span>';
+                    } else {
+                        html += '<span class="near-x">' + c + '</span>';
+                    }
+                }
+                fb.innerHTML = html;
+                fb.className = 'word-feedback near-miss';
+            } else if (hint && hint.content && hint.type === 'korean_meaning') {
+                fb.textContent = hint.content;
                 fb.className = 'word-feedback hint-korean';
-            } else if (content && data.next_hint.type === 'first_letter') {
-                fb.textContent = content;
+            } else if (hint && hint.content && hint.type === 'first_letter') {
+                fb.textContent = hint.content;
                 fb.className = 'word-feedback hint-letter';
             } else {
                 fb.textContent = '✗ 다시';
