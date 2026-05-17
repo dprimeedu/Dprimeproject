@@ -347,12 +347,10 @@ function loadProblem(idx) {
         row.appendChild(cell);
 
         if (meta.auto) {
-            // 자동 채우기 단어 (관사 등): 미리 채우고 잠그고 서버에도 자동 등록
+            // 자동 채우기 단어 (관사 등): 미리 채우고 잠금 (라벨 표시 없음)
             inp.value = meta.value || '';
             inp.disabled = true;
             inp.classList.add('is-auto');
-            fb.textContent = '자동';
-            fb.className = 'word-feedback hint-korean';
             wordStates[i] = { done: true, attempt: 1, hintLevel: 0, auto: true };
             // 백그라운드 서버 등록 (점수/통계 일관성 유지). 응답은 무시.
             autoSubmitWord(i, meta.value || '');
