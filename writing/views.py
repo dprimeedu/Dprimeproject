@@ -518,6 +518,19 @@ def complete_problem_api(request):
     session.save()
     profile.save()
 
+    # 이 문장의 점수 비율 계산 (자동 채우기 제외)
+    words = problem.english_words
+    non_auto_count = sum(1 for i, w in enumerate(words) if not _should_auto_fill(w, i))
+    sentence_max = non_auto_count * scoring.SCORE_BY_HINT_LEVEL[0]
+    sentence_earned = sum(
+        a.score_earned for a in attempts
+        if not (a.is_correct and a.score_earned == 0)
+    )
+    if forfeit:
+        sentence_earned = 0
+    sentence_pct = (sentence_earned / sentence_max * 100) if sentence_max > 0 else 100
+    passed = sentence_pct >= scoring.SENTENCE_PASS_THRESHOLD
+
     return JsonResponse({
         'was_perfect_sentence': all_first_try,
         'perfect_bonus': perfect_bonus,
@@ -525,6 +538,11 @@ def complete_problem_api(request):
         'forfeit': forfeit,
         'forfeit_amount': forfeit_amount,
         'avg_time_per_attempt': round(avg_time, 1),
+        'sentence_score': sentence_earned,
+        'sentence_max': sentence_max,
+        'sentence_pct': round(sentence_pct, 1),
+        'passed': passed,
+        'pass_threshold': scoring.SENTENCE_PASS_THRESHOLD,
         'current_sentence_combo': profile.current_sentence_combo,
         'badges_earned': newly_earned,
         'total_score': session.total_score,
@@ -532,6 +550,50 @@ def complete_problem_api(request):
         'level': scoring.compute_level(profile.total_xp),
         'title': scoring.compute_title(scoring.compute_level(profile.total_xp)),
         'xp_in_level': profile.xp_in_current_level,
+    })
+
+
+@login_required
+@require_POST
+def reset_problem_api(request):
+    """문제 재시도 — 그 문제의 attempts 삭제 + 점수 회수"""
+    try:
+        data = json.loads(request.body)
+        session_id = int(data['session_id'])
+        problem_id = int(data['problem_id'])
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return HttpResponseBadRequest('Invalid')
+
+    session = get_object_or_404(WritingSession, pk=session_id)
+    if session.student != request.user:
+        return JsonResponse({'error': 'forbidden'}, status=403)
+    if session.finished_at:
+        return JsonResponse({'error': 'session_finished'}, status=400)
+
+    attempts = WritingAttempt.objects.filter(session=session, problem_id=problem_id)
+    forfeit = sum(a.score_earned for a in attempts)
+    attempts.delete()
+
+    profile = get_or_create_profile(request.user)
+    if forfeit > 0:
+        session.total_score = max(0, session.total_score - forfeit)
+        profile.total_xp = max(0, profile.total_xp - forfeit)
+        session.save(update_fields=['total_score'])
+        profile.save(update_fields=['total_xp'])
+
+    # 콤보도 끊김
+    profile.current_word_combo = 0
+    profile.current_sentence_combo = 0
+    profile.save(update_fields=['current_word_combo', 'current_sentence_combo'])
+
+    return JsonResponse({
+        'success': True,
+        'forfeit': forfeit,
+        'total_score': session.total_score,
+        'total_xp': profile.total_xp,
+        'xp_in_level': profile.xp_in_current_level,
+        'level': scoring.compute_level(profile.total_xp),
+        'title': scoring.compute_title(scoring.compute_level(profile.total_xp)),
     })
 
 

@@ -189,13 +189,14 @@
     .reward-toast.badge  { border-left-color: #ef4444; color: #991b1b; background: linear-gradient(90deg, rgba(239,68,68,.10), rgba(252,165,165,.10)); }
 
     /* 다음 버튼 */
-    #nextBtn {
-        display: none;
-        margin: 2rem auto 0;
-        padding: 1rem 3rem;
-        font-size: 1.1rem;
+    #nextBtn, #retryBtn {
+        padding: 1rem 2.5rem;
+        font-size: 1.05rem;
         font-weight: 700;
     }
+    #sentenceResult.pass { background: rgba(16,185,129,.10); border-left: 4px solid #10b981; color: #065f46; }
+    #sentenceResult.fail { background: rgba(239,68,68,.10);  border-left: 4px solid #ef4444; color: #991b1b; }
+    #sentenceResult .pct { font-size: 1.6rem; font-weight: 800; }
 
     /* 진행도 바 */
     .progress-overall {
@@ -241,9 +242,15 @@
         <div class="words-row" id="wordsRow"></div>
         <!-- 보상 인라인 영역 (학습 영역 아래) -->
         <div class="reward-rail" id="rewardRail"></div>
-        <button id="nextBtn" class="btn btn-primary" onclick="nextProblem()">
-            다음 문제로 ➔ (Enter)
-        </button>
+        <div id="sentenceResult" style="display:none; margin-top:1rem; padding:1rem; border-radius:8px;"></div>
+        <div id="actionRow" style="display:none; margin-top:1rem; display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap;">
+            <button id="retryBtn" class="btn btn-warning" onclick="retryProblem()" style="display:none;">
+                <i class="fas fa-redo me-1"></i>다시 풀어보기
+            </button>
+            <button id="nextBtn" class="btn btn-primary" onclick="nextProblem()" style="display:none;">
+                다음 문제로 ➔ (Enter)
+            </button>
+        </div>
     </div>
 </div>
 
@@ -328,6 +335,9 @@ function loadProblem(idx) {
     $('problemCounter').textContent = (idx + 1) + ' / ' + TOTAL_PROBLEMS;
     $('progressBar').style.width = ((idx) / TOTAL_PROBLEMS * 100) + '%';
     $('nextBtn').style.display = 'none';
+    $('retryBtn').style.display = 'none';
+    $('sentenceResult').style.display = 'none';
+    $('actionRow').style.display = 'none';
 
     const row = $('wordsRow');
     row.innerHTML = '';
@@ -547,9 +557,76 @@ function focusNext(fromIdx) {
 }
 
 async function onAllWordsDone() {
-    // 문장 완료 처리 (perfect sentence 보너스 등)
+    let data = null;
     try {
         const r = await fetch('{% url "writing:api_complete_problem" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                problem_id: PROBLEMS[currentProblemIdx].id,
+            }),
+        });
+        if (r.ok) {
+            data = await r.json();
+            updateStatusFromResponse({
+                total_score: data.total_score,
+                xp_in_level: data.xp_in_level,
+                level: data.level,
+                title: data.title,
+                badges_earned: data.badges_earned,
+            });
+            if (data.was_perfect_sentence) {
+                showReward('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
+            } else if (data.forfeit) {
+                showReward(
+                    '⚠️ 이번 문장 0점',
+                    '너무 빠르게 통과 (평균 ' + data.avg_time_per_attempt + '초/시도)',
+                    'badge'
+                );
+            }
+        }
+    } catch (e) { console.error(e); }
+
+    // 점수 결과 표시 + 합격/불합격 액션
+    const result = $('sentenceResult');
+    const actionRow = $('actionRow');
+    const nextBtn = $('nextBtn');
+    const retryBtn = $('retryBtn');
+
+    if (data) {
+        const pct = data.sentence_pct;
+        const threshold = data.pass_threshold;
+        if (data.passed) {
+            result.className = 'pass';
+            result.innerHTML = `✅ <span class="pct">${pct}점</span> &nbsp; 합격 (기준 ${threshold}점)`;
+        } else {
+            result.className = 'fail';
+            result.innerHTML = `📚 <span class="pct">${pct}점</span> &nbsp; 합격 기준(${threshold}점) 미달 — 다시 풀어보세요`;
+        }
+        result.style.display = 'block';
+        actionRow.style.display = 'flex';
+
+        if (data.passed) {
+            nextBtn.style.display = 'inline-block';
+            retryBtn.style.display = 'inline-block';
+            nextBtn.focus();
+        } else {
+            retryBtn.style.display = 'inline-block';
+            nextBtn.style.display = 'inline-block';
+            retryBtn.focus();
+        }
+    } else {
+        // 응답 못 받으면 일단 다음으로
+        actionRow.style.display = 'flex';
+        nextBtn.style.display = 'inline-block';
+        nextBtn.focus();
+    }
+}
+
+async function retryProblem() {
+    try {
+        const r = await fetch('{% url "writing:api_reset_problem" %}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
             body: JSON.stringify({
@@ -564,22 +641,15 @@ async function onAllWordsDone() {
                 xp_in_level: data.xp_in_level,
                 level: data.level,
                 title: data.title,
-                badges_earned: data.badges_earned,
             });
-            if (data.was_perfect_sentence) {
-                showReward('✨ PERFECT SENTENCE!', '+' + (data.perfect_bonus + data.sentence_combo_bonus) + ' 보너스');
-            } else if (data.forfeit) {
-                showReward(
-                    '⚠️ 이번 문장 0점',
-                    '너무 빠르게 통과 (평균 ' + data.avg_time_per_attempt + '초/시도, 회수: -' + data.forfeit_amount + ')',
-                    'badge'
-                );
-            }
         }
     } catch (e) { console.error(e); }
-
-    $('nextBtn').style.display = 'block';
-    $('nextBtn').focus();
+    // 화면 reset
+    $('sentenceResult').style.display = 'none';
+    $('actionRow').style.display = 'none';
+    $('nextBtn').style.display = 'none';
+    $('retryBtn').style.display = 'none';
+    loadProblem(currentProblemIdx);
 }
 
 async function finishSession() {

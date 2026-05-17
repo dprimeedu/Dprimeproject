@@ -57,6 +57,7 @@ def prefix_match_ratio(student_input, correct_answer):
 
 
 NEAR_MISS_THRESHOLD = 0.7  # 70% 이상 prefix 매칭 시 정답 markup 표시
+SENTENCE_PASS_THRESHOLD = 80  # 문장 합격 기준 (백분율). 미만이면 재시도 권장
 
 
 def calculate_word_score(attempt_num, time_taken_seconds):

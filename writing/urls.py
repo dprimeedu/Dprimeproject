@@ -13,6 +13,7 @@ urlpatterns = [
     # AJAX API
     path('api/check-word/', views.check_word_api, name='api_check_word'),
     path('api/complete-problem/', views.complete_problem_api, name='api_complete_problem'),
+    path('api/reset-problem/', views.reset_problem_api, name='api_reset_problem'),
     path('api/complete-session/', views.complete_session_api, name='api_complete_session'),
 
     # 선생님 / admin
