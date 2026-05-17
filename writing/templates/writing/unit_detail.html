@@ -11,21 +11,33 @@
         {% endfor %}
     {% endif %}
 
-    <div class="section-header d-flex justify-content-between align-items-center">
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h3>📚 {{ unit.title }}</h3>
-            <p class="section-desc">
+            <p class="section-desc mb-0">
                 {{ unit.grade }} | {{ unit.publisher|default:'기타' }} | 문제 {{ total_count }}개
                 | AI 한글뜻: {{ has_hints_count }} / {{ total_count }}
+                | 배정 학생: <span id="assignedCountBadge">-</span>명
             </p>
         </div>
-        <div>
+        <div class="d-flex gap-2 flex-wrap">
             {% if has_hints_count < total_count %}
             <button id="generateHintsBtn" class="btn btn-primary" onclick="generateHints({{ unit.id }})">
                 <i class="fas fa-magic me-1"></i>AI 한글뜻 생성
             </button>
             {% else %}
-            <span class="badge bg-success">✅ 한글뜻 생성 완료</span>
+            <span class="badge bg-success align-self-center">✅ 한글뜻 생성 완료</span>
+            {% endif %}
+
+            {% if total_count > 0 %}
+            <button type="button" class="btn btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#assignModal"
+                    onclick="loadStudents()">
+                <i class="fas fa-user-check me-1"></i>학생 배정
+            </button>
+            <a href="{% url 'writing:start_session' unit.id %}" class="btn btn-success">
+                <i class="fas fa-play me-1"></i>미리 풀어보기
+            </a>
             {% endif %}
         </div>
     </div>
@@ -68,9 +80,155 @@
     </div>
 </div>
 
+<!-- 학생 배정 모달 -->
+<div class="modal fade" id="assignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-check me-2"></i>학생 배정 — {{ unit.title }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    <input type="text" id="studentSearch" class="form-control" style="max-width:300px;"
+                           placeholder="🔍 이름/아이디 검색" oninput="filterStudents()">
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllStudents(true)">전체 선택</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllStudents(false)">전체 해제</button>
+                    </div>
+                </div>
+                <div id="studentListWrap">
+                    <div class="text-center text-muted py-4">불러오는 중...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="me-auto text-muted small">
+                    선택: <strong id="selectedCount">0</strong>명
+                </span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveAssignments()">
+                    <i class="fas fa-save me-1"></i>저장
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const UNIT_ID = {{ unit.id }};
 const CSRF = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+
+let ALL_STUDENTS = [];
+
+// 페이지 로드 시 배정 인원수만 한 번 조회
+fetchAssignedCount();
+
+async function fetchAssignedCount() {
+    try {
+        const r = await fetch(`/training/writing/admin/units/${UNIT_ID}/assignments/`);
+        const data = await r.json();
+        document.getElementById('assignedCountBadge').textContent = data.assigned_count;
+        ALL_STUDENTS = data.students;
+    } catch (e) { console.error(e); }
+}
+
+async function loadStudents() {
+    const wrap = document.getElementById('studentListWrap');
+    wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
+    try {
+        const r = await fetch(`/training/writing/admin/units/${UNIT_ID}/assignments/`);
+        const data = await r.json();
+        ALL_STUDENTS = data.students;
+        renderStudents(ALL_STUDENTS);
+        document.getElementById('assignedCountBadge').textContent = data.assigned_count;
+    } catch (e) {
+        wrap.innerHTML = '<div class="alert alert-danger">학생 목록을 불러오지 못했습니다.</div>';
+    }
+}
+
+function renderStudents(list) {
+    const wrap = document.getElementById('studentListWrap');
+    if (list.length === 0) {
+        wrap.innerHTML = '<div class="alert alert-warning mb-0">등록된 학생이 없습니다.</div>';
+        updateSelectedCount();
+        return;
+    }
+    let html = '<div class="list-group">';
+    for (const s of list) {
+        const label = s.name ? `${s.name} <span class="text-muted small">(${s.username})</span>` : s.username;
+        html += `
+        <label class="list-group-item d-flex align-items-center">
+            <input type="checkbox" class="form-check-input me-3 student-cb"
+                   value="${s.id}" ${s.is_assigned ? 'checked' : ''} onchange="updateSelectedCount()">
+            <span>${label}</span>
+        </label>`;
+    }
+    html += '</div>';
+    wrap.innerHTML = html;
+    updateSelectedCount();
+}
+
+function filterStudents() {
+    const q = document.getElementById('studentSearch').value.trim().toLowerCase();
+    if (!q) { renderStudents(ALL_STUDENTS); return; }
+    const filtered = ALL_STUDENTS.filter(s =>
+        s.username.toLowerCase().includes(q) ||
+        (s.name && s.name.toLowerCase().includes(q))
+    );
+    renderStudents(filtered);
+}
+
+function toggleAllStudents(checked) {
+    document.querySelectorAll('.student-cb').forEach(cb => cb.checked = checked);
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const n = document.querySelectorAll('.student-cb:checked').length;
+    document.getElementById('selectedCount').textContent = n;
+}
+
+async function saveAssignments() {
+    // 모달 내 체크된 ID + 검색으로 가려진 항목의 현재 배정 상태도 유지
+    const visibleChecked = new Set(
+        Array.from(document.querySelectorAll('.student-cb:checked')).map(cb => parseInt(cb.value))
+    );
+    const visibleIds = new Set(
+        Array.from(document.querySelectorAll('.student-cb')).map(cb => parseInt(cb.value))
+    );
+    // 보이는 항목은 visibleChecked 그대로, 안 보이는 항목(검색에 가린)은 원래 상태 유지
+    const finalIds = [];
+    for (const s of ALL_STUDENTS) {
+        if (visibleIds.has(s.id)) {
+            if (visibleChecked.has(s.id)) finalIds.push(s.id);
+        } else if (s.is_assigned) {
+            finalIds.push(s.id);
+        }
+    }
+
+    try {
+        const r = await fetch(`/training/writing/admin/units/${UNIT_ID}/assignments/update/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ student_ids: finalIds }),
+        });
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('assignedCountBadge').textContent = data.assigned_count;
+            // 로컬 상태도 동기화 (다음번 모달 오픈 시 정확)
+            for (const s of ALL_STUDENTS) s.is_assigned = finalIds.includes(s.id);
+            // 모달 닫기
+            bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
+            alert(`✅ 저장 완료 — 추가 ${data.added}명 / 해제 ${data.removed}명 / 현재 ${data.assigned_count}명`);
+        } else {
+            alert('저장 실패');
+        }
+    } catch (e) {
+        alert('에러: ' + e);
+    }
+}
 
 async function generateHints(unitId) {
     const btn = document.getElementById('generateHintsBtn');

@@ -594,6 +594,75 @@ def generate_hints_ajax(request, unit_id):
 
 @teacher_required
 @require_GET
+def assignment_list(request, unit_id):
+    """단원에 배정 가능한 학생 목록 + 현재 배정 상태 반환"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+
+    assigned_ids = set(
+        UnitAssignment.objects.filter(unit=unit).values_list('student_id', flat=True)
+    )
+
+    users = User.objects.filter(is_active=True).order_by('username')
+    students = []
+    for u in users:
+        if is_teacher(u):
+            continue
+        name = (
+            getattr(u, 'name', None)
+            or getattr(u, 'full_name', None)
+            or f'{u.first_name} {u.last_name}'.strip()
+            or ''
+        )
+        students.append({
+            'id': u.id,
+            'username': u.username,
+            'name': name,
+            'is_assigned': u.id in assigned_ids,
+        })
+
+    return JsonResponse(
+        {'students': students, 'assigned_count': len(assigned_ids)},
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@teacher_required
+@require_POST
+def assignment_update(request, unit_id):
+    """학생 배정 일괄 갱신 — body: {student_ids:[..]} 의 학생만 배정 상태로 (나머지는 해제)"""
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+    try:
+        data = json.loads(request.body)
+        target_ids = {int(x) for x in data.get('student_ids', [])}
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    current_ids = set(
+        UnitAssignment.objects.filter(unit=unit).values_list('student_id', flat=True)
+    )
+    to_add = target_ids - current_ids
+    to_remove = current_ids - target_ids
+
+    if to_add:
+        UnitAssignment.objects.bulk_create([
+            UnitAssignment(student_id=sid, unit=unit, assigned_by=request.user)
+            for sid in to_add
+        ], ignore_conflicts=True)
+    if to_remove:
+        UnitAssignment.objects.filter(unit=unit, student_id__in=to_remove).delete()
+
+    return JsonResponse({
+        'success': True,
+        'assigned_count': UnitAssignment.objects.filter(unit=unit).count(),
+        'added': len(to_add),
+        'removed': len(to_remove),
+    })
+
+
+@teacher_required
+@require_GET
 def generate_hints_status(request, unit_id):
     """진행 상태 폴링"""
     with _hint_progress_lock:

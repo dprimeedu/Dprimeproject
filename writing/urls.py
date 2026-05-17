@@ -21,4 +21,6 @@ urlpatterns = [
     path('admin/units/<int:unit_id>/', views.unit_detail, name='unit_detail'),
     path('admin/units/<int:unit_id>/generate-hints/', views.generate_hints_ajax, name='generate_hints'),
     path('admin/units/<int:unit_id>/generate-hints/status/', views.generate_hints_status, name='generate_hints_status'),
+    path('admin/units/<int:unit_id>/assignments/', views.assignment_list, name='assignment_list'),
+    path('admin/units/<int:unit_id>/assignments/update/', views.assignment_update, name='assignment_update'),
 ]
