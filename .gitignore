@@ -172,8 +172,11 @@ upload.py
 upload2.py
 miscellaneous/
 staticfiles/
-migrations/
 
 # 로컬/운영 환경 전용 파일
 config/settings_dump.py
 writing_data*.json
+
+# Claude Code (per-machine personal config & auto-commit hook)
+.claude/
+PR_본문_복붙용.md
