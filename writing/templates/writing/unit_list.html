@@ -74,6 +74,9 @@
                 <span id="selected-count" class="small text-muted">0개 선택됨</span>
             </div>
             <div class="d-flex gap-2 flex-wrap">
+                <button type="button" id="bulk-hints-btn" class="btn btn-sm btn-primary bulk-action" disabled>
+                    <i class="fas fa-magic me-1"></i>AI 한글뜻 일괄 생성
+                </button>
                 <button type="button" id="bulk-assign-btn" class="btn btn-sm btn-outline-primary bulk-action" disabled>
                     <i class="fas fa-user-plus me-1"></i>학생 일괄 추가
                 </button>
@@ -331,6 +334,36 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (initiallyRunning.length) startPolling(initiallyRunning);
+
+    // ── AI 한글뜻 일괄 생성 (미완료 단원만 — 이미 완료된 문제는 skip) ──
+    document.getElementById('bulk-hints-btn').addEventListener('click', async () => {
+        const c = checked();
+        if (!c.length) return;
+        const unit_ids = c.map(cb => parseInt(cb.value));
+        const ok = confirm(
+            `${c.length}개 단원에 대해 AI 한글뜻 생성을 시작합니다.\n` +
+            `이미 한글뜻이 있는 문제는 자동으로 skip되고 미완료 문제만 생성합니다.\n` +
+            `진행도는 표 "AI 한글뜻" 컬럼에서 실시간 갱신됩니다.`
+        );
+        if (!ok) return;
+        try {
+            const r = await fetch('{% url "writing:generate_hints_bulk" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ unit_ids }),
+            });
+            const data = await r.json();
+            alert(
+                `시작: ${data.started}개\n` +
+                `이미 실행 중: ${data.already_running}개\n` +
+                `이미 완료: ${data.already_done}개`
+            );
+            startPolling(unit_ids);
+        } catch (e) {
+            alert('에러: ' + e);
+        }
+    });
 
     // ── 학생 일괄 배정 모달 ──
     let bulkMode = 'add';
