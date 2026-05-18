@@ -159,7 +159,8 @@ def parse_filename(raw: str) -> Dict[str, str]:
     for re_p in _TITLE_PATTERNS:
         m = re_p.search(name)
         if m:
-            title = re.sub(r'\s+', ' ', m.group(1)).strip()
+            # 첫 매치 위치부터 파일명 끝까지를 단원명으로 (예: "1과 본문1", "3과 Wrap Up")
+            title = re.sub(r'\s+', ' ', name[m.start():]).strip()
             match_idx = m.start()
             break
 

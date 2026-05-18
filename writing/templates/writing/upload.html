@@ -84,7 +84,8 @@
         for (const re of patterns) {
             const m = name.match(re);
             if (m) {
-                title = m[1].replace(/\s+/g, ' ').trim();
+                // 첫 매치 위치부터 파일명 끝까지를 단원명으로
+                title = name.slice(m.index).replace(/\s+/g, ' ').trim();
                 matchIdx = m.index;
                 break;
             }
