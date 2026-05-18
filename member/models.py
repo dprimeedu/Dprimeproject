@@ -54,7 +54,7 @@ class Member(AbstractBaseUser, PermissionsMixin):
         verbose_name_plural = '회원들'
 
     def __str__(self):
-        return self.email
+        return self.login_id or self.email or f'user#{self.pk}'
 
 class Profile(models.Model):
     user = models.OneToOneField(Member, on_delete=models.CASCADE)

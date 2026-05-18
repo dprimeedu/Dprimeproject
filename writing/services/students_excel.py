@@ -1,7 +1,10 @@
 """학생 일괄 등록용 엑셀 파서.
-형식: 1열 ID (login_id), 2열 이름
+형식: 1열 색인 (무시) · 2열 ID (login_id) · 3열 이름
 """
 import openpyxl
+
+
+HEADER_TOKENS = {'id', '아이디', 'login_id', '색인', '번호', '이름', 'name'}
 
 
 def parse_students_excel(file):
@@ -17,20 +20,21 @@ def parse_students_excel(file):
         for row in rows[1:]:
             if not row or all(c is None for c in row):
                 continue
-            id_val = row[0] if len(row) > 0 else None
-            name_val = row[1] if len(row) > 1 else None
+            # 1열 색인 무시 · 2열 ID · 3열 이름
+            id_val = row[1] if len(row) > 1 else None
+            name_val = row[2] if len(row) > 2 else None
             if id_val is None or name_val is None:
                 continue
             login_id = str(id_val).strip()
             name = str(name_val).strip()
             if not login_id or not name:
                 continue
-            if login_id.lower() in ('id', '아이디', 'login_id'):
+            if login_id.lower() in HEADER_TOKENS or name.lower() in HEADER_TOKENS:
                 continue
             students.append({'login_id': login_id, 'name': name})
 
         if not students:
-            errors.append('유효한 학생 행이 없습니다.')
+            errors.append('유효한 학생 행이 없습니다. 형식: 1열 색인 · 2열 ID · 3열 이름')
         return {'success': len(students) > 0, 'students': students, 'errors': errors}
     except Exception as e:
         return {'success': False, 'students': [], 'errors': [f'엑셀 파싱 실패: {e}']}

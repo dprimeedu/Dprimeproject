@@ -980,17 +980,18 @@ def _style_header_row(ws):
 
 @teacher_required
 def student_template_xlsx(request):
-    """학생 일괄 등록용 빈 양식."""
+    """학생 일괄 등록용 빈 양식. 1열 색인 · 2열 ID · 3열 이름."""
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = '학생 명단'
-    ws.append(['ID', '이름'])
-    ws.append(['dprimeedu1', '홍길동'])
-    ws.append(['dprimeedu2', '김철수'])
-    ws.append(['dprimeedu3', '이영희'])
-    ws.column_dimensions['A'].width = 20
-    ws.column_dimensions['B'].width = 18
+    ws.append(['색인', 'ID', '이름'])
+    ws.append([1, 'dprimeedu1', '홍길동'])
+    ws.append([2, 'dprimeedu2', '김철수'])
+    ws.append([3, 'dprimeedu3', '이영희'])
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 18
     _style_header_row(ws)
     return _xlsx_response(wb, 'students_template.xlsx')
 
