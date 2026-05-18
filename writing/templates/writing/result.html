@@ -98,24 +98,22 @@
 
     <div class="card mb-4">
         <div class="card-body">
-            <h5 class="card-title mb-3">⏱️ 완료 시간 — 목표 시간 안 끝내면 +100 보너스</h5>
+            <h5 class="card-title mb-3">⏱️ 완료 시간 — 도전 baseline 깨면 +100 보너스 + 시간 리더보드 진입</h5>
             <div class="row text-center">
                 <div class="col-md-4">
                     <div class="text-muted small">실 소요</div>
                     <div class="h4 mb-0">{{ elapsed_seconds }}초</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="text-muted small">목표 시간</div>
+                    <div class="text-muted small">도전 baseline (단어당 7초)</div>
                     <div class="h4 mb-0">{{ target_seconds }}초</div>
                 </div>
                 <div class="col-md-4">
-                    <div class="text-muted small">시간 보너스</div>
+                    <div class="text-muted small">결과</div>
                     {% if time_bonus > 0 %}
-                        <div class="h4 mb-0 text-success">✅ +{{ time_bonus }}점</div>
-                    {% elif within_target %}
-                        <div class="h4 mb-0 text-success">✅ 통과</div>
+                        <div class="h4 mb-0 text-success">🥇 +{{ time_bonus }}점!</div>
                     {% else %}
-                        <div class="h4 mb-0 text-muted">아쉽지만 — 다시 도전!</div>
+                        <div class="h4 mb-0 text-muted">조금 더 빠르게! 다음에 도전 🔥</div>
                     {% endif %}
                 </div>
             </div>

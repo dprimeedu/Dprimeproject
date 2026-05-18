@@ -617,13 +617,13 @@ def reset_problem_api(request):
     })
 
 
-TIME_BONUS = 100
+TIME_BONUS = 100  # baseline(단어당 7초) 깨면 주는 보너스
 
 
 @login_required
 @require_POST
 def complete_session_api(request):
-    """세션 완료 처리 + 목표 시간 안 완료 시 보너스."""
+    """세션 완료 + 도전 baseline 안 완료 시 보너스 + 시간 리더보드 진입."""
     try:
         data = json.loads(request.body)
         session_id = int(data['session_id'])
@@ -636,12 +636,12 @@ def complete_session_api(request):
 
     time_bonus = 0
     elapsed = 0
-    target = session.unit.computed_target_seconds
+    baseline = session.unit.computed_target_seconds
 
     if not session.finished_at:
         session.finished_at = timezone.now()
         elapsed = int((session.finished_at - session.started_at).total_seconds())
-        if elapsed <= target:
+        if elapsed <= baseline:
             time_bonus = TIME_BONUS
             session.total_score += time_bonus
             session.time_bonus_earned = time_bonus
@@ -657,8 +657,8 @@ def complete_session_api(request):
         'success': True,
         'time_bonus': time_bonus,
         'elapsed_seconds': elapsed,
-        'target_seconds': target,
-        'within_target': elapsed <= target,
+        'baseline_seconds': baseline,
+        'broke_baseline': elapsed <= baseline,
         'redirect_url': f'/training/writing/result/{session.id}/',
     })
 
@@ -666,56 +666,97 @@ def complete_session_api(request):
 @login_required
 @require_GET
 def leaderboard_api(request, unit_id):
-    """단원별 리더보드 — 학생별 최고 점수 Top 3 + 본인 순위."""
+    """단원별 리더보드 — (1) 점수 Top 3 (2) baseline 깬 학생의 시간 Top 3."""
     from django.contrib.auth import get_user_model
     from django.db.models import Max
     unit = get_object_or_404(WritingUnit, pk=unit_id)
+    baseline = unit.computed_target_seconds
 
     finished_sessions = WritingSession.objects.filter(
         unit=unit, finished_at__isnull=False,
     )
-    best_per_student = (
+
+    # ── 점수 리더보드 ──
+    best_score_per_student = (
         finished_sessions
         .values('student_id')
         .annotate(best=Max('total_score'))
         .order_by('-best', 'student_id')
     )
-
-    top_qs = list(best_per_student[:3])
+    score_top_qs = list(best_score_per_student[:3])
 
     User = get_user_model()
-    student_ids = [r['student_id'] for r in top_qs]
-    users_by_id = {u.id: u for u in User.objects.filter(pk__in=student_ids)}
+    score_ids = [r['student_id'] for r in score_top_qs]
+    users_by_id = {u.id: u for u in User.objects.filter(pk__in=score_ids)}
 
-    top = []
-    for rank, r in enumerate(top_qs, start=1):
+    score_top = []
+    for rank, r in enumerate(score_top_qs, start=1):
         u = users_by_id.get(r['student_id'])
         if not u:
             continue
-        top.append({
+        score_top.append({
             'rank': rank,
             'name': u.username or f'#{u.id}',
             'score': r['best'],
             'is_me': u.id == request.user.id,
         })
 
-    me_best = (
+    me_best_score = (
         finished_sessions
         .filter(student=request.user)
         .aggregate(best=Max('total_score'))['best']
     )
-    me_rank = None
-    if me_best is not None:
-        higher = best_per_student.filter(best__gt=me_best).count()
-        me_rank = higher + 1
+    me_score_rank = None
+    if me_best_score is not None:
+        higher = best_score_per_student.filter(best__gt=me_best_score).count()
+        me_score_rank = higher + 1
+
+    # ── 시간 리더보드 (baseline 깬 학생만 등록) ──
+    student_best_time = {}  # student_id -> {'name', 'duration'}
+    for s in finished_sessions.select_related('student'):
+        duration = int((s.finished_at - s.started_at).total_seconds())
+        if duration > baseline:
+            continue
+        existing = student_best_time.get(s.student_id)
+        if existing is None or duration < existing['duration']:
+            student_best_time[s.student_id] = {
+                'student_id': s.student_id,
+                'name': s.student.username or f'#{s.student_id}',
+                'duration': duration,
+            }
+    time_sorted = sorted(student_best_time.values(), key=lambda x: x['duration'])
+    time_top = []
+    for rank, r in enumerate(time_sorted[:3], start=1):
+        time_top.append({
+            'rank': rank,
+            'name': r['name'],
+            'seconds': r['duration'],
+            'is_me': r['student_id'] == request.user.id,
+        })
+
+    me_time_entry = student_best_time.get(request.user.id)
+    me_time_rank = None
+    if me_time_entry:
+        me_time_rank = next(
+            (i + 1 for i, r in enumerate(time_sorted) if r['student_id'] == request.user.id),
+            None,
+        )
 
     return JsonResponse({
         'unit_id': unit.id,
         'unit_title': unit.title,
-        'top': top,
-        'me_rank': me_rank,
-        'me_best': me_best,
-        'target_seconds': unit.computed_target_seconds,
+        'baseline_seconds': baseline,
+        'total_words': unit.total_words,
+        'score': {
+            'top': score_top,
+            'me_rank': me_score_rank,
+            'me_best': me_best_score,
+        },
+        'time': {
+            'top': time_top,
+            'me_rank': me_time_rank,
+            'me_best_seconds': me_time_entry['duration'] if me_time_entry else None,
+        },
     })
 
 

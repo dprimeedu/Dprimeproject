@@ -46,9 +46,18 @@ class WritingUnit(models.Model):
         return self.problems.count()
 
     @property
+    def total_words(self):
+        """단원 전체 영어 단어 수 (한 단원에서 학생이 입력해야 할 단어 합계)."""
+        return sum(len(p.english.strip().split()) for p in self.problems.all())
+
+    @property
     def computed_target_seconds(self):
-        """목표 시간 — 수동 지정값 우선, 없으면 문제 수 × 30초."""
-        return self.target_seconds if self.target_seconds else self.problem_count * 30
+        """도전 baseline 시간 — 수동 지정값 우선, 없으면 단어당 7초."""
+        if self.target_seconds:
+            return self.target_seconds
+        words = self.total_words
+        # 최소 60초 보장 (단원이 매우 작아도 너무 짧지 않게)
+        return max(60, words * 7)
 
 
 class WritingProblem(models.Model):

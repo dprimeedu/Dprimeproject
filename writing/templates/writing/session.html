@@ -294,8 +294,8 @@
         <div class="text-end">
             <div class="label small text-muted">
                 {{ unit.title }}
-                <span class="target-time-badge" title="이 시간 안에 완료하면 +100점 보너스">
-                    🎯 목표 <span id="targetTime">--</span>
+                <span class="target-time-badge" title="이 시간 안에 완료하면 +100점 보너스 + 시간 리더보드 진입 (단어당 7초 기준)">
+                    🥇 도전 baseline <span id="targetTime">--</span>
                 </span>
             </div>
             <div class="value" id="problemCounter">1 / {{ total_problems }}</div>
@@ -324,7 +324,16 @@
     <!-- 리더보드 (학습 영역 아래 — 학습 공간 위치 고정) -->
     <div class="leaderboard" id="leaderboardBox" style="display:none;">
         <h5>🏆 단원 리더보드 — {{ unit.title }}</h5>
-        <div id="leaderboardBody"></div>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="text-muted small mb-2" style="font-weight:600;">🏆 점수 Top 3</div>
+                <div id="lbScoreBody"></div>
+            </div>
+            <div class="col-md-6">
+                <div class="text-muted small mb-2" style="font-weight:600;">⏱️ 시간 Top 3 <span class="text-muted" style="font-weight:400;">(baseline 깬 학생만)</span></div>
+                <div id="lbTimeBody"></div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -355,35 +364,63 @@ setInterval(() => {
     if (sec > TARGET_SECONDS) el.style.color = '#ef4444';
 }, 1000);
 
-// 리더보드
+// 리더보드 (점수 + 시간 두 섹션)
 async function refreshLeaderboard() {
     try {
         const r = await fetch(`/training/writing/api/leaderboard/${UNIT_ID}/`, { credentials: 'same-origin' });
         if (!r.ok) return;
         const data = await r.json();
         const box = document.getElementById('leaderboardBox');
-        const body = document.getElementById('leaderboardBody');
-        // 완료한 학생이 한 명도 없고 본인 기록도 없으면 박스 자체 숨김
-        if (data.top.length === 0 && data.me_best == null) {
+        const scoreBody = document.getElementById('lbScoreBody');
+        const timeBody = document.getElementById('lbTimeBody');
+        const medals = ['🥇', '🥈', '🥉'];
+
+        // 점수가 있는 사용자도 없고 시간도 없고 본인 기록도 없으면 박스 숨김
+        const hasAny = data.score.top.length || data.time.top.length
+                     || data.score.me_best != null || data.time.me_best_seconds != null;
+        if (!hasAny) {
             box.style.display = 'none';
-            body.innerHTML = '';
             return;
         }
-        const medals = ['🥇', '🥈', '🥉'];
-        let html = '';
-        data.top.forEach(t => {
-            html += `<div class="lb-row rank-${t.rank} ${t.is_me ? 'is-me' : ''}">
-                <div class="rank">${medals[t.rank-1] || t.rank}</div>
-                <div class="name">${t.name}${t.is_me ? ' (나)' : ''}</div>
-                <div class="score">${t.score}점</div>
-            </div>`;
-        });
-        const inTop = data.top.some(t => t.is_me);
-        if (!inTop && data.me_rank) {
-            html += `<div class="lb-me-line">내 최고 기록: ${data.me_rank}위 · ${data.me_best}점</div>`;
-        }
-        body.innerHTML = html;
         box.style.display = '';
+
+        // 점수 섹션
+        let scoreHtml = '';
+        if (data.score.top.length === 0) {
+            scoreHtml = '<div class="text-muted small">아직 점수 기록 없음</div>';
+        } else {
+            data.score.top.forEach(t => {
+                scoreHtml += `<div class="lb-row rank-${t.rank} ${t.is_me ? 'is-me' : ''}">
+                    <div class="rank">${medals[t.rank-1] || t.rank}</div>
+                    <div class="name">${t.name}${t.is_me ? ' (나)' : ''}</div>
+                    <div class="score">${t.score}점</div>
+                </div>`;
+            });
+            const inTop = data.score.top.some(t => t.is_me);
+            if (!inTop && data.score.me_rank) {
+                scoreHtml += `<div class="lb-me-line">내 최고: ${data.score.me_rank}위 · ${data.score.me_best}점</div>`;
+            }
+        }
+        scoreBody.innerHTML = scoreHtml;
+
+        // 시간 섹션
+        let timeHtml = '';
+        if (data.time.top.length === 0) {
+            timeHtml = `<div class="text-muted small">baseline ${fmtTime(data.baseline_seconds)} 깬 학생 아직 없음 — 첫 진입자가 되어보세요!</div>`;
+        } else {
+            data.time.top.forEach(t => {
+                timeHtml += `<div class="lb-row rank-${t.rank} ${t.is_me ? 'is-me' : ''}">
+                    <div class="rank">${medals[t.rank-1] || t.rank}</div>
+                    <div class="name">${t.name}${t.is_me ? ' (나)' : ''}</div>
+                    <div class="score">${fmtTime(t.seconds)}</div>
+                </div>`;
+            });
+            const inTop = data.time.top.some(t => t.is_me);
+            if (!inTop && data.time.me_rank) {
+                timeHtml += `<div class="lb-me-line">내 최단: ${data.time.me_rank}위 · ${fmtTime(data.time.me_best_seconds)}</div>`;
+            }
+        }
+        timeBody.innerHTML = timeHtml;
     } catch (e) { console.error('[leaderboard]', e); }
 }
 refreshLeaderboard();
