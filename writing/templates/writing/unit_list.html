@@ -218,9 +218,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function runSearch() {
         const q = searchEl.value.trim().toLowerCase();
+        // 공백으로 토큰 분리 — 모든 토큰이 row에 들어있어야 매치 (순서 무관 AND)
+        const tokens = q.split(/\s+/).filter(t => t);
         document.querySelectorAll('#unit-form tbody tr').forEach(tr => {
             const text = tr.textContent.toLowerCase();
-            tr.style.display = (!q || text.includes(q)) ? '' : 'none';
+            const match = !tokens.length || tokens.every(t => text.includes(t));
+            tr.style.display = match ? '' : 'none';
         });
     }
 
