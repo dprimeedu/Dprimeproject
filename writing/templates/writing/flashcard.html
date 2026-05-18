@@ -148,7 +148,7 @@
 
     <div id="fcMain">
         <div class="fc-card-container">
-            <div class="fc-card" id="fcCard" onclick="onCardClick(event)">
+            <div class="fc-card" id="fcCard">
                 <button class="fc-star" id="fcStar" onclick="toggleStar(event)" aria-label="별표">☆</button>
                 <div class="fc-face fc-front">
                     <div class="label">🇰🇷 한글</div>
@@ -247,11 +247,6 @@ function flipCard() {
     if (visible.length === 0) return;
     document.getElementById('fcCard').classList.toggle('flipped');
 }
-function onCardClick(e) {
-    // 별표 버튼 클릭은 제외
-    if (e.target.closest('.fc-star')) return;
-    flipCard();
-}
 function nextCard() {
     if (idx < visible.length - 1) { idx++; render(); }
 }
@@ -288,6 +283,47 @@ document.addEventListener('keydown', e => {
         toggleStar({ stopPropagation: () => {} });
     }
 });
+
+// 카드 탭/클릭 + 스와이프 (모바일·태블릿)
+(function () {
+    const card = document.getElementById('fcCard');
+    const SWIPE_THRESHOLD = 50;  // px
+    let startX = 0, startY = 0, swiped = false;
+
+    card.addEventListener('touchstart', e => {
+        // 별표 버튼은 별도 처리
+        if (e.target.closest('.fc-star')) return;
+        swiped = false;
+        const t = e.changedTouches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+    }, { passive: true });
+
+    card.addEventListener('touchend', e => {
+        if (e.target.closest('.fc-star')) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) {
+            return;  // 작은 움직임은 탭으로 간주 — click 이벤트가 처리
+        }
+        swiped = true;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // 가로 스와이프 — 좌(다음) / 우(이전)
+            if (dx < 0) nextCard();
+            else prevCard();
+        } else {
+            // 세로 스와이프 — 뒤집기
+            flipCard();
+        }
+    }, { passive: true });
+
+    card.addEventListener('click', e => {
+        if (e.target.closest('.fc-star')) return;
+        if (swiped) { swiped = false; return; }
+        flipCard();
+    });
+})();
 
 // 초기 렌더
 saveStarred();
