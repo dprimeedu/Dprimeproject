@@ -10,14 +10,12 @@
         <p class="section-desc">재원생을 위한 학습 훈련 도구</p>
     </div>
 
-    <div class="row g-3 menu-grid">
-        <div class="col-12 col-sm-6 col-md-4">
-            <a href="{% url 'writing:home' %}" class="menu-card">
-                <div class="menu-card-icon"><i class="fas fa-pen-nib"></i></div>
-                <h4>영작훈련</h4>
-                <p>단어별 빈칸 채우기 학습</p>
-            </a>
-        </div>
+    <div class="menu-grid">
+        <a href="{% url 'writing:home' %}" class="menu-card">
+            <div class="menu-card-icon"><i class="fas fa-pen-nib"></i></div>
+            <h4>영작훈련</h4>
+            <p>단어별 빈칸 채우기 학습</p>
+        </a>
     </div>
 </div>
 {% endblock %}

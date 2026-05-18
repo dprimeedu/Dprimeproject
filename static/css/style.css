@@ -501,7 +501,18 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .menu-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
     margin-top: 0;
+}
+
+@media (min-width: 576px) {
+    .menu-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 768px) {
+    .menu-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 .menu-card {
