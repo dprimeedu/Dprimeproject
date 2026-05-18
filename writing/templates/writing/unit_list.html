@@ -174,7 +174,7 @@
 </div>
 
 <script>
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('unit-form');
     if (!form) return;
     const CSRF = form.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -451,6 +451,6 @@
     document.getElementById('bulk-unassign-btn').addEventListener('click', () => openModal('remove'));
 
     updateState();
-})();
+});
 </script>
 {% endblock %}

@@ -120,7 +120,7 @@
 </div>
 
 <script>
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('student-form');
     if (!form) return;
     const header = document.getElementById('student-header-cb');
@@ -153,6 +153,6 @@
     });
 
     update();
-})();
+});
 </script>
 {% endblock %}
