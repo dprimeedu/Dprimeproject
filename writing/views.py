@@ -859,7 +859,7 @@ def assignment_list(request, unit_id):
         name = (
             getattr(u, 'name', None)
             or getattr(u, 'full_name', None)
-            or f'{u.first_name} {u.last_name}'.strip()
+            or getattr(u, 'username', '')
             or ''
         )
         students.append({
@@ -1148,7 +1148,7 @@ def student_list_api(request):
         name = (
             getattr(u, 'name', None)
             or getattr(u, 'full_name', None)
-            or f'{u.first_name} {u.last_name}'.strip()
+            or getattr(u, 'username', '')
             or ''
         )
         students.append({'id': u.id, 'username': u.username, 'name': name})
