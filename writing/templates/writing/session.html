@@ -363,24 +363,24 @@ async function refreshLeaderboard() {
         const data = await r.json();
         const box = document.getElementById('leaderboardBox');
         const body = document.getElementById('leaderboardBody');
+        // 완료한 학생이 한 명도 없고 본인 기록도 없으면 박스 자체 숨김
+        if (data.top.length === 0 && data.me_best == null) {
+            box.style.display = 'none';
+            body.innerHTML = '';
+            return;
+        }
         const medals = ['🥇', '🥈', '🥉'];
         let html = '';
-        if (data.top.length === 0) {
-            html = '<div class="text-muted small text-center py-2">아직 완료한 학생이 없어요. 첫 도전자가 되어보세요!</div>';
-        } else {
-            data.top.forEach(t => {
-                html += `<div class="lb-row rank-${t.rank} ${t.is_me ? 'is-me' : ''}">
-                    <div class="rank">${medals[t.rank-1] || t.rank}</div>
-                    <div class="name">${t.name}${t.is_me ? ' (나)' : ''}</div>
-                    <div class="score">${t.score}점</div>
-                </div>`;
-            });
-        }
+        data.top.forEach(t => {
+            html += `<div class="lb-row rank-${t.rank} ${t.is_me ? 'is-me' : ''}">
+                <div class="rank">${medals[t.rank-1] || t.rank}</div>
+                <div class="name">${t.name}${t.is_me ? ' (나)' : ''}</div>
+                <div class="score">${t.score}점</div>
+            </div>`;
+        });
         const inTop = data.top.some(t => t.is_me);
         if (!inTop && data.me_rank) {
             html += `<div class="lb-me-line">내 최고 기록: ${data.me_rank}위 · ${data.me_best}점</div>`;
-        } else if (!inTop && data.me_best == null) {
-            html += `<div class="lb-me-line">아직 완료한 적이 없어요 — 끝까지 풀면 순위 등록!</div>`;
         }
         body.innerHTML = html;
         box.style.display = '';
