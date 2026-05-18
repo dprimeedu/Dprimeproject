@@ -22,59 +22,122 @@
     {% endif %}
 
     {% if units %}
-    <div class="card">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>단원명</th>
-                        <th>학년</th>
-                        <th>출판사</th>
-                        <th class="text-center">문제 수</th>
-                        <th>등록자</th>
-                        <th>등록일</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for unit in units %}
-                    <tr>
-                        <td><strong>{{ unit.title }}</strong></td>
-                        <td>{{ unit.grade }}</td>
-                        <td>{{ unit.publisher|default:'-' }}</td>
-                        <td class="text-center">{{ unit.problem_count }}</td>
-                        <td>{{ unit.created_by.username|default:'-' }}</td>
-                        <td>{{ unit.created_at|date:'Y-m-d H:i' }}</td>
-                        <td class="text-nowrap">
-                            <a href="{% url 'writing:unit_detail' unit.id %}" class="btn btn-sm btn-outline-primary">상세</a>
-                            <form method="post" action="{% url 'writing:unit_delete' unit.id %}" class="d-inline unit-delete-form"
-                                  data-title="{{ unit.title }}" data-count="{{ unit.problem_count }}">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-outline-danger">삭제</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <form method="post" action="{% url 'writing:unit_delete' %}" id="unit-form">
+        {% csrf_token %}
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex gap-2 align-items-center">
+                <button type="button" id="select-all-btn" class="btn btn-sm btn-outline-secondary">전체 선택</button>
+                <button type="button" id="select-none-btn" class="btn btn-sm btn-outline-secondary">전체 해제</button>
+                <span id="selected-count" class="small text-muted">0개 선택됨</span>
+            </div>
+            <button type="button" id="bulk-delete-btn" class="btn btn-sm btn-danger" disabled>
+                <i class="fas fa-trash me-1"></i>선택 삭제
+            </button>
         </div>
-    </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="header-checkbox" class="form-check-input"></th>
+                            <th>단원명</th>
+                            <th>학년</th>
+                            <th>출판사</th>
+                            <th class="text-center">문제 수</th>
+                            <th>등록자</th>
+                            <th>등록일</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for unit in units %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="unit_ids" value="{{ unit.id }}"
+                                       class="form-check-input unit-checkbox"
+                                       data-title="{{ unit.title }}" data-count="{{ unit.problem_count }}">
+                            </td>
+                            <td><strong>{{ unit.title }}</strong></td>
+                            <td>{{ unit.grade }}</td>
+                            <td>{{ unit.publisher|default:'-' }}</td>
+                            <td class="text-center">{{ unit.problem_count }}</td>
+                            <td>{{ unit.created_by.username|default:'-' }}</td>
+                            <td>{{ unit.created_at|date:'Y-m-d H:i' }}</td>
+                            <td class="text-nowrap">
+                                <a href="{% url 'writing:unit_detail' unit.id %}" class="btn btn-sm btn-outline-primary">상세</a>
+                                <button type="button" class="btn btn-sm btn-outline-danger row-delete-btn"
+                                        data-unit-id="{{ unit.id }}">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </form>
+
     <script>
-    document.querySelectorAll('.unit-delete-form').forEach(form => {
-        form.addEventListener('submit', e => {
-            const title = form.dataset.title;
-            const count = form.dataset.count;
+    (function () {
+        const form = document.getElementById('unit-form');
+        const headerCb = document.getElementById('header-checkbox');
+        const allCbs = () => Array.from(form.querySelectorAll('.unit-checkbox'));
+        const checked = () => allCbs().filter(cb => cb.checked);
+        const bulkBtn = document.getElementById('bulk-delete-btn');
+        const countEl = document.getElementById('selected-count');
+
+        function updateState() {
+            const c = checked();
+            const total = allCbs().length;
+            countEl.textContent = `${c.length}개 선택됨`;
+            bulkBtn.disabled = c.length === 0;
+            headerCb.checked = c.length > 0 && c.length === total;
+            headerCb.indeterminate = c.length > 0 && c.length < total;
+        }
+
+        function setAll(value) {
+            allCbs().forEach(cb => { cb.checked = value; });
+            updateState();
+        }
+
+        headerCb.addEventListener('change', () => setAll(headerCb.checked));
+        document.getElementById('select-all-btn').addEventListener('click', () => setAll(true));
+        document.getElementById('select-none-btn').addEventListener('click', () => setAll(false));
+
+        allCbs().forEach(cb => cb.addEventListener('change', updateState));
+
+        bulkBtn.addEventListener('click', () => {
+            const c = checked();
+            if (!c.length) return;
+            const lines = c.map(cb => `· ${cb.dataset.title} (문제 ${cb.dataset.count}개)`).join('\n');
             const ok = confirm(
-                `단원 "${title}" 을(를) 삭제합니다.\n\n` +
-                `· 문제 ${count}개\n` +
-                `· 이 단원의 모든 학생 풀이 기록(세션·시도 로그)\n` +
-                `· 이 단원에 대한 학생 배정\n\n` +
-                `위 항목이 모두 함께 삭제되며 복구할 수 없습니다.\n` +
+                `선택한 ${c.length}개 단원을 삭제합니다:\n\n${lines}\n\n` +
+                `각 단원의 학생 풀이 기록(세션·시도)과 학생 배정이 함께 삭제되며 복구할 수 없습니다.\n` +
                 `정말 삭제하시겠습니까?`
             );
-            if (!ok) e.preventDefault();
+            if (ok) form.submit();
         });
-    });
+
+        document.querySelectorAll('.row-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cb = form.querySelector(`.unit-checkbox[value="${btn.dataset.unitId}"]`);
+                if (!cb) return;
+                const ok = confirm(
+                    `단원 "${cb.dataset.title}" 을(를) 삭제합니다.\n\n` +
+                    `· 문제 ${cb.dataset.count}개\n` +
+                    `· 이 단원의 학생 풀이 기록 · 학생 배정\n\n` +
+                    `모두 함께 삭제되며 복구할 수 없습니다. 정말 삭제하시겠습니까?`
+                );
+                if (!ok) return;
+                setAll(false);
+                cb.checked = true;
+                form.submit();
+            });
+        });
+
+        updateState();
+    })();
     </script>
     {% else %}
     <div class="alert alert-info text-center py-5">

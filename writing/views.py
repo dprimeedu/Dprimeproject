@@ -715,12 +715,22 @@ def unit_list(request):
 
 @teacher_required
 @require_POST
-def unit_delete(request, unit_id):
-    """단원 + cascade 데이터 (문제·배정·세션·시도 기록) 일괄 삭제."""
-    unit = get_object_or_404(WritingUnit, pk=unit_id)
-    title = unit.title
-    unit.delete()
-    messages.success(request, f'단원 "{title}" 삭제 완료.')
+def unit_delete(request):
+    """체크박스로 고른 단원들을 cascade 데이터(문제·배정·세션·시도)와 함께 삭제."""
+    raw_ids = request.POST.getlist('unit_ids')
+    try:
+        ids = [int(x) for x in raw_ids if x]
+    except ValueError:
+        ids = []
+
+    if not ids:
+        messages.warning(request, '삭제할 단원을 선택해주세요.')
+        return redirect('writing:unit_list')
+
+    qs = WritingUnit.objects.filter(pk__in=ids)
+    count = qs.count()
+    qs.delete()
+    messages.success(request, f'단원 {count}개 삭제 완료.')
     return redirect('writing:unit_list')
 
 
