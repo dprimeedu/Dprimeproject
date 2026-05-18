@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const modalInfo = document.getElementById('bulk-modal-info');
     const saveBtn = document.getElementById('bulk-save-btn');
     const saveLabel = document.getElementById('bulk-save-label');
-    const searchEl = document.getElementById('bulkStudentSearch');
+    const modalSearchEl = document.getElementById('bulkStudentSearch');
 
     function openModal(mode) {
         const c = checked();
@@ -367,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function () {
             saveLabel.textContent = '제거';
             saveBtn.className = 'btn btn-warning';
         }
-        searchEl.value = '';
+        modalSearchEl.value = '';
         modal.show();
         loadStudents();
     }
@@ -423,8 +423,8 @@ document.addEventListener('DOMContentLoaded', function () {
         return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    searchEl.addEventListener('input', () => {
-        const q = searchEl.value.trim().toLowerCase();
+    modalSearchEl.addEventListener('input', () => {
+        const q = modalSearchEl.value.trim().toLowerCase();
         if (!q) { renderStudents(bulkAllStudents); return; }
         renderStudents(bulkAllStudents.filter(s =>
             s.username.toLowerCase().includes(q) ||
