@@ -56,6 +56,11 @@
     <form method="post" action="{% url 'writing:unit_delete' %}" id="unit-form">
         {% csrf_token %}
 
+        <div class="mb-2">
+            <input type="text" id="unit-search" class="form-control"
+                   placeholder="🔍 단원명 / 학년 / 출판사 검색" style="max-width: 400px;">
+        </div>
+
         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <button type="button" id="select-all-btn" class="btn btn-sm btn-outline-secondary">전체 선택</button>
@@ -199,6 +204,18 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('select-all-btn').addEventListener('click', () => setAll(true));
     document.getElementById('select-none-btn').addEventListener('click', () => setAll(false));
     allCbs().forEach(cb => cb.addEventListener('change', updateState));
+
+    // ── 단원 검색 (단원명/학년/출판사) ──
+    const searchEl = document.getElementById('unit-search');
+    if (searchEl) {
+        searchEl.addEventListener('input', () => {
+            const q = searchEl.value.trim().toLowerCase();
+            document.querySelectorAll('#unit-form tbody tr').forEach(tr => {
+                const text = tr.textContent.toLowerCase();
+                tr.style.display = (!q || text.includes(q)) ? '' : 'none';
+            });
+        });
+    }
 
     // 선택 삭제
     document.getElementById('bulk-delete-btn').addEventListener('click', () => {
