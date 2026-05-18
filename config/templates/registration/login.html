@@ -22,8 +22,9 @@
                         {% include "registration/login_errors.html" %}
                         <input type="hidden" name="next" value="{{ request.GET.next }}">
                         <div class="mb-3">
-                            {{ form.username.label_tag }}
+                            <label for="{{ form.username.id_for_label }}" class="form-label">아이디 (또는 이메일)</label>
                             {{ form.username }}
+                            <div class="form-text">재원생은 학원에서 받은 ID, 일반 가입자는 이메일로 로그인하세요.</div>
                         </div>
                         <div class="mb-3">
                             {{ form.password.label_tag }}

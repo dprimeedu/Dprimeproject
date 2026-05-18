@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+.student-checkbox, #student-header-cb {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #9ca3af;
+    cursor: pointer;
+}
+.student-checkbox:hover, #student-header-cb:hover { border-color: var(--primary-color); }
+.student-checkbox:checked, #student-header-cb:checked, #student-header-cb:indeterminate {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+.student-checkbox:focus, #student-header-cb:focus {
+    box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.25);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'writing:unit_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단원 관리</a>
+
+    <div class="section-header d-flex justify-content-between align-items-center">
+        <div>
+            <h3><i class="fas fa-user-graduate me-2"></i>학생 관리</h3>
+            <p class="section-desc">재원생 등록 · 승인 · 일괄 처리</p>
+        </div>
+        <a href="{% url 'writing:student_upload' %}" class="btn btn-primary">
+            <i class="fas fa-file-excel me-1"></i>엑셀 일괄 등록
+        </a>
+    </div>
+
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if students %}
+    <form method="post" action="{% url 'writing:student_action' %}" id="student-form">
+        {% csrf_token %}
+
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button type="button" id="sel-all" class="btn btn-sm btn-outline-secondary">전체 선택</button>
+                <button type="button" id="sel-none" class="btn btn-sm btn-outline-secondary">전체 해제</button>
+                <span id="sel-count" class="small text-muted">0명 선택됨</span>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="submit" name="action" value="approve" class="btn btn-sm btn-success student-act" disabled>
+                    <i class="fas fa-user-check me-1"></i>재원생 승인
+                </button>
+                <button type="submit" name="action" value="unapprove" class="btn btn-sm btn-outline-warning student-act" disabled>
+                    <i class="fas fa-user-clock me-1"></i>승인 취소
+                </button>
+                <button type="submit" name="action" value="activate" class="btn btn-sm btn-outline-secondary student-act" disabled>
+                    활성화
+                </button>
+                <button type="submit" name="action" value="deactivate" class="btn btn-sm btn-outline-secondary student-act" disabled>
+                    비활성화
+                </button>
+                <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger student-act" disabled id="del-btn">
+                    <i class="fas fa-trash me-1"></i>삭제
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="student-header-cb" class="form-check-input"></th>
+                            <th>로그인 ID / 이메일</th>
+                            <th>이름</th>
+                            <th class="text-center">유형</th>
+                            <th class="text-center">활성</th>
+                            <th class="text-center">재원생 승인</th>
+                            <th class="text-center">배정 단원</th>
+                            <th>가입일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in students %}
+                        <tr>
+                            <td><input type="checkbox" name="student_ids" value="{{ s.id }}" class="form-check-input student-checkbox"></td>
+                            <td><code>{{ s.login_id|default:s.email|default:'-' }}</code></td>
+                            <td>{{ s.username|default:'-' }}</td>
+                            <td class="text-center">
+                                {% if s.is_academy %}<span class="badge bg-info text-dark">학원</span>
+                                {% else %}<span class="badge bg-light text-dark">학생</span>{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.is_active %}<span class="badge bg-success">활성</span>
+                                {% else %}<span class="badge bg-secondary">비활성</span>{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.is_approved %}<span class="badge bg-success"><i class="fas fa-check"></i> 승인</span>
+                                {% else %}<span class="badge bg-warning text-dark">대기</span>{% endif %}
+                            </td>
+                            <td class="text-center">{{ s.assigned_count }}</td>
+                            <td>{{ s.date_joined|date:'Y-m-d H:i' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </form>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        등록된 학생이 없습니다.<br>
+        <a href="{% url 'writing:student_upload' %}" class="btn btn-primary mt-3">엑셀로 일괄 등록</a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    const form = document.getElementById('student-form');
+    if (!form) return;
+    const header = document.getElementById('student-header-cb');
+    const acts = document.querySelectorAll('.student-act');
+    const countEl = document.getElementById('sel-count');
+    const all = () => Array.from(form.querySelectorAll('.student-checkbox'));
+    const checked = () => all().filter(cb => cb.checked);
+
+    function update() {
+        const c = checked();
+        countEl.textContent = `${c.length}명 선택됨`;
+        acts.forEach(b => { b.disabled = c.length === 0; });
+        header.checked = c.length > 0 && c.length === all().length;
+        header.indeterminate = c.length > 0 && c.length < all().length;
+    }
+    function setAll(v) { all().forEach(cb => cb.checked = v); update(); }
+
+    header.addEventListener('change', () => setAll(header.checked));
+    document.getElementById('sel-all').addEventListener('click', () => setAll(true));
+    document.getElementById('sel-none').addEventListener('click', () => setAll(false));
+    all().forEach(cb => cb.addEventListener('change', update));
+
+    form.addEventListener('submit', e => {
+        if (e.submitter && e.submitter.value === 'delete') {
+            const n = checked().length;
+            if (!confirm(`${n}명을 삭제합니다.\n학생 계정 + 배정 + 풀이 기록이 모두 삭제됩니다.\n정말 진행하시겠습니까?`)) {
+                e.preventDefault();
+            }
+        }
+    });
+
+    update();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'index' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>메인으로</a>
+
+    <div class="card mt-4">
+        <div class="card-body text-center py-5">
+            <div class="mb-3" style="font-size: 3rem; color: var(--primary-color);">
+                <i class="fas fa-user-clock"></i>
+            </div>
+            <h4>학원 승인 대기 중</h4>
+            <p class="text-muted mb-4">
+                재원생 메뉴는 학원에 등록된 학생만 이용할 수 있습니다.<br>
+                학원에 문의해서 재원생으로 등록되면 영작훈련을 시작할 수 있어요.
+            </p>
+            <a href="{% url 'index' %}" class="btn btn-primary">
+                <i class="fas fa-home me-1"></i>메인으로 돌아가기
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

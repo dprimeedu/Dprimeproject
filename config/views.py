@@ -27,23 +27,32 @@ class TrainingView(generic.TemplateView):
 
 class UserCreateView(generic.CreateView):
     template_name = 'registration/register.html'
-    form_class = SignupForm  # SignupForm 사용
+    form_class = SignupForm
     success_url = reverse_lazy('register_done')
 
     def form_valid(self, form):
-        user = form.save(commit=False)  # 사용자 객체를 저장하되, 아직 DB에 저장하지 않음
-        user_type = self.request.POST.get('user_type')  # 선택된 사용자 유형 가져오기
+        user = form.save(commit=False)
+        user_type = self.request.POST.get('user_type')
 
         if user_type == 'academy':
             user.is_academy = True
-            user.is_active = False  # 학원은 기본적으로 활성화
+            user.member_type = 'academy_admin'
+            user.is_active = False        # 학원: 관리자 승인 대기
+            user.is_approved = False
         else:
             user.is_academy = False
-            user.is_active = False  # 학생은 활성화 상태로 설정
+            user.member_type = 'user'
+            user.is_active = True         # 학생: 즉시 활성, 사이트 로그인 가능
+            user.is_approved = False      # 재원생 메뉴는 별도 학원 승인 필요
 
-        user.save()  # 사용자 객체를 DB에 저장
-        auth_login(self.request, user)  # 로그인 처리
-        return super().form_valid(form)  # 성공적으로 폼을 처리한 후 리디렉션
+        user.save()
+
+        if user.is_active:
+            auth_login(
+                self.request, user,
+                backend='member.backends.LoginIdOrEmailBackend',
+            )
+        return super().form_valid(form)
 
 class UserCreateDoneTV(generic.TemplateView):
     template_name = 'registration/register_done.html'

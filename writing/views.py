@@ -18,6 +18,7 @@ from .models import (
     StudentProfile, Achievement, StudentAchievement,
 )
 from .services.excel import parse_writing_excel, parse_filename
+from .services.students_excel import parse_students_excel
 from .services.ai import generate_word_hints, generate_word_hints_batch
 from .services import scoring
 
@@ -76,6 +77,10 @@ def student_home(request):
     """영작훈련 학생 홈 — 배정된 단원 목록 (선생님은 전체)"""
     profile = get_or_create_profile(request.user)
     update_login_streak(profile)
+
+    # 일반 학생인데 학원이 재원생으로 승인 안 했으면 안내 페이지
+    if not is_teacher(request.user) and not getattr(request.user, 'is_approved', False):
+        return render(request, 'writing/student_pending.html', {})
 
     if is_teacher(request.user):
         # 선생님/관리자는 전체 단원 풀이 가능
@@ -942,6 +947,129 @@ def generate_hints_bulk_ajax(request):
         'already_running': len(already_running),
         'already_done': len(already_done),
     })
+
+
+DEFAULT_STUDENT_PASSWORD = '123456'
+
+
+@teacher_required
+def student_admin(request):
+    """학생 관리 페이지 — 전체 학생 + 액션."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    qs = User.objects.exclude(is_staff=True).exclude(is_superuser=True).order_by('-date_joined')
+    students = []
+    for s in qs:
+        if is_teacher(s):
+            continue
+        s.assigned_count = UnitAssignment.objects.filter(student=s).count()
+        students.append(s)
+    return render(request, 'writing/student_list.html', {
+        'students': students,
+        'default_password': DEFAULT_STUDENT_PASSWORD,
+    })
+
+
+@teacher_required
+def student_upload(request):
+    """엑셀로 학생 일괄 등록. 컬럼: 1열 ID(login_id), 2열 이름. 비번 공통."""
+    if request.method != 'POST':
+        return render(request, 'writing/student_upload.html', {
+            'default_password': DEFAULT_STUDENT_PASSWORD,
+        })
+
+    f = request.FILES.get('excel_file')
+    if not f:
+        messages.error(request, '엑셀 파일을 선택해주세요.')
+        return render(request, 'writing/student_upload.html', {
+            'default_password': DEFAULT_STUDENT_PASSWORD,
+        })
+    if not f.name.lower().endswith(('.xlsx', '.xls')):
+        messages.error(request, 'xlsx 또는 xls 파일만 가능합니다.')
+        return render(request, 'writing/student_upload.html', {
+            'default_password': DEFAULT_STUDENT_PASSWORD,
+        })
+
+    result = parse_students_excel(f)
+    if not result['success']:
+        for err in result['errors']:
+            messages.error(request, err)
+        return render(request, 'writing/student_upload.html', {
+            'default_password': DEFAULT_STUDENT_PASSWORD,
+        })
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    created = 0
+    skipped = []
+    for s in result['students']:
+        login_id = s['login_id']
+        name = s['name']
+        if User.objects.filter(login_id=login_id).exists():
+            skipped.append(login_id)
+            continue
+        try:
+            user = User(
+                login_id=login_id,
+                username=name,
+                email=None,
+                member_type='user',
+                is_active=True,
+                is_approved=True,
+                is_academy=False,
+            )
+            user.set_password(DEFAULT_STUDENT_PASSWORD)
+            user.save()
+            created += 1
+        except Exception as e:
+            skipped.append(f'{login_id} ({e})')
+
+    parts = [f'{created}명 등록 완료', f'기본 비번: {DEFAULT_STUDENT_PASSWORD}']
+    if skipped:
+        sample = ', '.join(skipped[:5])
+        more = '…' if len(skipped) > 5 else ''
+        parts.append(f'중복/실패 {len(skipped)}건 skip ({sample}{more})')
+    messages.success(request, ' · '.join(parts))
+    return redirect('writing:student_admin')
+
+
+@teacher_required
+@require_POST
+def student_action(request):
+    """학생 일괄 액션 — action: approve|unapprove|activate|deactivate|delete"""
+    raw_ids = request.POST.getlist('student_ids')
+    action = request.POST.get('action')
+    try:
+        ids = [int(x) for x in raw_ids if x]
+    except ValueError:
+        ids = []
+
+    if not ids or action not in ('approve', 'unapprove', 'activate', 'deactivate', 'delete'):
+        messages.warning(request, '학생과 액션을 선택해주세요.')
+        return redirect('writing:student_admin')
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    qs = User.objects.filter(pk__in=ids).exclude(is_staff=True).exclude(is_superuser=True)
+
+    if action == 'approve':
+        n = qs.update(is_approved=True)
+        messages.success(request, f'{n}명 재원생 승인 완료.')
+    elif action == 'unapprove':
+        n = qs.update(is_approved=False)
+        messages.success(request, f'{n}명 재원생 승인 취소.')
+    elif action == 'activate':
+        n = qs.update(is_active=True)
+        messages.success(request, f'{n}명 계정 활성화.')
+    elif action == 'deactivate':
+        n = qs.update(is_active=False)
+        messages.success(request, f'{n}명 계정 비활성화.')
+    elif action == 'delete':
+        n = qs.count()
+        qs.delete()
+        messages.success(request, f'{n}명 삭제 완료. (단원 배정·풀이 기록도 함께 삭제)')
+
+    return redirect('writing:student_admin')
 
 
 @teacher_required

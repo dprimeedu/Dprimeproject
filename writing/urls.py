@@ -23,7 +23,13 @@ urlpatterns = [
     path('admin/units/delete/', views.unit_delete, name='unit_delete'),
     path('admin/units/generate-hints-bulk/', views.generate_hints_bulk_ajax, name='generate_hints_bulk'),
     path('admin/units/assignments-bulk/', views.assignments_bulk_update, name='assignments_bulk'),
-    path('admin/students/', views.student_list_api, name='student_list'),
+
+    # 학생 관리
+    path('admin/students/', views.student_admin, name='student_admin'),
+    path('admin/students/upload/', views.student_upload, name='student_upload'),
+    path('admin/students/action/', views.student_action, name='student_action'),
+    path('admin/api/students/', views.student_list_api, name='student_list_api'),
+
     path('admin/units/<int:unit_id>/generate-hints/', views.generate_hints_ajax, name='generate_hints'),
     path('admin/units/<int:unit_id>/generate-hints/status/', views.generate_hints_status, name='generate_hints_status'),
     path('admin/units/<int:unit_id>/assignments/', views.assignment_list, name='assignment_list'),

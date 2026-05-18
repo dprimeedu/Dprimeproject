@@ -25,17 +25,23 @@ class Member(AbstractBaseUser, PermissionsMixin):
         ('admin', '전체관리자'),
     )
     objects = MemberManager()
-    email = models.EmailField(unique=True)
-    username = models.CharField(max_length=150)
-    # 회원가입 시 관리자 승인
+    email = models.EmailField(unique=True, null=True, blank=True)
+    login_id = models.CharField(
+        max_length=50, unique=True, null=True, blank=True,
+        verbose_name='로그인 ID',
+        help_text='학원이 등록한 재원생용 ID (영문/숫자). 일반 회원가입자는 이메일로 로그인.',
+    )
+    username = models.CharField(max_length=150, verbose_name='이름')
     is_active = models.BooleanField(default=False)
-    # 사이트 관리자 권한
     is_staff = models.BooleanField(default=False)
-    # 사이트 전체 관리자 권한
     is_superuser = models.BooleanField(default=False)
+    is_approved = models.BooleanField(
+        default=False, verbose_name='재원생 승인',
+        help_text='학원이 재원생으로 인정한 경우 True. 재원생 메뉴 접근에 필요.',
+    )
     member_type = models.CharField(max_length=20, choices=MEMBER_TYPES, default='user')
-    phone = models.CharField(max_length=15, null=True, blank=True)  # 전화번호 필드
-    is_academy = models.BooleanField(default=False)  # 학원 여부
+    phone = models.CharField(max_length=15, null=True, blank=True)
+    is_academy = models.BooleanField(default=False)
     business_registration = models.FileField(upload_to='business_registrations/', null=True, blank=True)
     date_joined = models.DateTimeField(default=timezone.now)
 

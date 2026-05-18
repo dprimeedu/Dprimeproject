@@ -36,9 +36,14 @@
             <h3><i class="fas fa-book me-2"></i>영작 단원 관리</h3>
             <p class="section-desc">등록된 단원 목록</p>
         </div>
-        <a href="{% url 'writing:upload' %}" class="btn btn-primary">
-            <i class="fas fa-plus me-1"></i>새 단원 업로드
-        </a>
+        <div class="d-flex gap-2">
+            <a href="{% url 'writing:student_admin' %}" class="btn btn-outline-primary">
+                <i class="fas fa-user-graduate me-1"></i>학생 관리
+            </a>
+            <a href="{% url 'writing:upload' %}" class="btn btn-primary">
+                <i class="fas fa-plus me-1"></i>새 단원 업로드
+            </a>
+        </div>
     </div>
 
     {% if messages %}
@@ -357,7 +362,7 @@
         const wrap = document.getElementById('bulkStudentListWrap');
         wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
         try {
-            const r = await fetch('{% url "writing:student_list" %}');
+            const r = await fetch('{% url "writing:student_list_api" %}');
             const data = await r.json();
             bulkAllStudents = data.students;
             renderStudents(bulkAllStudents);

@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'writing:student_admin' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>학생 관리</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-file-excel me-2"></i>학생 엑셀 일괄 등록</h3>
+        <p class="section-desc">엑셀 파일에서 학생 ID·이름을 읽어 즉시 활성 + 재원생 승인 상태로 만듭니다.</p>
+    </div>
+
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label fw-bold">학생 명단 엑셀 (.xlsx)</label>
+                    <input type="file" name="excel_file" class="form-control" accept=".xlsx,.xls" required>
+                    <div class="form-text">
+                        엑셀 컬럼: <strong>1열 ID</strong> (예: dprimeedu1) · <strong>2열 이름</strong> (예: 홍길동)<br>
+                        모든 학생의 비밀번호는 공통으로 <code>{{ default_password }}</code> 가 설정됩니다.
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <a href="{% url 'writing:student_admin' %}" class="btn btn-outline-secondary">목록으로</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload me-1"></i>업로드
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="alert alert-info mt-4">
+        <strong>📌 등록 규칙</strong>
+        <ul class="mb-0 mt-2">
+            <li>ID(login_id)는 중복될 수 없습니다 — 이미 있으면 skip</li>
+            <li>비밀번호는 공통 <code>{{ default_password }}</code>. 학생이 로그인 후 직접 변경 권장</li>
+            <li>이메일은 비워둔 채로 저장. 로그인은 ID로만 함</li>
+            <li>등록 즉시 활성(<code>is_active=True</code>) + 재원생 승인(<code>is_approved=True</code>)</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
