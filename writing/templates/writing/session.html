@@ -318,8 +318,8 @@
         <div class="text-end">
             <div class="label small text-muted">
                 {{ unit.title }}
-                <span class="target-time-badge" title="이 시간 안에 완료하면 +100점 보너스 + 시간 리더보드 진입 (단어당 7초 기준)">
-                    🥇 도전 baseline <span id="targetTime">--</span>
+                <span class="target-time-badge" title="이 문제 빈칸 × 30초 안에 풀어야 다음 문제로 갈 수 있어요">
+                    ⏱ 문제 남은 <span id="probTimeLeft">--</span> / <span id="probBaseline">--</span>
                 </span>
             </div>
             <div class="value" id="problemCounter">1 / {{ total_problems }}</div>
@@ -378,17 +378,14 @@ function fmtTime(sec) {
     const s = sec % 60;
     return `${m}:${String(s).padStart(2, '0')}`;
 }
-document.getElementById('targetTime').textContent = fmtTime(TARGET_SECONDS);
-
 let _timeExpired = false;
 function showTimeExpired() {
     if (_timeExpired) return;
     _timeExpired = true;
-    // 풀이 입력/버튼 비활성
+    if (probTimerInterval) clearInterval(probTimerInterval);
     document.querySelectorAll('#wordsRow input, #wordsRow button, #actionRow button').forEach(el => {
         el.disabled = true;
     });
-    // 오버레이
     const overlay = document.createElement('div');
     overlay.className = 'time-expired-overlay';
     overlay.innerHTML = `
@@ -396,23 +393,68 @@ function showTimeExpired() {
             <div class="clock-icon">⏰</div>
             <h3>시간 초과</h3>
             <p>안타깝지만 목표시간이 넘었네요<br>다시 학습하고 재도전하세요!</p>
-            <a href="{% url 'writing:home' %}" class="btn btn-primary btn-lg">
-                <i class="fas fa-redo me-1"></i>홈으로 돌아가서 재학습
-            </a>
+            <div class="d-flex gap-2 justify-content-center flex-wrap">
+                <a href="{% url 'writing:flashcard' unit.id %}" class="btn btn-info btn-lg text-white">
+                    <i class="fas fa-book-open me-1"></i>학습하기로 이동
+                </a>
+                <a href="{% url 'writing:home' %}" class="btn btn-outline-secondary btn-lg">
+                    <i class="fas fa-home me-1"></i>홈으로
+                </a>
+            </div>
         </div>`;
     document.body.appendChild(overlay);
 }
 
+// 단원 경과 시간만 표시 (게이팅 X — 게이팅은 문제별 baseline)
 setInterval(() => {
     const el = document.getElementById('elapsedTime');
     if (!el) return;
     const sec = Math.floor((Date.now() - SESSION_STARTED_AT) / 1000);
     el.textContent = fmtTime(sec);
-    if (sec > TARGET_SECONDS) {
-        el.style.color = '#ef4444';
-        showTimeExpired();
-    }
 }, 1000);
+
+// 문제별 카운트다운 — 학생 입력 단어 수 × 30초
+let probTimerInterval = null;
+let probTimerStart = 0;
+let probBaselineSec = 0;
+
+function startProblemTimer(blankCount) {
+    if (probTimerInterval) clearInterval(probTimerInterval);
+    probBaselineSec = blankCount * 30;
+    probTimerStart = Date.now();
+    const lblBase = document.getElementById('probBaseline');
+    const lblLeft = document.getElementById('probTimeLeft');
+    if (probBaselineSec <= 0) {
+        lblBase.textContent = '--';
+        lblLeft.textContent = '--';
+        return;
+    }
+    lblBase.textContent = fmtTime(probBaselineSec);
+    lblLeft.textContent = fmtTime(probBaselineSec);
+    lblLeft.style.color = '';
+    probTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - probTimerStart) / 1000);
+        const remaining = probBaselineSec - elapsed;
+        if (remaining <= 0) {
+            lblLeft.textContent = '0:00';
+            lblLeft.style.color = '#ef4444';
+            clearInterval(probTimerInterval);
+            showTimeExpired();
+            return;
+        }
+        lblLeft.textContent = fmtTime(remaining);
+        if (remaining <= 5) lblLeft.style.color = '#ef4444';
+        else if (remaining <= 10) lblLeft.style.color = '#f59e0b';
+        else lblLeft.style.color = '';
+    }, 500);
+}
+
+function stopProblemTimer() {
+    if (probTimerInterval) {
+        clearInterval(probTimerInterval);
+        probTimerInterval = null;
+    }
+}
 
 // 리더보드 (점수 + 시간 두 섹션)
 async function refreshLeaderboard() {
@@ -534,6 +576,7 @@ function updateStatusFromResponse(data) {
 
 function loadProblem(idx) {
     if (idx >= PROBLEMS.length) {
+        stopProblemTimer();
         finishSession();
         return;
     }
@@ -543,6 +586,9 @@ function loadProblem(idx) {
     clearRewards();
 
     const p = PROBLEMS[idx];
+    // 문제별 카운트다운 시작 (학생이 직접 입력해야 하는 단어 수 기준)
+    const blankCount = (p.words || []).filter(w => !w.auto).length;
+    startProblemTimer(blankCount);
     $('problemNumber').textContent = 'Q' + (idx + 1) + '.';
     $('koreanText').textContent = p.korean;
     $('problemCounter').textContent = (idx + 1) + ' / ' + TOTAL_PROBLEMS;
@@ -770,6 +816,8 @@ function focusNext(fromIdx) {
 }
 
 async function onAllWordsDone() {
+    // 문장 끝까지 풀었으면 그 문제의 카운트다운 멈춤
+    stopProblemTimer();
     let data = null;
     try {
         const r = await fetch('{% url "writing:api_complete_problem" %}', {
