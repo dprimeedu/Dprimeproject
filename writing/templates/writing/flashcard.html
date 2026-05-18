@@ -13,11 +13,30 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 .fc-counter {
     font-size: 1.1rem;
     color: var(--primary-color);
     font-weight: 700;
+}
+.fc-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    padding: 0.3rem 0.9rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.fc-mode-toggle input { margin: 0; cursor: pointer; }
+.fc-mode-toggle.active {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #92400e;
 }
 .fc-card-container {
     perspective: 1500px;
@@ -63,17 +82,29 @@
     line-height: 1.5;
     color: #1f2937;
 }
-.fc-face .hint {
-    margin-top: 2rem;
-    color: #9ca3af;
-    font-size: 0.85rem;
-}
 .fc-front { background: linear-gradient(135deg, #ede9fe 0%, #f3f4f6 100%); }
 .fc-back {
     transform: rotateY(180deg);
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
 }
 .fc-back .text { color: #92400e; font-family: 'Georgia', serif; font-style: italic; }
+
+/* 별표 — 카드 우상단에 표시. 카드 뒤집어도 같은 위치 (양면) */
+.fc-star {
+    position: absolute;
+    top: 1rem;
+    right: 1.25rem;
+    background: none;
+    border: 0;
+    font-size: 2rem;
+    color: #d1d5db;
+    cursor: pointer;
+    line-height: 1;
+    transition: all 0.15s ease;
+    z-index: 2;
+}
+.fc-star:hover { transform: scale(1.15); }
+.fc-star.on { color: #f59e0b; }
 
 .fc-controls {
     display: flex;
@@ -90,6 +121,15 @@
     overflow: hidden;
 }
 .fc-progress .bar { height: 100%; background: var(--primary-color); transition: width .3s; }
+
+.fc-empty {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #6b7280;
+    background: white;
+    border-radius: 16px;
+    border: 2px dashed #e5e7eb;
+}
 </style>
 
 <div class="fc-wrap">
@@ -97,32 +137,45 @@
 
     <div class="fc-header">
         <h3 class="mb-0"><i class="fas fa-book-open me-2"></i>{{ unit.title }} — 학습하기</h3>
-        <div class="fc-counter"><span id="fcCounter">1</span> / {{ total }}</div>
-    </div>
-
-    <div class="fc-card-container">
-        <div class="fc-card" id="fcCard" onclick="flipCard()">
-            <div class="fc-face fc-front">
-                <div class="label">🇰🇷 한글</div>
-                <div class="text" id="fcKorean">불러오는 중...</div>
-                <div class="hint">카드를 클릭하면 영어가 보입니다 (또는 스페이스바)</div>
-            </div>
-            <div class="fc-face fc-back">
-                <div class="label">🇬🇧 English</div>
-                <div class="text" id="fcEnglish"></div>
-                <div class="hint">다시 클릭하면 한글로 (또는 스페이스바)</div>
-            </div>
+        <div class="d-flex align-items-center gap-3">
+            <label class="fc-mode-toggle" id="starModeToggle">
+                <input type="checkbox" id="starOnlyCb">
+                <span>⭐ 별표만 (<span id="starCount">0</span>)</span>
+            </label>
+            <div class="fc-counter"><span id="fcCounter">1</span> / <span id="fcTotal">{{ total }}</span></div>
         </div>
     </div>
 
-    <div class="fc-controls">
-        <button class="btn btn-outline-secondary" id="fcPrev" onclick="prevCard()">
-            <i class="fas fa-chevron-left me-1"></i>이전
-        </button>
-        <div class="fc-progress"><div class="bar" id="fcBar" style="width: 0%"></div></div>
-        <button class="btn btn-primary" id="fcNext" onclick="nextCard()">
-            다음<i class="fas fa-chevron-right ms-1"></i>
-        </button>
+    <div id="fcMain">
+        <div class="fc-card-container">
+            <div class="fc-card" id="fcCard" onclick="onCardClick(event)">
+                <button class="fc-star" id="fcStar" onclick="toggleStar(event)" aria-label="별표">☆</button>
+                <div class="fc-face fc-front">
+                    <div class="label">🇰🇷 한글</div>
+                    <div class="text" id="fcKorean">불러오는 중...</div>
+                </div>
+                <div class="fc-face fc-back">
+                    <div class="label">🇬🇧 English</div>
+                    <div class="text" id="fcEnglish"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="fc-controls">
+            <button class="btn btn-outline-secondary" id="fcPrev" onclick="prevCard()">
+                <i class="fas fa-chevron-left me-1"></i>이전
+            </button>
+            <div class="fc-progress"><div class="bar" id="fcBar" style="width: 0%"></div></div>
+            <button class="btn btn-primary" id="fcNext" onclick="nextCard()">
+                다음<i class="fas fa-chevron-right ms-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="fcEmpty" class="fc-empty" style="display:none;">
+        <div style="font-size: 3rem;">⭐</div>
+        <h4 class="mt-2">별표한 카드가 없어요</h4>
+        <p class="mb-0">카드 우상단의 별표를 눌러 표시해보세요.</p>
     </div>
 
     <div class="text-center mt-4">
@@ -133,38 +186,111 @@
 </div>
 
 <script>
-const CARDS = {{ cards_json|safe }};
-const TOTAL = CARDS.length;
+const ALL_CARDS = {{ cards_json|safe }};
+const UNIT_ID = {{ unit.id }};
+const STAR_KEY = `flashcard_starred_${UNIT_ID}`;
+
+let starred = new Set(JSON.parse(localStorage.getItem(STAR_KEY) || '[]'));
+let starOnly = false;
+let visible = ALL_CARDS.slice();
 let idx = 0;
 
+function saveStarred() {
+    localStorage.setItem(STAR_KEY, JSON.stringify([...starred]));
+    document.getElementById('starCount').textContent = starred.size;
+}
+
+function rebuildVisible() {
+    if (starOnly) {
+        visible = ALL_CARDS.filter(c => starred.has(c.index));
+    } else {
+        visible = ALL_CARDS.slice();
+    }
+    if (idx >= visible.length) idx = Math.max(0, visible.length - 1);
+    render();
+}
+
 function render() {
-    const c = CARDS[idx];
+    const main = document.getElementById('fcMain');
+    const empty = document.getElementById('fcEmpty');
+    document.getElementById('fcTotal').textContent = visible.length;
+    if (visible.length === 0) {
+        main.style.display = 'none';
+        empty.style.display = '';
+        return;
+    }
+    main.style.display = '';
+    empty.style.display = 'none';
+
+    const c = visible[idx];
     document.getElementById('fcKorean').textContent = c.korean;
     document.getElementById('fcEnglish').textContent = c.english;
     document.getElementById('fcCounter').textContent = idx + 1;
     document.getElementById('fcCard').classList.remove('flipped');
-    const pct = ((idx + 1) / TOTAL) * 100;
+    const pct = ((idx + 1) / visible.length) * 100;
     document.getElementById('fcBar').style.width = pct + '%';
     document.getElementById('fcPrev').disabled = idx === 0;
-    document.getElementById('fcNext').disabled = idx === TOTAL - 1;
+    document.getElementById('fcNext').disabled = idx === visible.length - 1;
+
+    // 별표 상태
+    const star = document.getElementById('fcStar');
+    if (starred.has(c.index)) {
+        star.textContent = '★';
+        star.classList.add('on');
+    } else {
+        star.textContent = '☆';
+        star.classList.remove('on');
+    }
 }
 
 function flipCard() {
+    if (visible.length === 0) return;
     document.getElementById('fcCard').classList.toggle('flipped');
 }
+function onCardClick(e) {
+    // 별표 버튼 클릭은 제외
+    if (e.target.closest('.fc-star')) return;
+    flipCard();
+}
 function nextCard() {
-    if (idx < TOTAL - 1) { idx++; render(); }
+    if (idx < visible.length - 1) { idx++; render(); }
 }
 function prevCard() {
     if (idx > 0) { idx--; render(); }
 }
+function toggleStar(e) {
+    e.stopPropagation();
+    if (visible.length === 0) return;
+    const c = visible[idx];
+    if (starred.has(c.index)) starred.delete(c.index);
+    else starred.add(c.index);
+    saveStarred();
+    if (starOnly) rebuildVisible();
+    else render();
+}
 
-document.addEventListener('keydown', e => {
-    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipCard(); }
-    else if (e.key === 'ArrowRight') nextCard();
-    else if (e.key === 'ArrowLeft') prevCard();
+document.getElementById('starOnlyCb').addEventListener('change', e => {
+    starOnly = e.target.checked;
+    document.getElementById('starModeToggle').classList.toggle('active', starOnly);
+    idx = 0;
+    rebuildVisible();
 });
 
-render();
+document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        flipCard();
+    } else if (e.key === 'ArrowRight') {
+        nextCard();
+    } else if (e.key === 'ArrowLeft') {
+        prevCard();
+    } else if (e.key === 's' || e.key === 'S') {
+        toggleStar({ stopPropagation: () => {} });
+    }
+});
+
+// 초기 렌더
+saveStarred();
+rebuildVisible();
 </script>
 {% endblock %}
