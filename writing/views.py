@@ -17,8 +17,7 @@ from .models import (
     WritingSession, WritingAttempt,
     StudentProfile, Achievement, StudentAchievement,
 )
-from .forms import WritingUnitUploadForm
-from .services.excel import parse_writing_excel
+from .services.excel import parse_writing_excel, parse_filename
 from .services.ai import generate_word_hints, generate_word_hints_batch
 from .services import scoring
 
@@ -632,46 +631,80 @@ def complete_session_api(request):
 # 선생님 화면들 (기존)
 # ─────────────────────────────────────────────
 
+VALID_GRADES = {g[0] for g in WritingUnit.GRADE_CHOICES}
+
+
 @teacher_required
 def upload_view(request):
-    if request.method == 'POST':
-        form = WritingUnitUploadForm(request.POST, request.FILES)
-        if form.is_valid():
-            result = parse_writing_excel(form.cleaned_data['excel_file'])
-            if not result['success']:
-                for err in result['errors']:
-                    messages.error(request, err)
-                return render(request, 'writing/upload.html', {'form': form})
+    if request.method != 'POST':
+        return render(request, 'writing/upload.html', {})
 
-            try:
-                with transaction.atomic():
-                    unit = WritingUnit.objects.create(
-                        title=form.cleaned_data['title'],
-                        publisher=form.cleaned_data['publisher'],
-                        grade=form.cleaned_data['grade'],
-                        description=form.cleaned_data['description'],
-                        created_by=request.user,
-                    )
-                    for p in result['problems']:
-                        WritingProblem.objects.create(
-                            unit=unit,
-                            index=p['index'],
-                            korean=p['korean'],
-                            english=p['english'],
-                            word_hints=[],
-                        )
-                messages.success(
-                    request,
-                    f'단원 "{unit.title}" 생성 완료. 문제 {len(result["problems"])}개 등록. AI 한글뜻 생성 버튼을 눌러주세요.',
+    files = request.FILES.getlist('excel_file')
+    if not files:
+        messages.error(request, '엑셀 파일을 1개 이상 선택해주세요.')
+        return render(request, 'writing/upload.html', {})
+
+    created_units = []
+    total_problems = 0
+    total_skipped = 0
+    file_errors = []
+
+    for f in files:
+        if not f.name.lower().endswith(('.xlsx', '.xls')):
+            file_errors.append(f'{f.name}: xlsx/xls만 업로드 가능')
+            continue
+        if f.size > 10 * 1024 * 1024:
+            file_errors.append(f'{f.name}: 10MB 초과')
+            continue
+
+        result = parse_writing_excel(f)
+        if not result['success']:
+            file_errors.append(f'{f.name}: {"; ".join(result["errors"])}')
+            continue
+
+        meta = parse_filename(f.name)
+        title = meta['title'] or re.sub(r'\.[^.]+$', '', f.name)
+        grade = meta['grade'] if meta['grade'] in VALID_GRADES else '기타'
+
+        try:
+            with transaction.atomic():
+                unit = WritingUnit.objects.create(
+                    title=title,
+                    publisher=meta['publisher'],
+                    grade=grade,
+                    created_by=request.user,
                 )
-                return redirect('writing:unit_detail', unit_id=unit.id)
-            except Exception as e:
-                messages.error(request, f'저장 중 오류: {e}')
-                return render(request, 'writing/upload.html', {'form': form})
-    else:
-        form = WritingUnitUploadForm()
+                for p in result['problems']:
+                    WritingProblem.objects.create(
+                        unit=unit,
+                        index=p['index'],
+                        korean=p['korean'],
+                        english=p['english'],
+                        word_hints=[],
+                    )
+            created_units.append(unit)
+            total_problems += len(result['problems'])
+            total_skipped += result.get('skipped_short', 0)
+        except Exception as e:
+            file_errors.append(f'{f.name}: 저장 실패 — {e}')
 
-    return render(request, 'writing/upload.html', {'form': form})
+    for err in file_errors:
+        messages.warning(request, err)
+
+    if not created_units:
+        messages.error(request, '생성된 단원이 없습니다.')
+        return render(request, 'writing/upload.html', {})
+
+    skip_msg = f' · 3단어 이하 제외 {total_skipped}행' if total_skipped else ''
+    messages.success(
+        request,
+        f'단원 {len(created_units)}개 생성 · 문제 {total_problems}개 등록{skip_msg}. '
+        f'각 단원 상세 페이지에서 "AI 한글뜻 생성" 버튼을 눌러주세요.',
+    )
+
+    if len(created_units) == 1:
+        return redirect('writing:unit_detail', unit_id=created_units[0].id)
+    return redirect('writing:unit_list')
 
 
 @teacher_required
