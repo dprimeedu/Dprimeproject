@@ -710,10 +710,12 @@ def upload_view(request):
 @teacher_required
 def unit_list(request):
     units = list(WritingUnit.objects.all().order_by('-created_at'))
-    # 각 단원의 has_hints_count 동적 부여 (테이블에 진행도 표시용)
+    with _hint_progress_lock:
+        running_ids = {uid for uid, s in _hint_progress.items() if s.get('running')}
     for u in units:
         u.has_hints_count = u.problems.exclude(word_hints=[]).count()
         u.total_count = u.problems.count()
+        u.hints_running = u.id in running_ids
     return render(request, 'writing/unit_list.html', {'units': units})
 
 
@@ -1013,18 +1015,23 @@ def assignments_bulk_update(request):
 @teacher_required
 @require_GET
 def generate_hints_status(request, unit_id):
-    """진행 상태 폴링"""
+    """진행 상태 폴링.
+    응답에:
+      - completed/total: 이번 회차 처리 진행도 (기존 detail.html 폴링용 — 호환 유지)
+      - has_hints/unit_total: 단원 전체 기준 현재 보유 한글뜻 수 (unit_list 표 갱신용)
+      - running, done
+    """
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+    has_hints = unit.problems.exclude(word_hints=[]).count()
+    unit_total = unit.problems.count()
+
     with _hint_progress_lock:
         state = _hint_progress.get(unit_id)
-        if not state:
-            # 진행 기록 없음 → DB에서 직접 확인
-            unit = get_object_or_404(WritingUnit, pk=unit_id)
-            total = unit.problems.count()
-            done_count = unit.problems.exclude(word_hints=[]).count()
-            return JsonResponse({
-                'total': total,
-                'completed': done_count,
-                'done': True,
-                'running': False,
-            })
-        return JsonResponse(dict(state))
+        if state:
+            payload = dict(state)
+        else:
+            payload = {'total': unit_total, 'completed': has_hints, 'done': True, 'running': False}
+
+    payload['has_hints'] = has_hints
+    payload['unit_total'] = unit_total
+    return JsonResponse(payload)

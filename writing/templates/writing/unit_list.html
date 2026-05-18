@@ -101,14 +101,10 @@
                             <td>{{ unit.grade }}</td>
                             <td>{{ unit.publisher|default:'-' }}</td>
                             <td class="text-center">{{ unit.total_count }}</td>
-                            <td class="text-center">
-                                {% if unit.has_hints_count == unit.total_count and unit.total_count > 0 %}
-                                    <span class="badge bg-success">{{ unit.has_hints_count }} / {{ unit.total_count }}</span>
-                                {% elif unit.has_hints_count > 0 %}
-                                    <span class="badge bg-warning text-dark">{{ unit.has_hints_count }} / {{ unit.total_count }}</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">0 / {{ unit.total_count }}</span>
-                                {% endif %}
+                            <td class="text-center hints-cell" data-unit-id="{{ unit.id }}"
+                                data-total="{{ unit.total_count }}" data-has="{{ unit.has_hints_count }}"
+                                data-running="{{ unit.hints_running|yesno:'1,0' }}">
+                                <span class="badge hints-badge"></span>
                             </td>
                             <td>{{ unit.created_by.username|default:'-' }}</td>
                             <td>{{ unit.created_at|date:'Y-m-d H:i' }}</td>
@@ -228,15 +224,77 @@
         });
     });
 
-    // ── AI 한글뜻 일괄 생성 ──
+    // ── AI 한글뜻 진행도 — 표 배지 렌더링 ──
+    function renderHintsBadge(cell, has, total, running) {
+        const badge = cell.querySelector('.hints-badge');
+        if (!badge) return;
+        let cls = 'badge hints-badge';
+        let text = `${has} / ${total}`;
+        if (running) {
+            cls += ' bg-info text-dark';
+            text = `<i class="fas fa-spinner fa-spin me-1"></i>${text}`;
+        } else if (total > 0 && has === total) {
+            cls += ' bg-success';
+        } else if (has > 0) {
+            cls += ' bg-warning text-dark';
+        } else {
+            cls += ' bg-secondary';
+        }
+        badge.className = cls;
+        badge.innerHTML = text;
+        cell.dataset.has = has;
+    }
+
+    // 초기 렌더 (서버 측 값 기반) + 이미 실행 중인 단원은 폴링 자동 시작
+    const initiallyRunning = [];
+    document.querySelectorAll('.hints-cell').forEach(cell => {
+        const running = cell.dataset.running === '1';
+        renderHintsBadge(
+            cell,
+            parseInt(cell.dataset.has),
+            parseInt(cell.dataset.total),
+            running,
+        );
+        if (running) initiallyRunning.push(parseInt(cell.dataset.unitId));
+    });
+
+    // ── AI 한글뜻 일괄 생성 + 진행도 폴링 ──
+    const pollers = {};  // unit_id → timeoutId
+
+    function startPolling(unitIds) {
+        unitIds.forEach(uid => {
+            if (pollers[uid]) return;
+            const tick = async () => {
+                try {
+                    const r = await fetch(`/training/writing/admin/units/${uid}/generate-hints/status/`);
+                    const s = await r.json();
+                    const cell = document.querySelector(`.hints-cell[data-unit-id="${uid}"]`);
+                    if (cell) renderHintsBadge(cell, s.has_hints, s.unit_total, s.running);
+                    if (!s.running) {
+                        clearTimeout(pollers[uid]);
+                        delete pollers[uid];
+                        if (Object.keys(pollers).length === 0) {
+                            // 모든 단원 완료
+                            console.log('[AI hints] all done');
+                        }
+                        return;
+                    }
+                } catch (e) { console.error(e); }
+                pollers[uid] = setTimeout(tick, 2000);
+            };
+            pollers[uid] = setTimeout(tick, 200);
+        });
+    }
+
+    if (initiallyRunning.length) startPolling(initiallyRunning);
+
     document.getElementById('bulk-hints-btn').addEventListener('click', async () => {
         const c = checked();
         if (!c.length) return;
         const unit_ids = c.map(cb => parseInt(cb.value));
         const ok = confirm(
             `${c.length}개 단원에 대해 AI 한글뜻 생성을 시작합니다.\n` +
-            `백그라운드로 진행되며, 표의 "AI 한글뜻" 컬럼이 점차 채워집니다.\n` +
-            `새로고침해서 진행 상황을 확인하세요.`
+            `진행도가 표에서 실시간으로 갱신됩니다.`
         );
         if (!ok) return;
         try {
@@ -251,8 +309,8 @@
                 `이미 실행 중: ${data.already_running}개\n` +
                 `이미 완료: ${data.already_done}개`
             );
-            // 진행도 갱신을 위해 30초 후 자동 새로고침 (사용자가 수동으로도 가능)
-            setTimeout(() => location.reload(), 30000);
+            // 선택한 모든 단원에 대해 폴링 (이미 실행 중·완료된 것도 status 한 번은 확인)
+            startPolling(unit_ids);
         } catch (e) {
             alert('에러: ' + e);
         }
