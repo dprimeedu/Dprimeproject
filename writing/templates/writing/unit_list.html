@@ -361,13 +361,20 @@ document.addEventListener('DOMContentLoaded', function () {
     async function loadStudents() {
         const wrap = document.getElementById('bulkStudentListWrap');
         wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
+        const url = '{% url "writing:student_list_api" %}';
         try {
-            const r = await fetch('{% url "writing:student_list_api" %}');
+            const r = await fetch(url, { credentials: 'same-origin' });
+            if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+            const ct = r.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error(`예상 JSON 아님: ${ct}`);
+            }
             const data = await r.json();
-            bulkAllStudents = data.students;
+            bulkAllStudents = data.students || [];
             renderStudents(bulkAllStudents);
         } catch (e) {
-            wrap.innerHTML = '<div class="alert alert-danger">학생 목록을 불러오지 못했습니다.</div>';
+            console.error('[loadStudents]', url, e);
+            wrap.innerHTML = `<div class="alert alert-danger">학생 목록을 불러오지 못했습니다.<br><small class="text-muted">${e.message}</small></div>`;
         }
     }
 
