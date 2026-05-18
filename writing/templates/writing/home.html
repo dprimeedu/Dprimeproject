@@ -62,9 +62,14 @@
                     {% else %}
                     <p class="small text-success mb-3">✨ 첫 도전 단원</p>
                     {% endif %}
-                    <a href="{% url 'writing:start_session' info.unit.id %}" class="btn btn-primary w-100">
-                        <i class="fas fa-play me-1"></i>풀기 시작
-                    </a>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'writing:flashcard' info.unit.id %}" class="btn btn-info flex-fill text-white">
+                            <i class="fas fa-book-open me-1"></i>학습하기
+                        </a>
+                        <a href="{% url 'writing:start_session' info.unit.id %}" class="btn btn-primary flex-fill">
+                            <i class="fas fa-bullseye me-1"></i>실전 TEST
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

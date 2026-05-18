@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+.fc-wrap {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+.fc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+.fc-counter {
+    font-size: 1.1rem;
+    color: var(--primary-color);
+    font-weight: 700;
+}
+.fc-card-container {
+    perspective: 1500px;
+    margin: 2rem 0;
+}
+.fc-card {
+    position: relative;
+    width: 100%;
+    min-height: 320px;
+    cursor: pointer;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(.4,.0,.2,1);
+}
+.fc-card.flipped { transform: rotateY(180deg); }
+.fc-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    background: white;
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,.1);
+    border: 2px solid #e5e7eb;
+}
+.fc-face .label {
+    position: absolute;
+    top: 1.25rem;
+    left: 1.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9ca3af;
+}
+.fc-face .text {
+    font-size: 1.8rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: #1f2937;
+}
+.fc-face .hint {
+    margin-top: 2rem;
+    color: #9ca3af;
+    font-size: 0.85rem;
+}
+.fc-front { background: linear-gradient(135deg, #ede9fe 0%, #f3f4f6 100%); }
+.fc-back {
+    transform: rotateY(180deg);
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+.fc-back .text { color: #92400e; font-family: 'Georgia', serif; font-style: italic; }
+
+.fc-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.fc-progress {
+    flex: 1;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.fc-progress .bar { height: 100%; background: var(--primary-color); transition: width .3s; }
+</style>
+
+<div class="fc-wrap">
+    <a href="{% url 'writing:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>영작훈련 홈</a>
+
+    <div class="fc-header">
+        <h3 class="mb-0"><i class="fas fa-book-open me-2"></i>{{ unit.title }} — 학습하기</h3>
+        <div class="fc-counter"><span id="fcCounter">1</span> / {{ total }}</div>
+    </div>
+
+    <div class="fc-card-container">
+        <div class="fc-card" id="fcCard" onclick="flipCard()">
+            <div class="fc-face fc-front">
+                <div class="label">🇰🇷 한글</div>
+                <div class="text" id="fcKorean">불러오는 중...</div>
+                <div class="hint">카드를 클릭하면 영어가 보입니다 (또는 스페이스바)</div>
+            </div>
+            <div class="fc-face fc-back">
+                <div class="label">🇬🇧 English</div>
+                <div class="text" id="fcEnglish"></div>
+                <div class="hint">다시 클릭하면 한글로 (또는 스페이스바)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="fc-controls">
+        <button class="btn btn-outline-secondary" id="fcPrev" onclick="prevCard()">
+            <i class="fas fa-chevron-left me-1"></i>이전
+        </button>
+        <div class="fc-progress"><div class="bar" id="fcBar" style="width: 0%"></div></div>
+        <button class="btn btn-primary" id="fcNext" onclick="nextCard()">
+            다음<i class="fas fa-chevron-right ms-1"></i>
+        </button>
+    </div>
+
+    <div class="text-center mt-4">
+        <a href="{% url 'writing:start_session' unit.id %}" class="btn btn-success btn-lg">
+            <i class="fas fa-bullseye me-1"></i>학습 끝났어요 — 실전 TEST 도전!
+        </a>
+    </div>
+</div>
+
+<script>
+const CARDS = {{ cards_json|safe }};
+const TOTAL = CARDS.length;
+let idx = 0;
+
+function render() {
+    const c = CARDS[idx];
+    document.getElementById('fcKorean').textContent = c.korean;
+    document.getElementById('fcEnglish').textContent = c.english;
+    document.getElementById('fcCounter').textContent = idx + 1;
+    document.getElementById('fcCard').classList.remove('flipped');
+    const pct = ((idx + 1) / TOTAL) * 100;
+    document.getElementById('fcBar').style.width = pct + '%';
+    document.getElementById('fcPrev').disabled = idx === 0;
+    document.getElementById('fcNext').disabled = idx === TOTAL - 1;
+}
+
+function flipCard() {
+    document.getElementById('fcCard').classList.toggle('flipped');
+}
+function nextCard() {
+    if (idx < TOTAL - 1) { idx++; render(); }
+}
+function prevCard() {
+    if (idx > 0) { idx--; render(); }
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipCard(); }
+    else if (e.key === 'ArrowRight') nextCard();
+    else if (e.key === 'ArrowLeft') prevCard();
+});
+
+render();
+</script>
+{% endblock %}

@@ -112,6 +112,23 @@ def student_home(request):
 
 
 @login_required
+def flashcard_view(request, unit_id):
+    """플래쉬카드 학습 화면 — 한글 ↔ 영어 뒤집기."""
+    unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)
+    if not is_teacher(request.user):
+        if not UnitAssignment.objects.filter(student=request.user, unit=unit).exists():
+            messages.error(request, '이 단원은 배정되지 않았습니다.')
+            return redirect('writing:home')
+    problems = list(unit.problems.all().order_by('index'))
+    cards = [{'index': p.index, 'korean': p.korean, 'english': p.english} for p in problems]
+    return render(request, 'writing/flashcard.html', {
+        'unit': unit,
+        'cards_json': json.dumps(cards, ensure_ascii=False),
+        'total': len(cards),
+    })
+
+
+@login_required
 def start_session(request, unit_id):
     """단원 풀이 시작 — WritingSession 생성 후 풀이 화면으로"""
     unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)

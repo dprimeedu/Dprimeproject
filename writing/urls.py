@@ -7,6 +7,7 @@ urlpatterns = [
     # 학생
     path('', views.student_home, name='home'),
     path('unit/<int:unit_id>/start/', views.start_session, name='start_session'),
+    path('unit/<int:unit_id>/flashcard/', views.flashcard_view, name='flashcard'),
     path('session/<int:session_id>/', views.session_view, name='session'),
     path('result/<int:session_id>/', views.result_view, name='result'),
 
