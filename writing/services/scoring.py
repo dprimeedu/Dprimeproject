@@ -173,8 +173,35 @@ def check_badges(profile, context):
     return earned_codes
 
 
+XP_PER_LEVEL_UNIT = 190  # Lv N → N+1 필요 XP = 190 * N
+
+
+def xp_needed_for_level(level):
+    """레벨 N 에서 N+1 로 가는 데 필요한 XP."""
+    return XP_PER_LEVEL_UNIT * level
+
+
+def level_start_xp(level):
+    """레벨 N 시작 시점의 누적 XP (Lv 1=0, Lv 2=190, Lv 3=570 ...)."""
+    if level <= 1:
+        return 0
+    return XP_PER_LEVEL_UNIT * level * (level - 1) // 2
+
+
 def compute_level(total_xp):
-    return total_xp // 100 + 1
+    """누적 XP → 현재 레벨. 점진적 증가 (Lv 1=0, Lv 2=190, Lv 3=570 ...)."""
+    if total_xp <= 0:
+        return 1
+    import math
+    # cumulative(level) = 190 * level * (level - 1) / 2 <= total_xp
+    # level <= (1 + sqrt(1 + 8*xp/190)) / 2
+    n = int((1 + math.sqrt(1 + 8 * total_xp / XP_PER_LEVEL_UNIT)) / 2)
+    # 부동소수 오차 보정
+    while n > 1 and level_start_xp(n) > total_xp:
+        n -= 1
+    while level_start_xp(n + 1) <= total_xp:
+        n += 1
+    return max(1, n)
 
 
 def compute_title(level):

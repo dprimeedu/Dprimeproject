@@ -203,7 +203,8 @@ class StudentProfile(models.Model):
 
     @property
     def level(self):
-        return self.total_xp // 100 + 1
+        from .services.scoring import compute_level
+        return compute_level(self.total_xp)
 
     @property
     def title(self):
@@ -223,11 +224,13 @@ class StudentProfile(models.Model):
 
     @property
     def xp_in_current_level(self):
-        return self.total_xp % 100
+        from .services.scoring import level_start_xp
+        return self.total_xp - level_start_xp(self.level)
 
     @property
     def xp_to_next_level(self):
-        return 100 - self.xp_in_current_level
+        from .services.scoring import xp_needed_for_level
+        return xp_needed_for_level(self.level) - self.xp_in_current_level
 
 
 class Achievement(models.Model):
