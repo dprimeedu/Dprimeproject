@@ -66,12 +66,16 @@ class CustomLoginView(LoginView):
         next_url = self.request.GET.get('next') or self.request.POST.get('next')
         if next_url:
             return redirect(next_url)
-        
-        # 사용자 유형에 따라 리디렉션
+
         if user.is_academy:
-            return redirect('acad:academy_dashboard')  # 학원 대시보드 URL
-        else:
-            return redirect('index')  # 학생 대시보드 URL
+            return redirect('acad:academy_dashboard')
+
+        # 학원에서 승인한 재원생은 바로 재원생 메뉴로
+        is_admin = user.is_superuser or user.is_staff
+        if not is_admin and getattr(user, 'is_approved', False):
+            return redirect('writing:home')
+
+        return redirect('index')
 
     def form_invalid(self, form):
         messages.error(self.request, '아이디 또는 비밀번호가 잘못되었습니다.')
