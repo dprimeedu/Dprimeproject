@@ -85,7 +85,6 @@ def parse_writing_excel(file) -> Dict:
             if not row or all(c is None for c in row):
                 continue
 
-            index_val = row[0] if len(row) > 0 else None
             english_val = row[1] if len(row) > 1 else None
             korean_val = row[2] if len(row) > 2 else None
 
@@ -106,12 +105,8 @@ def parse_writing_excel(file) -> Dict:
                 skipped_short += 1
                 continue
 
-            try:
-                idx = int(index_val) if index_val not in (None, '') else len(problems) + 1
-            except (ValueError, TypeError):
-                idx = len(problems) + 1
-
-            problems.append({'index': idx, 'korean': korean, 'english': english})
+            # 색인 컬럼(row[0])은 무시 — 엑셀에 중복/공백이 있어도 안전하게 행 순서대로 자동 부여
+            problems.append({'index': len(problems) + 1, 'korean': korean, 'english': english})
 
         if not problems:
             errors.append('유효한 문제 행이 없습니다.')
