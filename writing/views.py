@@ -952,6 +952,67 @@ def generate_hints_bulk_ajax(request):
 DEFAULT_STUDENT_PASSWORD = '123456'
 
 
+def _xlsx_response(workbook, filename):
+    from io import BytesIO
+    from django.http import HttpResponse
+    buf = BytesIO()
+    workbook.save(buf)
+    buf.seek(0)
+    response = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+def _style_header_row(ws):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    bold = Font(bold=True)
+    fill = PatternFill('solid', fgColor='E5E7EB')
+    center = Alignment(horizontal='center', vertical='center')
+    for cell in ws[1]:
+        cell.font = bold
+        cell.fill = fill
+        cell.alignment = center
+
+
+@teacher_required
+def student_template_xlsx(request):
+    """학생 일괄 등록용 빈 양식."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '학생 명단'
+    ws.append(['ID', '이름'])
+    ws.append(['dprimeedu1', '홍길동'])
+    ws.append(['dprimeedu2', '김철수'])
+    ws.append(['dprimeedu3', '이영희'])
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 18
+    _style_header_row(ws)
+    return _xlsx_response(wb, 'students_template.xlsx')
+
+
+@teacher_required
+def writing_template_xlsx(request):
+    """영작 단원 업로드용 빈 양식."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '영작 문제'
+    ws.append(['색인', '영어', '한글'])
+    ws.append([1, 'In under three years was the project finished.', '3년도 채 안 되어 프로젝트는 끝났다.'])
+    ws.append([2, 'I had never seen such a beautiful sunset.', '나는 그렇게 아름다운 일몰을 본 적이 없었다.'])
+    ws.append([3, 'You should always do your best.', '항상 최선을 다해야 한다.'])
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 55
+    ws.column_dimensions['C'].width = 35
+    _style_header_row(ws)
+    return _xlsx_response(wb, 'writing_unit_template.xlsx')
+
+
 @teacher_required
 def student_admin(request):
     """학생 관리 페이지 — 전체 학생 + 액션."""
