@@ -303,12 +303,6 @@
         </div>
     </div>
 
-    <!-- 리더보드 (상단) — 동기부여용으로 풀이 화면 위에 노출 -->
-    <div class="leaderboard" id="leaderboardBox" style="display:none;">
-        <h5>🏆 단원 리더보드 — {{ unit.title }}</h5>
-        <div id="leaderboardBody"></div>
-    </div>
-
     <!-- 문제 영역 -->
     <div class="problem-area">
         <div class="problem-counter" id="problemNumber">Q1.</div>
@@ -325,6 +319,12 @@
                 다음 문제로 ➔ (Enter)
             </button>
         </div>
+    </div>
+
+    <!-- 리더보드 (학습 영역 아래 — 학습 공간 위치 고정) -->
+    <div class="leaderboard" id="leaderboardBox" style="display:none;">
+        <h5>🏆 단원 리더보드 — {{ unit.title }}</h5>
+        <div id="leaderboardBody"></div>
     </div>
 </div>
 
