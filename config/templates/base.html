@@ -33,47 +33,82 @@
 </head>
 
 <body>
-    <!-- navbar -->
-    <nav class="navbar navbar-expand-lg sticky-top">
-        <div class="container">
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent">
-                <span class="navbar-toggler-icon"></span>
+    <!-- 상단 바: 사이드바 토글 + 사용자 메뉴 -->
+    <nav class="navbar navbar-expand-lg sticky-top topbar">
+        <div class="container-fluid px-3">
+            <button class="btn btn-link p-0 me-2 d-lg-none sidebar-toggle" type="button" aria-label="메뉴 열기">
+                <i class="fas fa-bars fa-lg"></i>
             </button>
-            <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <div class="me-auto"></div>
-                <div class="d-flex align-items-center gap-2">
-                    {% if user.is_authenticated %}
-                        <div class="dropdown">
-                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user me-1"></i>{{ user.username }}
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                                <li><a class="dropdown-item" href="{% url 'member:profile_view' %}" style="font-weight: 500;">프로필</a></li>
-                                <li>
-                                    <form method="post" action="{% url 'logout' %}" class="m-0">
-                                        {% csrf_token %}
-                                        <button class="dropdown-item" type="submit" style="font-weight: 500;">로그아웃</button>
-                                    </form>
-                                </li>
-                            </ul>
-                        </div>
-                    {% else %}
-                        <a class="btn btn-primary small-btn" href="{% url 'login' %}"><i class="fas fa-sign-in-alt me-1"></i>로그인</a>
-                        <a class="btn btn-outline-primary small-btn" href="{% url 'register' %}"><i class="fas fa-user-plus me-1"></i>회원가입</a>
-                    {% endif %}
-                </div>
+            <a class="navbar-brand-text fw-bold" href="{% url 'index' %}" style="color: var(--primary-color); text-decoration: none;">프라임에듀</a>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                {% if user.is_authenticated %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user me-1"></i>{{ user.username }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="{% url 'member:profile_view' %}" style="font-weight: 500;">프로필</a></li>
+                            <li>
+                                <form method="post" action="{% url 'logout' %}" class="m-0">
+                                    {% csrf_token %}
+                                    <button class="dropdown-item" type="submit" style="font-weight: 500;">로그아웃</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                {% else %}
+                    <a class="btn btn-primary small-btn" href="{% url 'login' %}"><i class="fas fa-sign-in-alt me-1"></i>로그인</a>
+                    <a class="btn btn-outline-primary small-btn" href="{% url 'register' %}"><i class="fas fa-user-plus me-1"></i>회원가입</a>
+                {% endif %}
             </div>
         </div>
     </nav>
 
-    <!-- Body에 대한 content -->
-    {% block content %}
+    <!-- 사이드바 -->
+    <aside class="app-sidebar" id="appSidebar">
+        <div class="sidebar-section-label">메인</div>
+        <a class="sidebar-link" href="{% url 'index' %}"><i class="fas fa-home"></i>홈</a>
+        <a class="sidebar-link" href="{% url 'mock_exam' %}"><i class="fas fa-download"></i>모고 데이터 다운로드</a>
 
-    {% endblock %}
+        {% if user.is_authenticated %}
+            {% if user.is_staff or user.is_superuser or user.is_academy %}
+                <div class="sidebar-section-label">관리자</div>
+                <a class="sidebar-link" href="{% url 'writing:unit_list' %}"><i class="fas fa-book"></i>영작 단원 관리</a>
+                <a class="sidebar-link" href="{% url 'writing:student_admin' %}"><i class="fas fa-user-graduate"></i>학생 관리</a>
+                <a class="sidebar-link" href="{% url 'writing:upload' %}"><i class="fas fa-upload"></i>새 단원 업로드</a>
+                <a class="sidebar-link" href="{% url 'writing:student_upload' %}"><i class="fas fa-file-excel"></i>학생 일괄 등록</a>
+                <a class="sidebar-link" href="/admin/" target="_blank"><i class="fas fa-cog"></i>Django Admin</a>
+            {% elif user.is_approved %}
+                <div class="sidebar-section-label">재원생</div>
+                <a class="sidebar-link" href="{% url 'writing:home' %}"><i class="fas fa-pen-nib"></i>영작훈련</a>
+            {% else %}
+                <div class="sidebar-section-label">계정</div>
+                <a class="sidebar-link" href="{% url 'writing:home' %}"><i class="fas fa-user-clock"></i>재원생 메뉴 (승인 대기)</a>
+            {% endif %}
+
+            <div class="sidebar-section-label">계정</div>
+            <a class="sidebar-link" href="{% url 'member:profile_view' %}"><i class="fas fa-id-card"></i>프로필</a>
+            <form method="post" action="{% url 'logout' %}" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="sidebar-link sidebar-link-btn"><i class="fas fa-sign-out-alt"></i>로그아웃</button>
+            </form>
+        {% else %}
+            <div class="sidebar-section-label">계정</div>
+            <a class="sidebar-link" href="{% url 'login' %}"><i class="fas fa-sign-in-alt"></i>로그인</a>
+            <a class="sidebar-link" href="{% url 'register' %}"><i class="fas fa-user-plus"></i>회원가입</a>
+        {% endif %}
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Body에 대한 content -->
+    <main class="app-main">
+        {% block content %}
+        {% endblock %}
+    </main>
 
     <!-- Footer를 추가할 일이 있을까? -->
     {% block footer %}
-    <footer>
+    <footer class="app-footer">
         <div class="container">
             <p>© 2024 프라임에듀</p>
         </div>
@@ -82,5 +117,27 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <!-- Sidebar toggle (모바일) -->
+    <script>
+    (function () {
+        const sidebar = document.getElementById('appSidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        const toggle = document.querySelector('.sidebar-toggle');
+        if (!sidebar || !backdrop) return;
+        function open()  { sidebar.classList.add('open');  backdrop.classList.add('open'); }
+        function close() { sidebar.classList.remove('open'); backdrop.classList.remove('open'); }
+        if (toggle) toggle.addEventListener('click', open);
+        backdrop.addEventListener('click', close);
+
+        // 현재 페이지 하이라이트
+        const path = window.location.pathname;
+        document.querySelectorAll('.sidebar-link').forEach(a => {
+            const href = a.getAttribute('href');
+            if (href && href !== '/' && path.startsWith(href)) a.classList.add('active');
+            else if (href === '/' && path === '/') a.classList.add('active');
+        });
+    })();
+    </script>
 </body>
 </html>
