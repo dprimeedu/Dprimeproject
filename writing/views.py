@@ -163,13 +163,11 @@ def _should_auto_fill(word, position):
     # 약자 (Mt., Dr. 등)
     if _ABBREV_PATTERN.match(cleaned):
         return True
-    # 모두 대문자 (USA, AI, NASA 등) — 2글자 이상
+    # 모두 대문자 (USA, AI, NASA 등) — 2글자 이상은 약자/축약으로 간주
     if len(cleaned) >= 2 and cleaned.isupper():
         return True
-    # 문장 첫 단어가 아니면서 대문자 시작 → 고유명사로 간주 ('I' 제외)
-    if position > 0 and cleaned[0].isupper() and cleaned != 'I':
-        return True
-
+    # (이전엔 "중간 대문자 시작 = 고유명사" 룰이 있었지만, 제목 케이스 데이터에선
+    # 일반 명사도 대문자라 잘못 자동 채우기 됐음 — 제거)
     return False
 
 
