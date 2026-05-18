@@ -222,10 +222,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (searchEl) {
-        // 실시간 필터 (영문/숫자 + IME 조합 완료)
-        searchEl.addEventListener('input', runSearch);
-        searchEl.addEventListener('compositionend', runSearch);
-        // 엔터 — submit 방지하고 즉시 검색
+        // 엔터 키 또는 검색 버튼 클릭 시만 검색 (실시간 X — 명시적 트리거)
         searchEl.addEventListener('keydown', e => {
             if (e.key === 'Enter') {
                 e.preventDefault();
