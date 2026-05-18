@@ -269,6 +269,30 @@
         font-weight: 600;
         margin-left: 0.5rem;
     }
+
+    /* 시간 초과 오버레이 */
+    .time-expired-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        backdrop-filter: blur(4px);
+    }
+    .time-expired-box {
+        background: white;
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        text-align: center;
+        max-width: 480px;
+        width: 90%;
+        box-shadow: 0 20px 50px rgba(0,0,0,.3);
+    }
+    .time-expired-box .clock-icon { font-size: 4rem; }
+    .time-expired-box h3 { color: #ef4444; margin: 1rem 0; font-weight: 800; }
+    .time-expired-box p { color: #4b5563; font-size: 1.05rem; margin-bottom: 1.5rem; }
 </style>
 
 <div class="play-wrap">
@@ -356,12 +380,38 @@ function fmtTime(sec) {
 }
 document.getElementById('targetTime').textContent = fmtTime(TARGET_SECONDS);
 
+let _timeExpired = false;
+function showTimeExpired() {
+    if (_timeExpired) return;
+    _timeExpired = true;
+    // 풀이 입력/버튼 비활성
+    document.querySelectorAll('#wordsRow input, #wordsRow button, #actionRow button').forEach(el => {
+        el.disabled = true;
+    });
+    // 오버레이
+    const overlay = document.createElement('div');
+    overlay.className = 'time-expired-overlay';
+    overlay.innerHTML = `
+        <div class="time-expired-box">
+            <div class="clock-icon">⏰</div>
+            <h3>시간 초과</h3>
+            <p>안타깝지만 목표시간이 넘었네요<br>다시 학습하고 재도전하세요!</p>
+            <a href="{% url 'writing:home' %}" class="btn btn-primary btn-lg">
+                <i class="fas fa-redo me-1"></i>홈으로 돌아가서 재학습
+            </a>
+        </div>`;
+    document.body.appendChild(overlay);
+}
+
 setInterval(() => {
     const el = document.getElementById('elapsedTime');
     if (!el) return;
     const sec = Math.floor((Date.now() - SESSION_STARTED_AT) / 1000);
     el.textContent = fmtTime(sec);
-    if (sec > TARGET_SECONDS) el.style.color = '#ef4444';
+    if (sec > TARGET_SECONDS) {
+        el.style.color = '#ef4444';
+        showTimeExpired();
+    }
 }, 1000);
 
 // 리더보드 (점수 + 시간 두 섹션)
