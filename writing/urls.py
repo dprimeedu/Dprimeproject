@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/complete-problem/', views.complete_problem_api, name='api_complete_problem'),
     path('api/reset-problem/', views.reset_problem_api, name='api_reset_problem'),
     path('api/complete-session/', views.complete_session_api, name='api_complete_session'),
+    path('api/leaderboard/<int:unit_id>/', views.leaderboard_api, name='api_leaderboard'),
 
     # 선생님 / admin
     path('admin/upload/', views.upload_view, name='upload'),

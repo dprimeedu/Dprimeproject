@@ -16,6 +16,11 @@ class WritingUnit(models.Model):
     publisher = models.CharField(max_length=50, blank=True, verbose_name='출판사')
     grade = models.CharField(max_length=10, choices=GRADE_CHOICES, default='기타', verbose_name='학년')
     description = models.TextField(blank=True, verbose_name='설명')
+    target_seconds = models.IntegerField(
+        null=True, blank=True,
+        verbose_name='목표 완료 시간(초)',
+        help_text='빈 값이면 자동 계산 (문제 수 × 30초)',
+    )
     is_active = models.BooleanField(default=True, verbose_name='활성화')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -39,6 +44,11 @@ class WritingUnit(models.Model):
     @property
     def problem_count(self):
         return self.problems.count()
+
+    @property
+    def computed_target_seconds(self):
+        """목표 시간 — 수동 지정값 우선, 없으면 문제 수 × 30초."""
+        return self.target_seconds if self.target_seconds else self.problem_count * 30
 
 
 class WritingProblem(models.Model):
@@ -121,6 +131,7 @@ class WritingSession(models.Model):
     perfect_sentences = models.IntegerField(default=0)
     max_word_combo = models.IntegerField(default=0)
     max_sentence_combo = models.IntegerField(default=0)
+    time_bonus_earned = models.IntegerField(default=0, verbose_name='시간 보너스')
 
     class Meta:
         db_table = 'writing_session'

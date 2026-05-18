@@ -242,6 +242,12 @@ def result_view(request, session_id):
         earned_at__gte=session.started_at,
     ).select_related('achievement')
 
+    elapsed_seconds = 0
+    if session.finished_at:
+        elapsed_seconds = int((session.finished_at - session.started_at).total_seconds())
+    target_seconds = session.unit.computed_target_seconds
+    within_target = session.finished_at and elapsed_seconds <= target_seconds
+
     return render(request, 'writing/result.html', {
         'session': session,
         'unit': session.unit,
@@ -250,6 +256,10 @@ def result_view(request, session_id):
         'total_words': total_words_attempted,
         'correct_first_try': correct_first_try,
         'earned_badges': earned_badges,
+        'elapsed_seconds': elapsed_seconds,
+        'target_seconds': target_seconds,
+        'within_target': within_target,
+        'time_bonus': session.time_bonus_earned,
     })
 
 
@@ -609,10 +619,13 @@ def reset_problem_api(request):
     })
 
 
+TIME_BONUS = 100
+
+
 @login_required
 @require_POST
 def complete_session_api(request):
-    """세션 완료 처리"""
+    """세션 완료 처리 + 목표 시간 안 완료 시 보너스."""
     try:
         data = json.loads(request.body)
         session_id = int(data['session_id'])
@@ -622,13 +635,89 @@ def complete_session_api(request):
     session = get_object_or_404(WritingSession, pk=session_id)
     if session.student != request.user:
         return JsonResponse({'error': 'forbidden'}, status=403)
+
+    time_bonus = 0
+    elapsed = 0
+    target = session.unit.computed_target_seconds
+
     if not session.finished_at:
         session.finished_at = timezone.now()
-        session.save(update_fields=['finished_at'])
+        elapsed = int((session.finished_at - session.started_at).total_seconds())
+        if elapsed <= target:
+            time_bonus = TIME_BONUS
+            session.total_score += time_bonus
+            session.time_bonus_earned = time_bonus
+            profile = get_or_create_profile(request.user)
+            profile.total_xp += time_bonus
+            profile.save(update_fields=['total_xp'])
+        session.save(update_fields=['finished_at', 'total_score', 'time_bonus_earned'])
+    else:
+        elapsed = int((session.finished_at - session.started_at).total_seconds())
+        time_bonus = session.time_bonus_earned
 
     return JsonResponse({
         'success': True,
+        'time_bonus': time_bonus,
+        'elapsed_seconds': elapsed,
+        'target_seconds': target,
+        'within_target': elapsed <= target,
         'redirect_url': f'/training/writing/result/{session.id}/',
+    })
+
+
+@login_required
+@require_GET
+def leaderboard_api(request, unit_id):
+    """단원별 리더보드 — 학생별 최고 점수 Top 3 + 본인 순위."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Max
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+
+    finished_sessions = WritingSession.objects.filter(
+        unit=unit, finished_at__isnull=False,
+    )
+    best_per_student = (
+        finished_sessions
+        .values('student_id')
+        .annotate(best=Max('total_score'))
+        .order_by('-best', 'student_id')
+    )
+
+    top_qs = list(best_per_student[:3])
+
+    User = get_user_model()
+    student_ids = [r['student_id'] for r in top_qs]
+    users_by_id = {u.id: u for u in User.objects.filter(pk__in=student_ids)}
+
+    top = []
+    for rank, r in enumerate(top_qs, start=1):
+        u = users_by_id.get(r['student_id'])
+        if not u:
+            continue
+        top.append({
+            'rank': rank,
+            'name': u.username or f'#{u.id}',
+            'score': r['best'],
+            'is_me': u.id == request.user.id,
+        })
+
+    me_best = (
+        finished_sessions
+        .filter(student=request.user)
+        .aggregate(best=Max('total_score'))['best']
+    )
+    me_rank = None
+    if me_best is not None:
+        higher = best_per_student.filter(best__gt=me_best).count()
+        me_rank = higher + 1
+
+    return JsonResponse({
+        'unit_id': unit.id,
+        'unit_title': unit.title,
+        'top': top,
+        'me_rank': me_rank,
+        'me_best': me_best,
+        'target_seconds': unit.computed_target_seconds,
     })
 
 
