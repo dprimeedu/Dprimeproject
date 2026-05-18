@@ -68,7 +68,9 @@
     <aside class="app-sidebar" id="appSidebar">
         <div class="sidebar-section-label">메인</div>
         <a class="sidebar-link" href="{% url 'index' %}"><i class="fas fa-home"></i>홈</a>
-        <a class="sidebar-link" href="{% url 'mock_exam' %}"><i class="fas fa-download"></i>모고 데이터 다운로드</a>
+        {% if user.is_staff or user.is_superuser or user.is_academy or not user.is_approved %}
+            <a class="sidebar-link" href="{% url 'mock_exam' %}"><i class="fas fa-download"></i>모고 데이터 다운로드</a>
+        {% endif %}
 
         {% if user.is_authenticated %}
             {% if user.is_staff or user.is_superuser or user.is_academy %}
