@@ -25,15 +25,26 @@
     <form method="post" action="{% url 'writing:unit_delete' %}" id="unit-form">
         {% csrf_token %}
 
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
                 <button type="button" id="select-all-btn" class="btn btn-sm btn-outline-secondary">전체 선택</button>
                 <button type="button" id="select-none-btn" class="btn btn-sm btn-outline-secondary">전체 해제</button>
                 <span id="selected-count" class="small text-muted">0개 선택됨</span>
             </div>
-            <button type="button" id="bulk-delete-btn" class="btn btn-sm btn-danger" disabled>
-                <i class="fas fa-trash me-1"></i>선택 삭제
-            </button>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" id="bulk-hints-btn" class="btn btn-sm btn-primary bulk-action" disabled>
+                    <i class="fas fa-magic me-1"></i>AI 한글뜻 일괄 생성
+                </button>
+                <button type="button" id="bulk-assign-btn" class="btn btn-sm btn-outline-primary bulk-action" disabled>
+                    <i class="fas fa-user-plus me-1"></i>학생 일괄 추가
+                </button>
+                <button type="button" id="bulk-unassign-btn" class="btn btn-sm btn-outline-warning bulk-action" disabled>
+                    <i class="fas fa-user-minus me-1"></i>학생 일괄 제거
+                </button>
+                <button type="button" id="bulk-delete-btn" class="btn btn-sm btn-danger bulk-action" disabled>
+                    <i class="fas fa-trash me-1"></i>선택 삭제
+                </button>
+            </div>
         </div>
 
         <div class="card">
@@ -46,6 +57,7 @@
                             <th>학년</th>
                             <th>출판사</th>
                             <th class="text-center">문제 수</th>
+                            <th class="text-center">AI 한글뜻</th>
                             <th>등록자</th>
                             <th>등록일</th>
                             <th></th>
@@ -57,12 +69,21 @@
                             <td>
                                 <input type="checkbox" name="unit_ids" value="{{ unit.id }}"
                                        class="form-check-input unit-checkbox"
-                                       data-title="{{ unit.title }}" data-count="{{ unit.problem_count }}">
+                                       data-title="{{ unit.title }}" data-count="{{ unit.total_count }}">
                             </td>
                             <td><strong>{{ unit.title }}</strong></td>
                             <td>{{ unit.grade }}</td>
                             <td>{{ unit.publisher|default:'-' }}</td>
-                            <td class="text-center">{{ unit.problem_count }}</td>
+                            <td class="text-center">{{ unit.total_count }}</td>
+                            <td class="text-center">
+                                {% if unit.has_hints_count == unit.total_count and unit.total_count > 0 %}
+                                    <span class="badge bg-success">{{ unit.has_hints_count }} / {{ unit.total_count }}</span>
+                                {% elif unit.has_hints_count > 0 %}
+                                    <span class="badge bg-warning text-dark">{{ unit.has_hints_count }} / {{ unit.total_count }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">0 / {{ unit.total_count }}</span>
+                                {% endif %}
+                            </td>
                             <td>{{ unit.created_by.username|default:'-' }}</td>
                             <td>{{ unit.created_at|date:'Y-m-d H:i' }}</td>
                             <td class="text-nowrap">
@@ -77,68 +98,6 @@
             </div>
         </div>
     </form>
-
-    <script>
-    (function () {
-        const form = document.getElementById('unit-form');
-        const headerCb = document.getElementById('header-checkbox');
-        const allCbs = () => Array.from(form.querySelectorAll('.unit-checkbox'));
-        const checked = () => allCbs().filter(cb => cb.checked);
-        const bulkBtn = document.getElementById('bulk-delete-btn');
-        const countEl = document.getElementById('selected-count');
-
-        function updateState() {
-            const c = checked();
-            const total = allCbs().length;
-            countEl.textContent = `${c.length}개 선택됨`;
-            bulkBtn.disabled = c.length === 0;
-            headerCb.checked = c.length > 0 && c.length === total;
-            headerCb.indeterminate = c.length > 0 && c.length < total;
-        }
-
-        function setAll(value) {
-            allCbs().forEach(cb => { cb.checked = value; });
-            updateState();
-        }
-
-        headerCb.addEventListener('change', () => setAll(headerCb.checked));
-        document.getElementById('select-all-btn').addEventListener('click', () => setAll(true));
-        document.getElementById('select-none-btn').addEventListener('click', () => setAll(false));
-
-        allCbs().forEach(cb => cb.addEventListener('change', updateState));
-
-        bulkBtn.addEventListener('click', () => {
-            const c = checked();
-            if (!c.length) return;
-            const lines = c.map(cb => `· ${cb.dataset.title} (문제 ${cb.dataset.count}개)`).join('\n');
-            const ok = confirm(
-                `선택한 ${c.length}개 단원을 삭제합니다:\n\n${lines}\n\n` +
-                `각 단원의 학생 풀이 기록(세션·시도)과 학생 배정이 함께 삭제되며 복구할 수 없습니다.\n` +
-                `정말 삭제하시겠습니까?`
-            );
-            if (ok) form.submit();
-        });
-
-        document.querySelectorAll('.row-delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const cb = form.querySelector(`.unit-checkbox[value="${btn.dataset.unitId}"]`);
-                if (!cb) return;
-                const ok = confirm(
-                    `단원 "${cb.dataset.title}" 을(를) 삭제합니다.\n\n` +
-                    `· 문제 ${cb.dataset.count}개\n` +
-                    `· 이 단원의 학생 풀이 기록 · 학생 배정\n\n` +
-                    `모두 함께 삭제되며 복구할 수 없습니다. 정말 삭제하시겠습니까?`
-                );
-                if (!ok) return;
-                setAll(false);
-                cb.checked = true;
-                form.submit();
-            });
-        });
-
-        updateState();
-    })();
-    </script>
     {% else %}
     <div class="alert alert-info text-center py-5">
         아직 등록된 단원이 없습니다.<br>
@@ -146,4 +105,263 @@
     </div>
     {% endif %}
 </div>
+
+<!-- 학생 일괄 추가/제거 모달 -->
+<div class="modal fade" id="bulkAssignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i id="bulk-modal-icon" class="fas fa-user-plus me-2"></i>
+                    <span id="bulk-modal-title">학생 일괄 추가</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info py-2 small mb-3" id="bulk-modal-info">
+                    선택한 단원에 체크된 학생을 추가합니다. (기존 배정은 그대로 유지)
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    <input type="text" id="bulkStudentSearch" class="form-control" style="max-width:300px;"
+                           placeholder="🔍 이름/아이디 검색">
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-students-all">전체 선택</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-students-none">전체 해제</button>
+                    </div>
+                </div>
+                <div id="bulkStudentListWrap">
+                    <div class="text-center text-muted py-4">불러오는 중...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="me-auto text-muted small">
+                    선택: <strong id="bulkSelectedCount">0</strong>명
+                </span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="bulk-save-btn">
+                    <i class="fas fa-save me-1"></i><span id="bulk-save-label">추가</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const form = document.getElementById('unit-form');
+    if (!form) return;
+    const CSRF = form.querySelector('[name=csrfmiddlewaretoken]').value;
+    const headerCb = document.getElementById('header-checkbox');
+    const allCbs = () => Array.from(form.querySelectorAll('.unit-checkbox'));
+    const checked = () => allCbs().filter(cb => cb.checked);
+
+    const bulkBtns = document.querySelectorAll('.bulk-action');
+    const countEl = document.getElementById('selected-count');
+
+    function updateState() {
+        const c = checked();
+        const total = allCbs().length;
+        countEl.textContent = `${c.length}개 선택됨`;
+        bulkBtns.forEach(b => { b.disabled = c.length === 0; });
+        headerCb.checked = c.length > 0 && c.length === total;
+        headerCb.indeterminate = c.length > 0 && c.length < total;
+    }
+    function setAll(v) { allCbs().forEach(cb => { cb.checked = v; }); updateState(); }
+
+    headerCb.addEventListener('change', () => setAll(headerCb.checked));
+    document.getElementById('select-all-btn').addEventListener('click', () => setAll(true));
+    document.getElementById('select-none-btn').addEventListener('click', () => setAll(false));
+    allCbs().forEach(cb => cb.addEventListener('change', updateState));
+
+    // 선택 삭제
+    document.getElementById('bulk-delete-btn').addEventListener('click', () => {
+        const c = checked();
+        if (!c.length) return;
+        const lines = c.map(cb => `· ${cb.dataset.title} (문제 ${cb.dataset.count}개)`).join('\n');
+        const ok = confirm(
+            `선택한 ${c.length}개 단원을 삭제합니다:\n\n${lines}\n\n` +
+            `각 단원의 학생 풀이 기록과 배정이 함께 삭제되며 복구할 수 없습니다.\n정말 삭제하시겠습니까?`
+        );
+        if (ok) form.submit();
+    });
+
+    // 행별 삭제
+    document.querySelectorAll('.row-delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cb = form.querySelector(`.unit-checkbox[value="${btn.dataset.unitId}"]`);
+            if (!cb) return;
+            const ok = confirm(
+                `단원 "${cb.dataset.title}" 을(를) 삭제합니다.\n\n` +
+                `· 문제 ${cb.dataset.count}개\n· 학생 풀이 기록 · 학생 배정\n\n` +
+                `모두 함께 삭제되며 복구할 수 없습니다. 정말 삭제하시겠습니까?`
+            );
+            if (!ok) return;
+            setAll(false);
+            cb.checked = true;
+            form.submit();
+        });
+    });
+
+    // ── AI 한글뜻 일괄 생성 ──
+    document.getElementById('bulk-hints-btn').addEventListener('click', async () => {
+        const c = checked();
+        if (!c.length) return;
+        const unit_ids = c.map(cb => parseInt(cb.value));
+        const ok = confirm(
+            `${c.length}개 단원에 대해 AI 한글뜻 생성을 시작합니다.\n` +
+            `백그라운드로 진행되며, 표의 "AI 한글뜻" 컬럼이 점차 채워집니다.\n` +
+            `새로고침해서 진행 상황을 확인하세요.`
+        );
+        if (!ok) return;
+        try {
+            const r = await fetch('{% url "writing:generate_hints_bulk" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unit_ids }),
+            });
+            const data = await r.json();
+            alert(
+                `시작: ${data.started}개\n` +
+                `이미 실행 중: ${data.already_running}개\n` +
+                `이미 완료: ${data.already_done}개`
+            );
+            // 진행도 갱신을 위해 30초 후 자동 새로고침 (사용자가 수동으로도 가능)
+            setTimeout(() => location.reload(), 30000);
+        } catch (e) {
+            alert('에러: ' + e);
+        }
+    });
+
+    // ── 학생 일괄 배정 모달 ──
+    let bulkMode = 'add';
+    let bulkAllStudents = [];
+
+    const modalEl = document.getElementById('bulkAssignModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const modalIcon = document.getElementById('bulk-modal-icon');
+    const modalTitle = document.getElementById('bulk-modal-title');
+    const modalInfo = document.getElementById('bulk-modal-info');
+    const saveBtn = document.getElementById('bulk-save-btn');
+    const saveLabel = document.getElementById('bulk-save-label');
+    const searchEl = document.getElementById('bulkStudentSearch');
+
+    function openModal(mode) {
+        const c = checked();
+        if (!c.length) return;
+        bulkMode = mode;
+        if (mode === 'add') {
+            modalIcon.className = 'fas fa-user-plus me-2';
+            modalTitle.textContent = `학생 일괄 추가 — 단원 ${c.length}개`;
+            modalInfo.className = 'alert alert-info py-2 small mb-3';
+            modalInfo.textContent = '선택한 단원에 체크된 학생을 추가합니다. (기존 배정은 그대로 유지)';
+            saveLabel.textContent = '추가';
+            saveBtn.className = 'btn btn-primary';
+        } else {
+            modalIcon.className = 'fas fa-user-minus me-2';
+            modalTitle.textContent = `학생 일괄 제거 — 단원 ${c.length}개`;
+            modalInfo.className = 'alert alert-warning py-2 small mb-3';
+            modalInfo.textContent = '선택한 단원에서 체크된 학생의 배정을 제거합니다. (학생 계정은 삭제되지 않음)';
+            saveLabel.textContent = '제거';
+            saveBtn.className = 'btn btn-warning';
+        }
+        searchEl.value = '';
+        modal.show();
+        loadStudents();
+    }
+
+    async function loadStudents() {
+        const wrap = document.getElementById('bulkStudentListWrap');
+        wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
+        try {
+            const r = await fetch('{% url "writing:student_list" %}');
+            const data = await r.json();
+            bulkAllStudents = data.students;
+            renderStudents(bulkAllStudents);
+        } catch (e) {
+            wrap.innerHTML = '<div class="alert alert-danger">학생 목록을 불러오지 못했습니다.</div>';
+        }
+    }
+
+    function renderStudents(list) {
+        const wrap = document.getElementById('bulkStudentListWrap');
+        if (!list.length) {
+            wrap.innerHTML = '<div class="alert alert-warning mb-0">등록된 학생이 없습니다.</div>';
+            updateCount();
+            return;
+        }
+        let html = '<div class="list-group">';
+        for (const s of list) {
+            const label = s.name ? `${escapeHtml(s.name)} <span class="text-muted small">(${escapeHtml(s.username)})</span>` : escapeHtml(s.username);
+            html += `
+            <label class="list-group-item d-flex align-items-center">
+                <input type="checkbox" class="form-check-input me-3 bulk-student-cb" value="${s.id}">
+                <span>${label}</span>
+            </label>`;
+        }
+        html += '</div>';
+        wrap.innerHTML = html;
+        wrap.querySelectorAll('.bulk-student-cb').forEach(cb => cb.addEventListener('change', updateCount));
+        updateCount();
+    }
+
+    function updateCount() {
+        const n = document.querySelectorAll('.bulk-student-cb:checked').length;
+        document.getElementById('bulkSelectedCount').textContent = n;
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    searchEl.addEventListener('input', () => {
+        const q = searchEl.value.trim().toLowerCase();
+        if (!q) { renderStudents(bulkAllStudents); return; }
+        renderStudents(bulkAllStudents.filter(s =>
+            s.username.toLowerCase().includes(q) ||
+            (s.name && s.name.toLowerCase().includes(q))
+        ));
+    });
+
+    document.getElementById('bulk-students-all').addEventListener('click', () => {
+        document.querySelectorAll('.bulk-student-cb').forEach(cb => cb.checked = true);
+        updateCount();
+    });
+    document.getElementById('bulk-students-none').addEventListener('click', () => {
+        document.querySelectorAll('.bulk-student-cb').forEach(cb => cb.checked = false);
+        updateCount();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const unit_ids = checked().map(cb => parseInt(cb.value));
+        const student_ids = Array.from(document.querySelectorAll('.bulk-student-cb:checked')).map(cb => parseInt(cb.value));
+        if (!unit_ids.length || !student_ids.length) {
+            alert('단원과 학생을 1개 이상 선택해주세요.');
+            return;
+        }
+        try {
+            const r = await fetch('{% url "writing:assignments_bulk" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: bulkMode, unit_ids, student_ids }),
+            });
+            const data = await r.json();
+            if (data.success) {
+                const verb = bulkMode === 'add' ? '추가' : '제거';
+                const extra = bulkMode === 'remove' ? ` (${data.removed_rows}개 배정 제거됨)` : '';
+                alert(`✅ ${verb} 완료 — 단원 ${data.units}개 × 학생 ${data.students}명${extra}`);
+                modal.hide();
+            } else {
+                alert('실패');
+            }
+        } catch (e) {
+            alert('에러: ' + e);
+        }
+    });
+
+    document.getElementById('bulk-assign-btn').addEventListener('click', () => openModal('add'));
+    document.getElementById('bulk-unassign-btn').addEventListener('click', () => openModal('remove'));
+
+    updateState();
+})();
+</script>
 {% endblock %}

@@ -709,7 +709,11 @@ def upload_view(request):
 
 @teacher_required
 def unit_list(request):
-    units = WritingUnit.objects.all().order_by('-created_at')
+    units = list(WritingUnit.objects.all().order_by('-created_at'))
+    # 각 단원의 has_hints_count 동적 부여 (테이블에 진행도 표시용)
+    for u in units:
+        u.has_hints_count = u.problems.exclude(word_hints=[]).count()
+        u.total_count = u.problems.count()
     return render(request, 'writing/unit_list.html', {'units': units})
 
 
@@ -894,6 +898,115 @@ def assignment_update(request, unit_id):
         'assigned_count': UnitAssignment.objects.filter(unit=unit).count(),
         'added': len(to_add),
         'removed': len(to_remove),
+    })
+
+
+@teacher_required
+@require_POST
+def generate_hints_bulk_ajax(request):
+    """체크한 N개 단원에서 word_hints 비어있는 문제를 각각 백그라운드 생성 시작."""
+    try:
+        data = json.loads(request.body or '{}')
+        unit_ids = [int(x) for x in data.get('unit_ids', [])]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid unit_ids')
+
+    started = []
+    already_running = []
+    already_done = []
+
+    for uid in unit_ids:
+        unit = WritingUnit.objects.filter(pk=uid).first()
+        if not unit:
+            continue
+        remaining = unit.problems.filter(word_hints=[]).count()
+        if remaining == 0:
+            already_done.append(uid)
+            continue
+        with _hint_progress_lock:
+            existing = _hint_progress.get(uid)
+            if existing and existing.get('running'):
+                already_running.append(uid)
+                continue
+            _hint_progress[uid] = {
+                'total': remaining, 'completed': 0,
+                'done': False, 'running': True, 'error': None,
+            }
+        threading.Thread(target=_run_hint_generation, args=(uid,), daemon=True).start()
+        started.append(uid)
+
+    return JsonResponse({
+        'started': len(started),
+        'already_running': len(already_running),
+        'already_done': len(already_done),
+    })
+
+
+@teacher_required
+@require_GET
+def student_list_api(request):
+    """전체 학생 목록 (단원 무관) — 일괄 배정/해제 모달용."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    users = User.objects.filter(is_active=True).order_by('username')
+    students = []
+    for u in users:
+        if is_teacher(u):
+            continue
+        name = (
+            getattr(u, 'name', None)
+            or getattr(u, 'full_name', None)
+            or f'{u.first_name} {u.last_name}'.strip()
+            or ''
+        )
+        students.append({'id': u.id, 'username': u.username, 'name': name})
+    return JsonResponse({'students': students}, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
+@require_POST
+def assignments_bulk_update(request):
+    """체크한 N개 단원에 학생 추가 또는 단원에서 학생 제거.
+    body: { action: 'add'|'remove', unit_ids: [...], student_ids: [...] }
+    """
+    try:
+        data = json.loads(request.body)
+        action = data.get('action')
+        unit_ids = [int(x) for x in data.get('unit_ids', [])]
+        student_ids = [int(x) for x in data.get('student_ids', [])]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid body')
+
+    if action not in ('add', 'remove'):
+        return HttpResponseBadRequest('action must be add or remove')
+    if not unit_ids or not student_ids:
+        return HttpResponseBadRequest('Empty unit_ids or student_ids')
+
+    valid_unit_ids = list(
+        WritingUnit.objects.filter(pk__in=unit_ids).values_list('id', flat=True)
+    )
+
+    if action == 'add':
+        UnitAssignment.objects.bulk_create(
+            [
+                UnitAssignment(student_id=sid, unit_id=uid, assigned_by=request.user)
+                for uid in valid_unit_ids
+                for sid in student_ids
+            ],
+            ignore_conflicts=True,
+        )
+        return JsonResponse({
+            'success': True, 'action': 'add',
+            'units': len(valid_unit_ids), 'students': len(student_ids),
+        })
+
+    deleted, _ = UnitAssignment.objects.filter(
+        unit_id__in=valid_unit_ids, student_id__in=student_ids,
+    ).delete()
+    return JsonResponse({
+        'success': True, 'action': 'remove',
+        'units': len(valid_unit_ids), 'students': len(student_ids),
+        'removed_rows': deleted,
     })
 
 
