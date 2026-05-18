@@ -639,6 +639,26 @@ def complete_session_api(request):
 VALID_GRADES = {g[0] for g in WritingUnit.GRADE_CHOICES}
 
 
+def _start_hint_generation(unit_id):
+    """단원의 AI 한글뜻 생성 백그라운드 스레드 시작. 이미 실행 중이거나 모두 완료면 skip."""
+    unit = WritingUnit.objects.filter(pk=unit_id).first()
+    if not unit:
+        return False
+    remaining = unit.problems.filter(word_hints=[]).count()
+    if remaining == 0:
+        return False
+    with _hint_progress_lock:
+        existing = _hint_progress.get(unit_id)
+        if existing and existing.get('running'):
+            return False
+        _hint_progress[unit_id] = {
+            'total': remaining, 'completed': 0,
+            'done': False, 'running': True, 'error': None,
+        }
+    threading.Thread(target=_run_hint_generation, args=(unit_id,), daemon=True).start()
+    return True
+
+
 @teacher_required
 def upload_view(request):
     if request.method != 'POST':
@@ -653,6 +673,7 @@ def upload_view(request):
     total_problems = 0
     total_skipped = 0
     file_errors = []
+    duplicates = []
 
     for f in files:
         if not f.name.lower().endswith(('.xlsx', '.xls')):
@@ -662,20 +683,26 @@ def upload_view(request):
             file_errors.append(f'{f.name}: 10MB 초과')
             continue
 
+        meta = parse_filename(f.name)
+        title = meta['title'] or re.sub(r'\.[^.]+$', '', f.name)
+        grade = meta['grade'] if meta['grade'] in VALID_GRADES else '기타'
+        publisher = meta['publisher']
+
+        # 중복 체크: 학년 + 출판사 + 단원명이 모두 같으면 skip
+        if WritingUnit.objects.filter(title=title, grade=grade, publisher=publisher).exists():
+            duplicates.append(f'{f.name} → "{title}" ({grade} / {publisher or "출판사 없음"}) 이미 존재')
+            continue
+
         result = parse_writing_excel(f)
         if not result['success']:
             file_errors.append(f'{f.name}: {"; ".join(result["errors"])}')
             continue
 
-        meta = parse_filename(f.name)
-        title = meta['title'] or re.sub(r'\.[^.]+$', '', f.name)
-        grade = meta['grade'] if meta['grade'] in VALID_GRADES else '기타'
-
         try:
             with transaction.atomic():
                 unit = WritingUnit.objects.create(
                     title=title,
-                    publisher=meta['publisher'],
+                    publisher=publisher,
                     grade=grade,
                     created_by=request.user,
                 )
@@ -695,16 +722,28 @@ def upload_view(request):
 
     for err in file_errors:
         messages.warning(request, err)
+    for dup in duplicates:
+        messages.info(request, f'중복 skip: {dup}')
 
     if not created_units:
-        messages.error(request, '생성된 단원이 없습니다.')
+        if duplicates:
+            messages.warning(request, '선택한 파일 모두 이미 등록된 단원이라 생성된 단원이 없습니다.')
+        else:
+            messages.error(request, '생성된 단원이 없습니다.')
         return render(request, 'writing/upload.html', {})
 
+    # 새로 생긴 단원들에 대해 AI 한글뜻 생성 자동 시작
+    hint_started = 0
+    for u in created_units:
+        if _start_hint_generation(u.id):
+            hint_started += 1
+
     skip_msg = f' · 3단어 이하 제외 {total_skipped}행' if total_skipped else ''
+    dup_msg = f' · 중복 skip {len(duplicates)}개' if duplicates else ''
+    hint_msg = f' · AI 한글뜻 생성 {hint_started}개 단원 자동 시작 (단원 관리 표에서 진행도 확인)' if hint_started else ''
     messages.success(
         request,
-        f'단원 {len(created_units)}개 생성 · 문제 {total_problems}개 등록{skip_msg}. '
-        f'각 단원 상세 페이지에서 "AI 한글뜻 생성" 버튼을 눌러주세요.',
+        f'단원 {len(created_units)}개 생성 · 문제 {total_problems}개 등록{skip_msg}{dup_msg}{hint_msg}',
     )
 
     if len(created_units) == 1:
