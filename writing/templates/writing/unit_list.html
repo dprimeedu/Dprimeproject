@@ -1,6 +1,32 @@
 {% extends 'base.html' %}
 {% load static %}
 
+{% block extra_css %}
+<style>
+.unit-checkbox,
+#header-checkbox {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #9ca3af;
+    cursor: pointer;
+}
+.unit-checkbox:hover,
+#header-checkbox:hover {
+    border-color: var(--primary-color);
+}
+.unit-checkbox:checked,
+#header-checkbox:checked,
+#header-checkbox:indeterminate {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+.unit-checkbox:focus,
+#header-checkbox:focus {
+    box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.25);
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="home-wrap">
     <a href="{% url 'index' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>메인으로</a>
