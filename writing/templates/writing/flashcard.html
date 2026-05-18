@@ -55,39 +55,33 @@
     position: absolute;
     inset: 0;
     backface-visibility: hidden;
-    background: white;
-    border-radius: 16px;
+    background: #ffffff;
+    border-radius: 12px;
     padding: 3rem 2rem;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     text-align: center;
-    box-shadow: 0 10px 30px rgba(0,0,0,.1);
-    border: 2px solid #e5e7eb;
+    box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    border: 1px solid #e5e7eb;
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
 }
 .fc-face .label {
     position: absolute;
     top: 1.25rem;
     left: 1.5rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+    font-weight: 500;
     color: #9ca3af;
 }
 .fc-face .text {
     font-size: 1.8rem;
-    font-weight: 600;
+    font-weight: 500;
     line-height: 1.5;
-    color: #1f2937;
+    color: #111111;
 }
-.fc-front { background: linear-gradient(135deg, #ede9fe 0%, #f3f4f6 100%); }
-.fc-back {
-    transform: rotateY(180deg);
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-}
-.fc-back .text { color: #92400e; font-family: 'Georgia', serif; font-style: italic; }
+.fc-back { transform: rotateY(180deg); }
 
 /* 별표 — 카드 우상단에 표시. 카드 뒤집어도 같은 위치 (양면) */
 .fc-star {
@@ -151,11 +145,11 @@
             <div class="fc-card" id="fcCard">
                 <button class="fc-star" id="fcStar" onclick="toggleStar(event)" aria-label="별표">☆</button>
                 <div class="fc-face fc-front">
-                    <div class="label">🇰🇷 한글</div>
+                    <div class="label">한글</div>
                     <div class="text" id="fcKorean">불러오는 중...</div>
                 </div>
                 <div class="fc-face fc-back">
-                    <div class="label">🇬🇧 English</div>
+                    <div class="label">English</div>
                     <div class="text" id="fcEnglish"></div>
                 </div>
             </div>
