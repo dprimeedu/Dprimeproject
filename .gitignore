@@ -180,3 +180,9 @@ writing_data*.json
 # Claude Code (per-machine personal config & auto-commit hook)
 .claude/
 PR_본문_복붙용.md
+
+# 환경 전송용 임시 tarball (한 번 옮기고 나면 불필요)
+project_env.tar.gz
+
+# Excel sync export 임시파일
+question_data_export.xlsx

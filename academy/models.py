@@ -314,3 +314,61 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class SyncLog(models.Model):
+    """엑셀 → SQLite sync 실행 기록. /admin/academy/synclog/ 에서 조회."""
+
+    TRIGGER_CHOICES = [
+        ('cli', 'CLI'),
+        ('web', '웹UI'),
+        ('auto', '자동 (스케줄러)'),
+    ]
+
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name='시작 시각')
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name='종료 시각')
+    duration_seconds = models.FloatField(null=True, blank=True, verbose_name='소요(초)')
+
+    triggered_by = models.CharField(
+        max_length=20, choices=TRIGGER_CHOICES, default='cli',
+        verbose_name='트리거',
+    )
+    dry_run = models.BooleanField(default=False, verbose_name='드라이런')
+    target_grade = models.CharField(max_length=20, default='all', verbose_name='대상 학년')
+    target_sheet = models.CharField(max_length=50, default='all', verbose_name='대상 시트')
+
+    added = models.IntegerField(default=0, verbose_name='추가')
+    updated = models.IntegerField(default=0, verbose_name='수정')
+    skipped = models.IntegerField(default=0, verbose_name='변경없음/스킵')
+    errors = models.IntegerField(default=0, verbose_name='오류')
+
+    sheet_results = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='시트별 결과',
+        help_text='{학년: {시트: {added, updated, skipped, error}}}',
+    )
+    error_details = models.JSONField(
+        default=list, blank=True,
+        verbose_name='오류 상세',
+    )
+    notes = models.TextField(blank=True, verbose_name='메모')
+
+    class Meta:
+        ordering = ['-started_at']
+        verbose_name = 'Sync 이력'
+        verbose_name_plural = 'Sync 이력'
+
+    def __str__(self):
+        mark = '🔸DRY ' if self.dry_run else ''
+        return (
+            f"{mark}{self.started_at:%Y-%m-%d %H:%M} "
+            f"+{self.added}/~{self.updated}/={self.skipped}"
+            + (f" !{self.errors}" if self.errors else "")
+        )
+
+    def status_emoji(self):
+        if self.errors > 0:
+            return '⚠️'
+        if self.finished_at is None:
+            return '⏳'
+        return '✅'
