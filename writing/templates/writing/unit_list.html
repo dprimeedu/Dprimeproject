@@ -343,24 +343,26 @@ document.addEventListener('DOMContentLoaded', function () {
         const c = checked();
         if (!c.length) return;
         const unit_ids = c.map(cb => parseInt(cb.value));
-        const ok = confirm(
-            `${c.length}개 단원에 대해 AI 한글뜻 생성을 시작합니다.\n` +
-            `이미 한글뜻이 있는 문제는 자동으로 skip되고 미완료 문제만 생성합니다.\n` +
-            `진행도는 표 "AI 한글뜻" 컬럼에서 실시간 갱신됩니다.`
+        // 강제 재생성 여부 묻기 — 고유명사 식별을 위해 기존 데이터 다시 만들지
+        const force = confirm(
+            `${c.length}개 단원에 대해 AI 한글뜻 생성을 시작합니다.\n\n` +
+            `[확인] 강제 재생성 — 이미 만들어진 한글뜻도 다시 생성 (고유명사 식별 보완용)\n` +
+            `[취소] 보충만 — 한글뜻이 없는 문제만 새로 생성\n\n` +
+            `※ 강제 재생성은 AI 비용이 더 듭니다 (단원당 1~5원).`
         );
-        if (!ok) return;
         try {
             const r = await fetch('{% url "writing:generate_hints_bulk" %}', {
                 method: 'POST',
                 headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ unit_ids }),
+                body: JSON.stringify({ unit_ids, force }),
             });
             const data = await r.json();
             alert(
                 `시작: ${data.started}개\n` +
                 `이미 실행 중: ${data.already_running}개\n` +
-                `이미 완료: ${data.already_done}개`
+                `이미 완료: ${data.already_done}개\n` +
+                (data.forced ? '(강제 재생성 모드)' : '(보충 모드)')
             );
             startPolling(unit_ids);
         } catch (e) {

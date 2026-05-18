@@ -122,20 +122,26 @@ def generate_word_hints_batch(problems: List[Dict]) -> List[List[Dict[str, str]]
 
     items_block = '\n\n'.join(items_text)
 
-    prompt = f"""다음 {len(valid)}개 문제에 대해, 각 영어 문장의 단어별 문맥상 한국어 뜻을 매핑해주세요.
+    prompt = f"""다음 {len(valid)}개 문제에 대해, 각 영어 문장의 단어별 문맥상 한국어 뜻 + 고유명사 여부를 매핑해주세요.
 
 {items_block}
 
 규칙:
-- 각 문제마다 영어 단어 수와 정확히 일치하는 한국어 뜻 리스트
+- 각 문제마다 영어 단어 수와 정확히 일치하는 리스트
 - 문맥에 맞는 짧고 명확한 뜻 (5자 이내 권장)
 - 관사는 "(관사)" 또는 빈 문자열
+- proper_noun: true (사람·지명·고유 브랜드 등 고유명사) / false (일반 명사·동사·형용사 등)
+- "Mt.", "Mr.", "Dr." 같은 약자는 proper_noun false (그 자체로는 고유명사 아님)
+- "Tambora", "Indonesia", "Korea", "Tom" 같이 특정 대상 지칭은 proper_noun true
 - JSON 형식만 출력. 설명 X.
 
 출력 형식 (JSON 객체):
 {{
   "results": [
-    {{"index": 1, "hints": [{{"word": "In", "meaning": "(시간) ~에"}}, ...]}},
+    {{"index": 1, "hints": [
+      {{"word": "Mt.", "meaning": "산", "proper_noun": false}},
+      {{"word": "Tambora", "meaning": "탐보라", "proper_noun": true}}
+    ]}},
     {{"index": 2, "hints": [...]}}
   ]
 }}
@@ -172,9 +178,13 @@ def generate_word_hints_batch(problems: List[Dict]) -> List[List[Dict[str, str]]
             clean = []
             for i, w in enumerate(words):
                 if i < len(hints) and isinstance(hints[i], dict):
-                    clean.append({'word': w, 'meaning': hints[i].get('meaning', '').strip()})
+                    clean.append({
+                        'word': w,
+                        'meaning': hints[i].get('meaning', '').strip(),
+                        'proper_noun': bool(hints[i].get('proper_noun', False)),
+                    })
                 else:
-                    clean.append({'word': w, 'meaning': ''})
+                    clean.append({'word': w, 'meaning': '', 'proper_noun': False})
             out[orig_i] = clean
 
         return out

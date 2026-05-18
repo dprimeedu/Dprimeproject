@@ -199,9 +199,12 @@ def session_view(request, session_id):
     problems_data = []
     for p in problems:
         words = p.english_words
+        hints = p.word_hints or []
         word_meta = []
         for i, w in enumerate(words):
-            if _should_auto_fill(w, i):
+            hint = hints[i] if i < len(hints) and isinstance(hints[i], dict) else {}
+            is_proper = bool(hint.get('proper_noun'))
+            if is_proper or _should_auto_fill(w, i):
                 word_meta.append({'auto': True, 'value': w})
             else:
                 word_meta.append({'auto': False})
@@ -305,8 +308,12 @@ def check_word_api(request):
     correct_word = words[word_index]
 
     # 자동 채우기는 서버 측에서도 그 단어가 실제 자동 대상인지 검증 (악용 방지)
-    if is_auto_fill and not _should_auto_fill(correct_word, word_index):
-        is_auto_fill = False
+    if is_auto_fill:
+        hints = problem.word_hints or []
+        hint = hints[word_index] if word_index < len(hints) and isinstance(hints[word_index], dict) else {}
+        is_proper = bool(hint.get('proper_noun'))
+        if not is_proper and not _should_auto_fill(correct_word, word_index):
+            is_auto_fill = False
 
     # 이 단어에 대한 이전 시도 횟수
     prev_attempts = WritingAttempt.objects.filter(
@@ -767,11 +774,14 @@ def leaderboard_api(request, unit_id):
 VALID_GRADES = {g[0] for g in WritingUnit.GRADE_CHOICES}
 
 
-def _start_hint_generation(unit_id):
-    """단원의 AI 한글뜻 생성 백그라운드 스레드 시작. 이미 실행 중이거나 모두 완료면 skip."""
+def _start_hint_generation(unit_id, force=False):
+    """단원의 AI 한글뜻 생성 백그라운드 스레드 시작.
+    force=True면 이미 한글뜻 있는 문제도 다시 생성 (고유명사 식별 보완용)."""
     unit = WritingUnit.objects.filter(pk=unit_id).first()
     if not unit:
         return False
+    if force:
+        WritingProblem.objects.filter(unit_id=unit_id).update(word_hints=[])
     remaining = unit.problems.filter(word_hints=[]).count()
     if remaining == 0:
         return False
@@ -1078,10 +1088,12 @@ def assignment_update(request, unit_id):
 @teacher_required
 @require_POST
 def generate_hints_bulk_ajax(request):
-    """체크한 N개 단원에서 word_hints 비어있는 문제를 각각 백그라운드 생성 시작."""
+    """체크한 N개 단원에서 word_hints 비어있는 문제 백그라운드 생성.
+    body.force=true면 이미 한글뜻 있는 문제도 강제 재생성."""
     try:
         data = json.loads(request.body or '{}')
         unit_ids = [int(x) for x in data.get('unit_ids', [])]
+        force = bool(data.get('force', False))
     except (json.JSONDecodeError, ValueError, TypeError):
         return HttpResponseBadRequest('Invalid unit_ids')
 
@@ -1093,6 +1105,8 @@ def generate_hints_bulk_ajax(request):
         unit = WritingUnit.objects.filter(pk=uid).first()
         if not unit:
             continue
+        if force:
+            WritingProblem.objects.filter(unit_id=uid).update(word_hints=[])
         remaining = unit.problems.filter(word_hints=[]).count()
         if remaining == 0:
             already_done.append(uid)
@@ -1113,6 +1127,7 @@ def generate_hints_bulk_ajax(request):
         'started': len(started),
         'already_running': len(already_running),
         'already_done': len(already_done),
+        'forced': force,
     })
 
 
