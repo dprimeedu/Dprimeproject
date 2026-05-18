@@ -714,6 +714,17 @@ def unit_list(request):
 
 
 @teacher_required
+@require_POST
+def unit_delete(request, unit_id):
+    """단원 + cascade 데이터 (문제·배정·세션·시도 기록) 일괄 삭제."""
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+    title = unit.title
+    unit.delete()
+    messages.success(request, f'단원 "{title}" 삭제 완료.')
+    return redirect('writing:unit_list')
+
+
+@teacher_required
 def unit_detail(request, unit_id):
     unit = get_object_or_404(WritingUnit, pk=unit_id)
     problems = unit.problems.all().order_by('index')

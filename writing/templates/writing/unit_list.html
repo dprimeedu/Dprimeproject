@@ -15,6 +15,12 @@
         </a>
     </div>
 
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
     {% if units %}
     <div class="card">
         <div class="table-responsive">
@@ -39,8 +45,13 @@
                         <td class="text-center">{{ unit.problem_count }}</td>
                         <td>{{ unit.created_by.username|default:'-' }}</td>
                         <td>{{ unit.created_at|date:'Y-m-d H:i' }}</td>
-                        <td>
+                        <td class="text-nowrap">
                             <a href="{% url 'writing:unit_detail' unit.id %}" class="btn btn-sm btn-outline-primary">상세</a>
+                            <form method="post" action="{% url 'writing:unit_delete' unit.id %}" class="d-inline unit-delete-form"
+                                  data-title="{{ unit.title }}" data-count="{{ unit.problem_count }}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">삭제</button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}
@@ -48,6 +59,23 @@
             </table>
         </div>
     </div>
+    <script>
+    document.querySelectorAll('.unit-delete-form').forEach(form => {
+        form.addEventListener('submit', e => {
+            const title = form.dataset.title;
+            const count = form.dataset.count;
+            const ok = confirm(
+                `단원 "${title}" 을(를) 삭제합니다.\n\n` +
+                `· 문제 ${count}개\n` +
+                `· 이 단원의 모든 학생 풀이 기록(세션·시도 로그)\n` +
+                `· 이 단원에 대한 학생 배정\n\n` +
+                `위 항목이 모두 함께 삭제되며 복구할 수 없습니다.\n` +
+                `정말 삭제하시겠습니까?`
+            );
+            if (!ok) e.preventDefault();
+        });
+    });
+    </script>
     {% else %}
     <div class="alert alert-info text-center py-5">
         아직 등록된 단원이 없습니다.<br>
