@@ -343,12 +343,15 @@
         <!-- 보상 인라인 영역 (학습 영역 아래) -->
         <div class="reward-rail" id="rewardRail"></div>
         <div id="sentenceResult" style="display:none; margin-top:1rem; padding:1rem; border-radius:8px;"></div>
-        <div id="actionRow" style="display:none; margin-top:1rem; display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap;">
+        <div id="actionRow" style="margin-top:1rem; display:flex; gap:.75rem; justify-content:center; align-items:center; flex-wrap:wrap;">
             <button id="retryBtn" class="btn btn-warning" onclick="retryProblem()" style="display:none;">
                 <i class="fas fa-redo me-1"></i>다시 풀어보기
             </button>
             <button id="nextBtn" class="btn btn-primary" onclick="nextProblem()" style="display:none;">
                 다음 문제로 ➔ (Enter)
+            </button>
+            <button type="button" id="bugReportBtn" class="btn btn-danger" title="이 문제에서 발견한 버그를 관리자에게 신고">
+                <i class="fas fa-bug me-1"></i>버그 신고
             </button>
         </div>
     </div>
@@ -368,45 +371,6 @@
         </div>
     </div>
 </div>
-
-<!-- 큼지막한 플로팅 버그 신고 버튼 — 사이트 개발 단계용 -->
-<button type="button" id="bugReportBtn" class="bug-report-fab" title="이 문제에서 발견한 버그를 관리자에게 신고">
-    <i class="fas fa-bug me-2"></i>버그 신고
-</button>
-<style>
-.bug-report-fab {
-    position: fixed;
-    right: 24px;
-    bottom: 24px;
-    z-index: 1050;
-    background: #dc2626;
-    color: #fff;
-    border: 0;
-    padding: .9rem 1.5rem;
-    font-size: 1.1rem;
-    font-weight: 700;
-    border-radius: 12px;
-    box-shadow: 0 6px 16px rgba(220, 38, 38, .35), 0 2px 4px rgba(0,0,0,.1);
-    cursor: pointer;
-    transition: transform .15s, box-shadow .15s, background .15s;
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-}
-.bug-report-fab:hover {
-    background: #b91c1c;
-    transform: translateY(-2px);
-    box-shadow: 0 10px 24px rgba(220, 38, 38, .45), 0 4px 8px rgba(0,0,0,.15);
-}
-.bug-report-fab:active { transform: translateY(0); }
-@media (max-width: 600px) {
-    .bug-report-fab {
-        right: 12px; bottom: 12px;
-        padding: .7rem 1.1rem;
-        font-size: .95rem;
-    }
-}
-</style>
 
 <form style="display:none">{% csrf_token %}</form>
 
@@ -430,7 +394,8 @@ function showTimeExpired() {
     if (_timeExpired) return;
     _timeExpired = true;
     if (probTimerInterval) clearInterval(probTimerInterval);
-    document.querySelectorAll('#wordsRow input, #wordsRow button, #actionRow button').forEach(el => {
+    // 시간 초과 시 입력/액션 잠금 — 단, 버그 신고는 항상 살려둠
+    document.querySelectorAll('#wordsRow input, #wordsRow button, #actionRow button:not(#bugReportBtn)').forEach(el => {
         el.disabled = true;
     });
     const overlay = document.createElement('div');
@@ -643,7 +608,7 @@ function loadProblem(idx) {
     $('nextBtn').style.display = 'none';
     $('retryBtn').style.display = 'none';
     $('sentenceResult').style.display = 'none';
-    $('actionRow').style.display = 'none';
+    // actionRow는 항상 표시 — 버그 신고 버튼이 항상 노출되어야 하기 때문
 
     const row = $('wordsRow');
     row.innerHTML = '';
@@ -954,9 +919,8 @@ async function retryProblem() {
             });
         }
     } catch (e) { console.error(e); }
-    // 화면 reset
+    // 화면 reset (actionRow는 그대로 두고 내부 버튼만)
     $('sentenceResult').style.display = 'none';
-    $('actionRow').style.display = 'none';
     $('nextBtn').style.display = 'none';
     $('retryBtn').style.display = 'none';
     loadProblem(currentProblemIdx);
