@@ -25,6 +25,7 @@ urlpatterns = [
     path('admin/units/<int:unit_id>/replace-excel/', views.unit_replace_excel, name='unit_replace_excel'),
     path('admin/problems/<int:problem_id>/update/', views.problem_update, name='problem_update'),
     path('admin/problems/<int:problem_id>/hints/', views.problem_hints_get, name='problem_hints_get'),
+    path('admin/problems/delete/', views.problems_delete, name='problems_delete'),
     path('admin/units/delete/', views.unit_delete, name='unit_delete'),
     path('admin/units/generate-hints-bulk/', views.generate_hints_bulk_ajax, name='generate_hints_bulk'),
     path('admin/units/assignments-bulk/', views.assignments_bulk_update, name='assignments_bulk'),

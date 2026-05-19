@@ -41,6 +41,26 @@
 .editable-cell.saved-flash { background-color: #d1fae5; transition: background-color 1s; }
 .hints-clickable { cursor: pointer; }
 .hints-clickable:hover .badge { filter: brightness(0.9); transform: scale(1.05); }
+.problem-cb, #problem-header-cb {
+    width: 1.1rem; height: 1.1rem;
+    border: 2px solid #9ca3af; cursor: pointer;
+}
+.problem-cb:hover, #problem-header-cb:hover { border-color: var(--primary-color); }
+.problem-cb:checked, #problem-header-cb:checked, #problem-header-cb:indeterminate {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+.problem-row-selected { background-color: #f3e8ff !important; }
+.problem-bulk-toolbar {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .6rem .9rem;
+    background: #faf5ff;
+    border: 1px solid #e9d5ff;
+    border-radius: 8px;
+    margin: .75rem 0;
+}
+.problem-bulk-toolbar .count { font-weight: 600; color: var(--primary-color); }
+.problem-bulk-toolbar.hidden { display: none; }
 /* 단어 뜻 카드 — Quizlet 풍 */
 #hintsList { padding: .5rem 0; }
 .hint-card {
@@ -265,12 +285,26 @@
         </div>
     </div>
 
+    <div id="problemBulkToolbar" class="problem-bulk-toolbar hidden">
+        <input type="checkbox" id="bulkBackref" style="display:none">
+        <span class="count"><span id="bulkSelectedCount">0</span>개 선택됨</span>
+        <button type="button" id="bulkSelectAllBtn" class="btn btn-sm btn-outline-secondary">전체 선택</button>
+        <button type="button" id="bulkSelectNoneBtn" class="btn btn-sm btn-outline-secondary">전체 해제</button>
+        <span class="ms-auto"></span>
+        <button type="button" id="bulkDeleteBtn" class="btn btn-sm btn-danger">
+            <i class="fas fa-trash me-1"></i>선택 삭제
+        </button>
+    </div>
+
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-center" style="width: 60px;">#</th>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" id="problem-header-cb" class="form-check-input" title="전체 선택/해제">
+                        </th>
+                        <th class="text-center" style="width: 50px;">#</th>
                         <th>한글</th>
                         <th>영어 정답</th>
                         <th class="text-center" style="width: 100px;">단어 뜻</th>
@@ -279,6 +313,9 @@
                 <tbody>
                     {% for p in problems %}
                     <tr data-problem-id="{{ p.id }}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input problem-cb" value="{{ p.id }}">
+                        </td>
                         <td class="text-center"><strong>{{ p.index }}</strong></td>
                         <td class="editable-cell" data-field="korean" title="클릭해서 편집">{{ p.korean }}</td>
                         <td class="editable-cell" data-field="english" title="클릭해서 편집"><code>{{ p.english }}</code></td>
@@ -1132,6 +1169,79 @@ document.getElementById('stuAssignSaveBtn').addEventListener('click', async () =
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
     }
+});
+
+// ── 문제 체크박스 + 일괄 삭제 ──
+const problemHeaderCb = document.getElementById('problem-header-cb');
+const problemCbs = () => Array.from(document.querySelectorAll('.problem-cb'));
+const problemCheckedCbs = () => problemCbs().filter(cb => cb.checked);
+const bulkToolbar = document.getElementById('problemBulkToolbar');
+const bulkCountEl = document.getElementById('bulkSelectedCount');
+
+function updateProblemBulkUI() {
+    const all = problemCbs();
+    const checked = problemCheckedCbs();
+    bulkCountEl.textContent = checked.length;
+    if (checked.length > 0) bulkToolbar.classList.remove('hidden');
+    else bulkToolbar.classList.add('hidden');
+    if (problemHeaderCb) {
+        problemHeaderCb.checked = checked.length > 0 && checked.length === all.length;
+        problemHeaderCb.indeterminate = checked.length > 0 && checked.length < all.length;
+    }
+    // 체크된 행 강조
+    all.forEach(cb => {
+        const tr = cb.closest('tr');
+        if (cb.checked) tr.classList.add('problem-row-selected');
+        else tr.classList.remove('problem-row-selected');
+    });
+}
+
+if (problemHeaderCb) {
+    problemHeaderCb.addEventListener('change', () => {
+        const v = problemHeaderCb.checked;
+        problemCbs().forEach(cb => cb.checked = v);
+        updateProblemBulkUI();
+    });
+}
+problemCbs().forEach(cb => cb.addEventListener('change', updateProblemBulkUI));
+
+document.getElementById('bulkSelectAllBtn')?.addEventListener('click', () => {
+    problemCbs().forEach(cb => cb.checked = true);
+    updateProblemBulkUI();
+});
+document.getElementById('bulkSelectNoneBtn')?.addEventListener('click', () => {
+    problemCbs().forEach(cb => cb.checked = false);
+    updateProblemBulkUI();
+});
+
+document.getElementById('bulkDeleteBtn')?.addEventListener('click', async () => {
+    const ids = problemCheckedCbs().map(cb => parseInt(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`선택한 ${ids.length}개 문제를 삭제합니다.\n관련 풀이 기록도 함께 삭제되고, 남은 문제의 번호가 1부터 다시 매겨집니다.\n정말 진행할까요?`)) return;
+    const btn = document.getElementById('bulkDeleteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>삭제 중...';
+    try {
+        const r = await fetch('/training/writing/admin/problems/delete/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ problem_ids: ids }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (!data.success) throw new Error('delete failed');
+        location.reload();
+    } catch (e) {
+        alert(`삭제 실패: ${e.message}`);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash me-1"></i>선택 삭제';
+    }
+});
+
+// 체크박스 클릭 시 행 클릭 이벤트(인라인 편집 등) 전파 차단
+problemCbs().forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation());
 });
 
 // ── 엑셀 업로드 교체 — 확인 ──

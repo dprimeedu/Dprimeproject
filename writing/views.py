@@ -317,6 +317,9 @@ def check_word_api(request):
     if session.finished_at:
         return JsonResponse({'error': 'session_finished'}, status=400)
 
+    # 관리자/선생님의 "미리 풀어보기" — 학생 프로필·XP·배지·리더보드에 영향 X
+    is_preview = is_teacher(session.student)
+
     problem = get_object_or_404(WritingProblem, pk=problem_id, unit=session.unit)
     words = problem.english_words
     if word_index < 0 or word_index >= len(words):
@@ -364,9 +367,13 @@ def check_word_api(request):
             score_earned = 0
         else:
             score_earned = scoring.calculate_word_score(attempt_num, time_taken)
-            new_combo, hit_milestone = scoring.update_word_combo(profile, True, False)
-            if hit_milestone:
-                combo_bonus = scoring.WORD_COMBO_BONUSES.get(new_combo, 0)
+            if is_preview:
+                # 관리자 미리보기 — 프로필/콤보에 영향 X (점수는 세션 표시용으로 유지)
+                pass
+            else:
+                new_combo, hit_milestone = scoring.update_word_combo(profile, True, False)
+                if hit_milestone:
+                    combo_bonus = scoring.WORD_COMBO_BONUSES.get(new_combo, 0)
                 score_earned += combo_bonus
     else:
         # 오답
@@ -378,7 +385,8 @@ def check_word_api(request):
             score_earned = scoring.SCORE_REVEAL
             next_hint = scoring.get_hint_content(problem, word_index, 3)
             # 콤보 끊김
-            scoring.update_word_combo(profile, False, True)
+            if not is_preview:
+                scoring.update_word_combo(profile, False, True)
         else:
             # 다음 힌트 보여줌 (1 또는 2)
             hint_level_to_show = attempt_num
@@ -415,14 +423,16 @@ def check_word_api(request):
     session.save(update_fields=['total_score', 'max_word_combo'])
 
     old_level = scoring.compute_level(profile.total_xp)
-    profile.total_xp += score_earned
-    new_level = scoring.compute_level(profile.total_xp)
-    level_up = new_level > old_level
-
-    # update_fields로 필수 컬럼만 (배지/통계는 complete_problem에서 일괄)
-    profile.save(update_fields=[
-        'total_xp', 'current_word_combo', 'max_word_combo_ever',
-    ])
+    new_level = old_level
+    level_up = False
+    if not is_preview:
+        profile.total_xp += score_earned
+        new_level = scoring.compute_level(profile.total_xp)
+        level_up = new_level > old_level
+        # update_fields로 필수 컬럼만 (배지/통계는 complete_problem에서 일괄)
+        profile.save(update_fields=[
+            'total_xp', 'current_word_combo', 'max_word_combo_ever',
+        ])
 
     return JsonResponse({
         'is_correct': is_correct,
@@ -461,6 +471,7 @@ def complete_problem_api(request):
     session = get_object_or_404(WritingSession, pk=session_id)
     if session.student != request.user:
         return JsonResponse({'error': 'forbidden'}, status=403)
+    is_preview = is_teacher(session.student)
     problem = get_object_or_404(WritingProblem, pk=problem_id, unit=session.unit)
 
     # 이 문제 단어 전체 시도 분석
@@ -500,12 +511,17 @@ def complete_problem_api(request):
         forfeit_amount = sum(a.score_earned for a in attempts)
         if forfeit_amount > 0:
             session.total_score = max(0, session.total_score - forfeit_amount)
-            profile.total_xp = max(0, profile.total_xp - forfeit_amount)
+            if not is_preview:
+                profile.total_xp = max(0, profile.total_xp - forfeit_amount)
         # 문장 콤보도 끊김
-        scoring.update_sentence_combo(profile, False)
+        if not is_preview:
+            scoring.update_sentence_combo(profile, False)
         new_sent_combo, milestone = 0, False
     else:
-        new_sent_combo, milestone = scoring.update_sentence_combo(profile, all_first_try)
+        if is_preview:
+            new_sent_combo, milestone = 0, False
+        else:
+            new_sent_combo, milestone = scoring.update_sentence_combo(profile, all_first_try)
 
     extra_score = 0
     perfect_bonus = 0
@@ -517,42 +533,45 @@ def complete_problem_api(request):
             sentence_combo_bonus = scoring.SENTENCE_COMBO_BONUSES.get(new_sent_combo, 0)
         extra_score = perfect_bonus + sentence_combo_bonus
         session.total_score += extra_score
-        profile.total_xp += extra_score
+        if not is_preview:
+            profile.total_xp += extra_score
 
     if profile.current_sentence_combo > session.max_sentence_combo:
         session.max_sentence_combo = profile.current_sentence_combo
 
     # ── 배지 체크 (문장 단위, 단어마다 안 함) ──
-    perfect_count_total = WritingAttempt.objects.filter(
-        session__student=request.user,
-        is_correct=True,
-        attempt_num=1,
-    ).count()
-
-    earned_codes = scoring.check_badges(profile, {
-        'is_correct_first_try': all_first_try,
-        'perfect_count_total': perfect_count_total,
-        'was_perfect_sentence': all_first_try,
-        'was_perfect_unit': False,
-        'speed_bonus_count': 0,
-        'current_hour': datetime.now().hour,
-    })
-
     newly_earned = []
-    if earned_codes:
-        for code in earned_codes:
-            ach = Achievement.objects.filter(code=code).first()
-            if ach:
-                sa, created = StudentAchievement.objects.get_or_create(
-                    student=request.user, achievement=ach,
-                )
-                if created:
-                    newly_earned.append({
-                        'icon': ach.icon, 'name': ach.name, 'description': ach.description,
-                    })
+    if not is_preview:
+        perfect_count_total = WritingAttempt.objects.filter(
+            session__student=request.user,
+            is_correct=True,
+            attempt_num=1,
+        ).count()
+
+        earned_codes = scoring.check_badges(profile, {
+            'is_correct_first_try': all_first_try,
+            'perfect_count_total': perfect_count_total,
+            'was_perfect_sentence': all_first_try,
+            'was_perfect_unit': False,
+            'speed_bonus_count': 0,
+            'current_hour': datetime.now().hour,
+        })
+
+        if earned_codes:
+            for code in earned_codes:
+                ach = Achievement.objects.filter(code=code).first()
+                if ach:
+                    sa, created = StudentAchievement.objects.get_or_create(
+                        student=request.user, achievement=ach,
+                    )
+                    if created:
+                        newly_earned.append({
+                            'icon': ach.icon, 'name': ach.name, 'description': ach.description,
+                        })
 
     session.save()
-    profile.save()
+    if not is_preview:
+        profile.save()
 
     # 이 문장의 점수 비율 계산 (자동 채우기 제외, base 점수만 — speed/콤보 보너스 제외)
     words = problem.english_words
@@ -613,6 +632,7 @@ def reset_problem_api(request):
         return JsonResponse({'error': 'forbidden'}, status=403)
     if session.finished_at:
         return JsonResponse({'error': 'session_finished'}, status=400)
+    is_preview = is_teacher(session.student)
 
     attempts = WritingAttempt.objects.filter(session=session, problem_id=problem_id)
     forfeit = sum(a.score_earned for a in attempts)
@@ -621,14 +641,16 @@ def reset_problem_api(request):
     profile = get_or_create_profile(request.user)
     if forfeit > 0:
         session.total_score = max(0, session.total_score - forfeit)
-        profile.total_xp = max(0, profile.total_xp - forfeit)
         session.save(update_fields=['total_score'])
-        profile.save(update_fields=['total_xp'])
+        if not is_preview:
+            profile.total_xp = max(0, profile.total_xp - forfeit)
+            profile.save(update_fields=['total_xp'])
 
     # 콤보도 끊김
-    profile.current_word_combo = 0
-    profile.current_sentence_combo = 0
-    profile.save(update_fields=['current_word_combo', 'current_sentence_combo'])
+    if not is_preview:
+        profile.current_word_combo = 0
+        profile.current_sentence_combo = 0
+        profile.save(update_fields=['current_word_combo', 'current_sentence_combo'])
 
     return JsonResponse({
         'success': True,
@@ -657,6 +679,7 @@ def complete_session_api(request):
     session = get_object_or_404(WritingSession, pk=session_id)
     if session.student != request.user:
         return JsonResponse({'error': 'forbidden'}, status=403)
+    is_preview = is_teacher(session.student)
 
     time_bonus = 0
     elapsed = 0
@@ -669,9 +692,10 @@ def complete_session_api(request):
             time_bonus = TIME_BONUS
             session.total_score += time_bonus
             session.time_bonus_earned = time_bonus
-            profile = get_or_create_profile(request.user)
-            profile.total_xp += time_bonus
-            profile.save(update_fields=['total_xp'])
+            if not is_preview:
+                profile = get_or_create_profile(request.user)
+                profile.total_xp += time_bonus
+                profile.save(update_fields=['total_xp'])
         session.save(update_fields=['finished_at', 'total_score', 'time_bonus_earned'])
     else:
         elapsed = int((session.finished_at - session.started_at).total_seconds())
@@ -696,8 +720,12 @@ def leaderboard_api(request, unit_id):
     unit = get_object_or_404(WritingUnit, pk=unit_id)
     baseline = unit.computed_target_seconds
 
+    # 관리자/선생님 세션은 리더보드에서 제외
     finished_sessions = WritingSession.objects.filter(
         unit=unit, finished_at__isnull=False,
+        student__is_staff=False,
+        student__is_superuser=False,
+        student__is_academy=False,
     )
 
     # ── 점수 리더보드 ──
@@ -937,6 +965,35 @@ def unit_delete(request):
     qs.delete()
     messages.success(request, f'단원 {count}개 삭제 완료.')
     return redirect('writing:unit_list')
+
+
+@teacher_required
+@require_POST
+def problems_delete(request):
+    """문제 일괄 삭제. body: {problem_ids: [...]}. 삭제 후 같은 단원의 index를 1부터 재정렬."""
+    try:
+        data = json.loads(request.body)
+        ids = [int(x) for x in data.get('problem_ids', [])]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+    if not ids:
+        return HttpResponseBadRequest('Empty problem_ids')
+
+    affected_unit_ids = list(
+        WritingProblem.objects.filter(pk__in=ids).values_list('unit_id', flat=True).distinct()
+    )
+    with transaction.atomic():
+        deleted, _ = WritingProblem.objects.filter(pk__in=ids).delete()
+        # 단원별 index 재정렬 (1부터)
+        for uid in affected_unit_ids:
+            remaining = list(WritingProblem.objects.filter(unit_id=uid).order_by('index', 'id'))
+            # unique_together(unit, index) 충돌 회피용 — 일단 음수로 옮긴 뒤 재부여
+            for offset, p in enumerate(remaining, start=1):
+                WritingProblem.objects.filter(pk=p.pk).update(index=-offset)
+            for offset, p in enumerate(remaining, start=1):
+                WritingProblem.objects.filter(pk=p.pk).update(index=offset)
+
+    return JsonResponse({'success': True, 'deleted': deleted})
 
 
 @teacher_required
