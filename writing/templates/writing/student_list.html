@@ -17,6 +17,43 @@
 .student-checkbox:focus, #student-header-cb:focus {
     box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.25);
 }
+.student-row { cursor: pointer; }
+.student-row:hover { background-color: rgba(124, 58, 237, 0.04); }
+.student-row td.no-click { cursor: default; }
+.assign-count-btn {
+    background: none;
+    border: 0;
+    color: var(--primary-color);
+    font-weight: 600;
+    text-decoration: underline;
+    padding: 0;
+}
+.assign-count-btn:hover { color: #5b21b6; }
+.unit-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .5rem .75rem;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+}
+.unit-row:hover { background-color: #f8fafc; }
+.unit-row .grade-badge {
+    display: inline-block;
+    min-width: 2.25rem;
+    text-align: center;
+    font-size: .7rem;
+    padding: .15rem .4rem;
+    border-radius: 4px;
+    background: #ede9fe;
+    color: #6d28d9;
+    font-weight: 600;
+}
+.unit-row .publisher {
+    color: #6b7280;
+    font-size: .85rem;
+}
+#assignUnitListWrap { max-height: 50vh; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
 </style>
 {% endblock %}
 
@@ -86,8 +123,10 @@
                     </thead>
                     <tbody>
                         {% for s in students %}
-                        <tr>
-                            <td><input type="checkbox" name="student_ids" value="{{ s.id }}" class="form-check-input student-checkbox"></td>
+                        <tr class="student-row"
+                            data-student-id="{{ s.id }}"
+                            data-student-label="{{ s.username|default:s.login_id|default:s.email|default:'학생' }}">
+                            <td class="no-click"><input type="checkbox" name="student_ids" value="{{ s.id }}" class="form-check-input student-checkbox"></td>
                             <td><code>{{ s.login_id|default:s.email|default:'-' }}</code></td>
                             <td>{{ s.username|default:'-' }}</td>
                             <td class="text-center">
@@ -102,7 +141,11 @@
                                 {% if s.is_approved %}<span class="badge bg-success"><i class="fas fa-check"></i> 승인</span>
                                 {% else %}<span class="badge bg-warning text-dark">대기</span>{% endif %}
                             </td>
-                            <td class="text-center">{{ s.assigned_count }}</td>
+                            <td class="text-center">
+                                <button type="button" class="assign-count-btn" data-assigned-count="{{ s.assigned_count }}">
+                                    {{ s.assigned_count }}
+                                </button>
+                            </td>
                             <td>{{ s.date_joined|date:'Y-m-d H:i' }}</td>
                         </tr>
                         {% endfor %}
@@ -117,6 +160,45 @@
         <a href="{% url 'writing:student_upload' %}" class="btn btn-primary mt-3">엑셀로 일괄 등록</a>
     </div>
     {% endif %}
+</div>
+
+<!-- 학생 배정 편집 모달 -->
+<div class="modal fade" id="assignEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-book-open me-2"></i><span id="assignModalTitle">단원 배정</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small mb-3">
+          체크된 단원만 학생에게 배정됩니다. 체크 해제하면 배정이 해제됩니다.
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <input type="text" id="assignUnitSearch" class="form-control form-control-sm" style="max-width: 260px;" placeholder="단원명/학년/출판사 검색">
+          <select id="assignGradeFilter" class="form-select form-select-sm" style="max-width: 110px;">
+            <option value="">전체 학년</option>
+          </select>
+          <button type="button" id="assign-units-all" class="btn btn-sm btn-outline-secondary">전체 선택</button>
+          <button type="button" id="assign-units-none" class="btn btn-sm btn-outline-secondary">전체 해제</button>
+          <span class="ms-auto small text-muted"><span id="assignSelectedCount">0</span>개 선택됨 / 전체 <span id="assignTotalCount">0</span></span>
+        </div>
+
+        <div id="assignUnitListWrap">
+          <div class="text-center text-muted py-4">불러오는 중...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" id="assign-save-btn" class="btn btn-primary">
+          <i class="fas fa-save me-1"></i>저장
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -153,6 +235,169 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     update();
+
+    // ── 학생 행 클릭 → 배정 편집 모달 ──
+    const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+    const modalEl = document.getElementById('assignEditModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const titleEl = document.getElementById('assignModalTitle');
+    const wrap = document.getElementById('assignUnitListWrap');
+    const searchEl = document.getElementById('assignUnitSearch');
+    const gradeEl = document.getElementById('assignGradeFilter');
+    const selCountEl = document.getElementById('assignSelectedCount');
+    const totalCountEl = document.getElementById('assignTotalCount');
+    const saveBtn = document.getElementById('assign-save-btn');
+
+    let currentStudentId = null;
+    let allUnits = [];
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderUnits(list) {
+        if (!list.length) {
+            wrap.innerHTML = '<div class="alert alert-warning mb-0 m-2">해당 단원이 없습니다.</div>';
+            updateAssignCount();
+            return;
+        }
+        let html = '';
+        for (const u of list) {
+            html += `
+            <label class="unit-row" data-uid="${u.id}">
+                <input type="checkbox" class="form-check-input assign-unit-cb" value="${u.id}" ${u.is_assigned ? 'checked' : ''}>
+                <span class="grade-badge">${escapeHtml(u.grade || '-')}</span>
+                <span class="flex-grow-1"><strong>${escapeHtml(u.title)}</strong>
+                    ${u.publisher ? `<span class="publisher ms-2">${escapeHtml(u.publisher)}</span>` : ''}
+                </span>
+                <span class="text-muted small">${u.problem_count}문제</span>
+            </label>`;
+        }
+        wrap.innerHTML = html;
+        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.addEventListener('change', updateAssignCount));
+        // 라벨 클릭으로 체크박스 토글 (이벤트 버블 방지 — 라벨 기본 동작 사용)
+        updateAssignCount();
+    }
+
+    function updateAssignCount() {
+        const cbs = wrap.querySelectorAll('.assign-unit-cb');
+        const checkedN = wrap.querySelectorAll('.assign-unit-cb:checked').length;
+        selCountEl.textContent = checkedN;
+        totalCountEl.textContent = cbs.length;
+    }
+
+    function getFilteredUnits() {
+        const q = searchEl.value.trim().toLowerCase();
+        const grade = gradeEl.value;
+        // 체크 상태를 DOM에서 보존
+        const checkedMap = {};
+        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => {
+            checkedMap[cb.value] = cb.checked;
+        });
+        return allUnits
+            .map(u => ({ ...u, is_assigned: checkedMap[u.id] !== undefined ? checkedMap[u.id] : u.is_assigned }))
+            .filter(u => {
+                if (grade && u.grade !== grade) return false;
+                if (!q) return true;
+                const tokens = q.split(/\s+/).filter(Boolean);
+                const hay = `${u.title} ${u.grade} ${u.publisher}`.toLowerCase();
+                return tokens.every(t => hay.includes(t));
+            });
+    }
+
+    function applyFilter() {
+        renderUnits(getFilteredUnits());
+    }
+
+    function syncBackToAllUnits() {
+        // 화면에 보이는 체크박스의 현재 상태로 allUnits 동기화
+        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => {
+            const id = parseInt(cb.value);
+            const u = allUnits.find(x => x.id === id);
+            if (u) u.is_assigned = cb.checked;
+        });
+    }
+
+    async function openAssignModal(studentId, label) {
+        currentStudentId = studentId;
+        titleEl.textContent = `단원 배정 — ${label}`;
+        searchEl.value = '';
+        gradeEl.innerHTML = '<option value="">전체 학년</option>';
+        wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
+        modal.show();
+        try {
+            const url = `/training/writing/admin/api/students/${studentId}/assignments/`;
+            const r = await fetch(url, { credentials: 'same-origin' });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const data = await r.json();
+            allUnits = data.units || [];
+            const grades = Array.from(new Set(allUnits.map(u => u.grade).filter(Boolean)));
+            grades.sort();
+            for (const g of grades) {
+                const opt = document.createElement('option');
+                opt.value = g;
+                opt.textContent = g;
+                gradeEl.appendChild(opt);
+            }
+            renderUnits(allUnits);
+        } catch (e) {
+            wrap.innerHTML = `<div class="alert alert-danger m-2">배정 정보를 불러오지 못했습니다.<br><small class="text-muted">${e.message}</small></div>`;
+        }
+    }
+
+    searchEl.addEventListener('input', () => { syncBackToAllUnits(); applyFilter(); });
+    gradeEl.addEventListener('change', () => { syncBackToAllUnits(); applyFilter(); });
+
+    document.getElementById('assign-units-all').addEventListener('click', () => {
+        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.checked = true);
+        updateAssignCount();
+    });
+    document.getElementById('assign-units-none').addEventListener('click', () => {
+        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.checked = false);
+        updateAssignCount();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        if (!currentStudentId) return;
+        syncBackToAllUnits();
+        const unit_ids = allUnits.filter(u => u.is_assigned).map(u => u.id);
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+        try {
+            const r = await fetch(`/training/writing/admin/api/students/${currentStudentId}/assignments/update/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ unit_ids }),
+            });
+            const data = await r.json();
+            if (!data.success) throw new Error('save failed');
+            // 표의 배정 단원 카운트 갱신
+            const row = document.querySelector(`.student-row[data-student-id="${currentStudentId}"]`);
+            if (row) {
+                const btn = row.querySelector('.assign-count-btn');
+                if (btn) btn.textContent = data.assigned_count;
+            }
+            modal.hide();
+        } catch (e) {
+            alert('저장 실패: ' + e.message);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+        }
+    });
+
+    // 행/카운트 버튼 클릭으로 모달 오픈 (체크박스 영역은 제외)
+    document.querySelectorAll('.student-row').forEach(row => {
+        row.addEventListener('click', e => {
+            // 체크박스 컬럼 클릭은 무시
+            if (e.target.closest('td.no-click')) return;
+            if (e.target.tagName === 'INPUT') return;
+            const sid = parseInt(row.dataset.studentId);
+            const label = row.dataset.studentLabel || '학생';
+            openAssignModal(sid, label);
+        });
+    });
 });
 </script>
 {% endblock %}

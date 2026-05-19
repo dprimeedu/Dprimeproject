@@ -1335,6 +1335,88 @@ def student_action(request):
 
 @teacher_required
 @require_GET
+def student_assignments(request, student_id):
+    """학생 1명의 배정 현황 + 전체 단원 — 학생 편집 모달용."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+    assigned_ids = set(
+        UnitAssignment.objects.filter(student=student).values_list('unit_id', flat=True)
+    )
+    units = []
+    for u in WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title'):
+        units.append({
+            'id': u.id,
+            'title': u.title,
+            'grade': u.grade,
+            'publisher': u.publisher,
+            'problem_count': u.problem_count,
+            'is_assigned': u.id in assigned_ids,
+        })
+    name = (
+        getattr(student, 'name', None)
+        or getattr(student, 'full_name', None)
+        or getattr(student, 'username', '')
+        or ''
+    )
+    return JsonResponse({
+        'student': {
+            'id': student.id,
+            'username': student.username,
+            'login_id': getattr(student, 'login_id', '') or '',
+            'name': name,
+        },
+        'units': units,
+        'assigned_count': len(assigned_ids),
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
+@require_POST
+def student_assignments_update(request, student_id):
+    """학생의 배정을 body.unit_ids 로 통째 갱신 (체크 안 된 단원은 해제)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+    try:
+        data = json.loads(request.body)
+        target_ids = {int(x) for x in data.get('unit_ids', [])}
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    valid_ids = set(
+        WritingUnit.objects.filter(pk__in=target_ids).values_list('id', flat=True)
+    )
+    current_ids = set(
+        UnitAssignment.objects.filter(student=student).values_list('unit_id', flat=True)
+    )
+    to_add = valid_ids - current_ids
+    to_remove = current_ids - valid_ids
+
+    if to_add:
+        UnitAssignment.objects.bulk_create([
+            UnitAssignment(student=student, unit_id=uid, assigned_by=request.user)
+            for uid in to_add
+        ], ignore_conflicts=True)
+    if to_remove:
+        UnitAssignment.objects.filter(student=student, unit_id__in=to_remove).delete()
+
+    return JsonResponse({
+        'success': True,
+        'assigned_count': UnitAssignment.objects.filter(student=student).count(),
+        'added': len(to_add),
+        'removed': len(to_remove),
+    })
+
+
+@teacher_required
+@require_GET
 def student_list_api(request):
     """전체 학생 목록 (단원 무관) — 일괄 배정/해제 모달용."""
     from django.contrib.auth import get_user_model
