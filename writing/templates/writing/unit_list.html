@@ -4,14 +4,17 @@
 {% block extra_css %}
 <style>
 .unit-title-link {
-    color: #111827;
-    text-decoration: none;
-    border-bottom: 1px dashed transparent;
-}
-.unit-title-link:hover {
+    display: block;
     color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
+    text-decoration: none;
+    padding: .25rem 0;
+    font-size: 1rem;
 }
+.unit-title-link strong { border-bottom: 1px dashed transparent; }
+.unit-title-link:hover {
+    color: #5b21b6;
+}
+.unit-title-link:hover strong { border-bottom-color: var(--primary-color); }
 .unit-checkbox,
 #header-checkbox {
     width: 1.25rem;
