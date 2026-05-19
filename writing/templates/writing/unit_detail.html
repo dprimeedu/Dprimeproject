@@ -61,6 +61,48 @@
 }
 .problem-bulk-toolbar .count { font-weight: 600; color: var(--primary-color); }
 .problem-bulk-toolbar.hidden { display: none; }
+/* 표 행 사이 + 버튼 (행 위/사이/끝 hover 시 등장) */
+.problem-insert-row td {
+    padding: 0 !important;
+    border-top: 0 !important;
+    border-bottom: 0 !important;
+    background: transparent !important;
+    height: 0.4rem;
+    position: relative;
+}
+.problem-insert-row .insert-btn {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(.7);
+    opacity: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 0;
+    background: var(--primary-color);
+    color: #fff;
+    font-size: .9rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(124, 58, 237, .35);
+    transition: opacity .15s, transform .15s;
+    z-index: 5;
+}
+.problem-insert-row:hover .insert-btn,
+.problem-insert-row .insert-btn:focus {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+.problem-insert-row::before {
+    content: '';
+    position: absolute;
+    left: 12%; right: 12%;
+    top: 50%;
+    border-top: 1px dashed transparent;
+    pointer-events: none;
+}
+.problem-insert-row:hover::before { border-top-color: #cbd5e1; }
 /* 단어 뜻 카드 — Quizlet 풍 */
 #hintsList { padding: .5rem 0; }
 .hint-card {
@@ -339,6 +381,14 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {# 맨 위 삽입 슬롯 #}
+                    <tr class="problem-insert-row" data-after-index="0">
+                        <td colspan="5">
+                            <button type="button" class="insert-btn" title="여기에 새 문제 삽입">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </td>
+                    </tr>
                     {% for p in problems %}
                     <tr data-problem-id="{{ p.id }}">
                         <td class="text-center">
@@ -353,6 +403,13 @@
                             {% else %}
                                 <span class="badge bg-secondary">편집</span>
                             {% endif %}
+                        </td>
+                    </tr>
+                    <tr class="problem-insert-row" data-after-index="{{ forloop.counter }}">
+                        <td colspan="5">
+                            <button type="button" class="insert-btn" title="여기에 새 문제 삽입">
+                                <i class="fas fa-plus"></i>
+                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -1326,6 +1383,46 @@ document.getElementById('stuAssignSaveBtn').addEventListener('click', async () =
         btn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
     }
 });
+
+// ── 문제 행 사이 + 버튼 (새 문제 삽입) ──
+document.querySelectorAll('.problem-insert-row .insert-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const row = btn.closest('.problem-insert-row');
+        const afterIndex = parseInt(row.dataset.afterIndex || '0');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const r = await fetch(`/training/writing/admin/units/${UNIT_ID}/problem-insert/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ after_index: afterIndex }),
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const data = await r.json();
+            if (!data.success) throw new Error('insert failed');
+            // 페이지 reload 후 해당 행으로 스크롤 (해시 사용)
+            window.location.hash = `p${data.problem_id}`;
+            location.reload();
+        } catch (e) {
+            alert(`삽입 실패: ${e.message}`);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus"></i>';
+        }
+    });
+});
+
+// 새로 삽입한 문제로 스크롤
+if (window.location.hash.startsWith('#p')) {
+    const pid = window.location.hash.slice(2);
+    const row = document.querySelector(`tr[data-problem-id="${pid}"]`);
+    if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.style.transition = 'background-color 1.5s';
+        row.style.backgroundColor = '#fef3c7';
+        setTimeout(() => { row.style.backgroundColor = ''; }, 2000);
+    }
+}
 
 // ── 문제 체크박스 + 일괄 삭제 ──
 const problemHeaderCb = document.getElementById('problem-header-cb');

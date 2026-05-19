@@ -969,6 +969,45 @@ def unit_delete(request):
 
 @teacher_required
 @require_POST
+def problem_insert(request, unit_id):
+    """단원에 새 문제 행 삽입. body: {after_index: int}.
+    after_index=0 → 맨 위, after_index=N → N번째 뒤. 인덱스 자동 재정렬."""
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+    try:
+        data = json.loads(request.body or '{}')
+        after_index = int(data.get('after_index', 0))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    with transaction.atomic():
+        existing = list(
+            WritingProblem.objects.filter(unit=unit).order_by('index', 'id')
+        )
+        new_pos = max(0, min(after_index, len(existing)))  # 0..N
+
+        # unique_together(unit, index) 충돌 회피용 — 음수로 임시 옮기기
+        for i, p in enumerate(existing):
+            WritingProblem.objects.filter(pk=p.pk).update(index=-(i + 1))
+
+        # 새 문제 위치 = new_pos + 1 (1-base)
+        new_problem = WritingProblem.objects.create(
+            unit=unit,
+            index=new_pos + 1,
+            korean='(클릭해서 한글 입력)',
+            english='(click to enter english)',
+            word_hints=[],
+        )
+
+        # 나머지 재부여
+        for offset, p in enumerate(existing):
+            new_idx = offset + 1 if offset < new_pos else offset + 2
+            WritingProblem.objects.filter(pk=p.pk).update(index=new_idx)
+
+    return JsonResponse({'success': True, 'problem_id': new_problem.id, 'index': new_problem.index})
+
+
+@teacher_required
+@require_POST
 def problems_delete(request):
     """문제 일괄 삭제. body: {problem_ids: [...]}. 삭제 후 같은 단원의 index를 1부터 재정렬."""
     try:

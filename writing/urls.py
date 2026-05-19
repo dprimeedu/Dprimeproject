@@ -23,6 +23,7 @@ urlpatterns = [
     path('admin/units/', views.unit_list, name='unit_list'),
     path('admin/units/<int:unit_id>/', views.unit_detail, name='unit_detail'),
     path('admin/units/<int:unit_id>/replace-excel/', views.unit_replace_excel, name='unit_replace_excel'),
+    path('admin/units/<int:unit_id>/problem-insert/', views.problem_insert, name='problem_insert'),
     path('admin/problems/<int:problem_id>/update/', views.problem_update, name='problem_update'),
     path('admin/problems/<int:problem_id>/hints/', views.problem_hints_get, name='problem_hints_get'),
     path('admin/problems/delete/', views.problems_delete, name='problems_delete'),
