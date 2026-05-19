@@ -286,6 +286,16 @@ tr.drag-over-bottom td { box-shadow: inset 0 -3px 0 0 var(--primary-color); }
 }
 .unit-row.current-unit { background: #fef3c7; }
 .unit-row.row-selected { background-color: #f3e8ff !important; }
+.unit-title-link-in-modal {
+    color: #111827;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+}
+.unit-title-link-in-modal:hover {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+.unit-title-link-in-modal:hover i { opacity: 1; }
 .unit-row .select-cb {
     width: 1.1rem; height: 1.1rem;
     border: 2px solid #9ca3af; cursor: pointer;
@@ -1224,7 +1234,11 @@ function renderStuAssignUnits(list) {
         <div class="unit-row ${isCurrent ? 'current-unit' : ''}" data-uid="${u.id}">
             <input type="checkbox" class="form-check-input select-cb" value="${u.id}" title="선택">
             <span class="grade-badge">${escapeHtml(u.grade || '-')}</span>
-            <span class="flex-grow-1"><strong>${escapeHtml(u.title)}</strong>
+            <span class="flex-grow-1">
+                <a href="/training/writing/admin/units/${u.id}/" target="_blank" rel="noopener" class="unit-title-link-in-modal" title="새 탭에서 단원 편집">
+                    <strong>${escapeHtml(u.title)}</strong>
+                    <i class="fas fa-external-link-alt ms-1" style="font-size:.7rem; opacity:.6;"></i>
+                </a>
                 ${u.publisher ? `<span class="publisher ms-2">${escapeHtml(u.publisher)}</span>` : ''}
                 ${isCurrent ? '<span class="badge bg-warning text-dark ms-2">현재 단원</span>' : ''}
             </span>
@@ -1235,10 +1249,10 @@ function renderStuAssignUnits(list) {
     }
     wrap.innerHTML = html;
     wrap.querySelectorAll('.stu-assign-cb').forEach(cb => cb.addEventListener('change', updateStuAssignCount));
-    // 행 클릭 → 선택 토글
+    // 행 클릭 → 선택 토글 (input/button/a 및 그 자식 요소 클릭은 제외)
     wrap.querySelectorAll('.unit-row').forEach(row => {
         row.addEventListener('click', e => {
-            if (e.target.matches('input,button,a')) return;
+            if (e.target.closest('input,button,a')) return;
             const cb = row.querySelector('.select-cb');
             cb.checked = !cb.checked;
             updateStuAssignBulkUI();

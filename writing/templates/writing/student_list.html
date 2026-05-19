@@ -76,6 +76,16 @@
     color: #6b7280;
     font-size: .85rem;
 }
+.unit-title-link-in-modal {
+    color: #111827;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+}
+.unit-title-link-in-modal:hover {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+.unit-title-link-in-modal:hover i { opacity: 1; }
 .unit-row .select-cb {
     width: 1.1rem; height: 1.1rem;
     border: 2px solid #9ca3af; cursor: pointer;
@@ -386,7 +396,11 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="unit-row" data-uid="${u.id}">
                 <input type="checkbox" class="form-check-input select-cb" value="${u.id}" title="선택">
                 <span class="grade-badge">${escapeHtml(u.grade || '-')}</span>
-                <span class="flex-grow-1"><strong>${escapeHtml(u.title)}</strong>
+                <span class="flex-grow-1">
+                    <a href="/training/writing/admin/units/${u.id}/" target="_blank" rel="noopener" class="unit-title-link-in-modal" title="새 탭에서 단원 편집">
+                        <strong>${escapeHtml(u.title)}</strong>
+                        <i class="fas fa-external-link-alt ms-1" style="font-size:.7rem; opacity:.6;"></i>
+                    </a>
                     ${u.publisher ? `<span class="publisher ms-2">${escapeHtml(u.publisher)}</span>` : ''}
                 </span>
                 <span class="text-muted small">${u.problem_count}문제</span>
@@ -395,10 +409,10 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>`;
         }
         wrap.innerHTML = html;
-        // 행 클릭 → 선택 토글 (선택 체크박스/뱃지 영역 외 클릭)
+        // 행 클릭 → 선택 토글 (input/button/a 및 그 자식 요소 클릭은 제외)
         wrap.querySelectorAll('.unit-row').forEach(row => {
             row.addEventListener('click', e => {
-                if (e.target.matches('input,button,a')) return;
+                if (e.target.closest('input,button,a')) return;
                 const cb = row.querySelector('.select-cb');
                 cb.checked = !cb.checked;
                 updateUnitBulkUI();
