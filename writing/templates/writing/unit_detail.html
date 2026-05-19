@@ -228,6 +228,34 @@
     font-size: .85rem;
 }
 .unit-row.current-unit { background: #fef3c7; }
+.unit-row.row-selected { background-color: #f3e8ff !important; }
+.unit-row .select-cb {
+    width: 1.1rem; height: 1.1rem;
+    border: 2px solid #9ca3af; cursor: pointer;
+    margin-right: .25rem;
+}
+.unit-row .select-cb:hover { border-color: var(--primary-color); }
+.unit-row .select-cb:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+.unit-row .assign-badge {
+    font-size: .7rem; padding: .15rem .5rem; border-radius: 999px;
+    margin-left: .25rem; white-space: nowrap;
+}
+.unit-row .assign-badge.on { background: #d1fae5; color: #047857; }
+.unit-row .assign-badge.off { background: #f3f4f6; color: #6b7280; }
+.unit-bulk-bar {
+    display: none;
+    align-items: center; gap: .5rem;
+    padding: .5rem .75rem;
+    background: #faf5ff;
+    border: 1px solid #e9d5ff;
+    border-radius: 8px;
+    margin-bottom: .5rem;
+}
+.unit-bulk-bar.show { display: flex; }
+.unit-bulk-bar .count { font-weight: 600; color: var(--primary-color); }
 #stuAssignUnitListWrap, #assignedStudentsList {
     max-height: 50vh; overflow-y: auto;
     border: 1px solid #e5e7eb; border-radius: 6px;
@@ -411,8 +439,20 @@
       </div>
       <div class="modal-body">
         <div class="alert alert-info py-2 small mb-3">
-          체크된 단원만 학생에게 배정됩니다. 현재 단원은 노란색으로 표시됩니다.
+          체크박스로 단원을 선택 후 일괄 추가/해제. 현재 단원은 노란색으로 표시됩니다.
         </div>
+
+        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="단원 표시 범위">
+          <input type="radio" class="btn-check" name="stuAssignViewMode" id="stuAssignViewAssigned" value="assigned" checked>
+          <label class="btn btn-outline-primary" for="stuAssignViewAssigned">
+            <i class="fas fa-check-square me-1"></i>배정된 단원만
+          </label>
+          <input type="radio" class="btn-check" name="stuAssignViewMode" id="stuAssignViewAll" value="all">
+          <label class="btn btn-outline-secondary" for="stuAssignViewAll">
+            <i class="fas fa-list me-1"></i>전체 단원 (배정 추가)
+          </label>
+        </div>
+
         <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
           <input type="text" id="stuAssignUnitSearch" class="form-control form-control-sm" style="max-width: 240px;" placeholder="단원명/학년/출판사 검색">
           <select id="stuAssignGradeFilter" class="form-select form-select-sm" style="max-width: 110px;">
@@ -422,6 +462,18 @@
           <button type="button" id="stuAssignNoneBtn" class="btn btn-sm btn-outline-secondary">전체 해제</button>
           <span class="ms-auto small text-muted"><span id="stuAssignSelCount">0</span>개 선택 / 전체 <span id="stuAssignTotalCount">0</span></span>
         </div>
+
+        <div id="stuAssignBulkBar" class="unit-bulk-bar">
+          <span class="count"><span id="stuAssignBulkCount">0</span>개 선택됨</span>
+          <span class="ms-auto"></span>
+          <button type="button" id="stuAssignBulkAddBtn" class="btn btn-sm btn-primary">
+            <i class="fas fa-plus me-1"></i>선택 추가 (배정)
+          </button>
+          <button type="button" id="stuAssignBulkDeleteBtn" class="btn btn-sm btn-danger">
+            <i class="fas fa-trash me-1"></i>선택 삭제 (배정 해제)
+          </button>
+        </div>
+
         <div id="stuAssignUnitListWrap">
           <div class="text-center text-muted py-4">불러오는 중...</div>
         </div>
@@ -1069,28 +1121,68 @@ async function openStudentAssignEditModal(studentId, label) {
 
 function renderStuAssignUnits(list) {
     const wrap = document.getElementById('stuAssignUnitListWrap');
+    const mode = document.querySelector('input[name=stuAssignViewMode]:checked')?.value || 'assigned';
     if (!list.length) {
-        wrap.innerHTML = '<div class="alert alert-warning mb-0 m-2">해당 단원이 없습니다.</div>';
+        const msg = mode === 'assigned'
+            ? '이 학생에게 배정된 단원이 없습니다. <b>전체 단원</b>으로 전환해서 배정하세요.'
+            : '해당 단원이 없습니다.';
+        wrap.innerHTML = `<div class="alert alert-warning mb-0 m-2">${msg}</div>`;
         updateStuAssignCount();
+        updateStuAssignBulkUI();
         return;
     }
     let html = '';
     for (const u of list) {
         const isCurrent = (u.id === UNIT_ID);
+        const badge = u.is_assigned
+            ? '<span class="assign-badge on">✓ 배정중</span>'
+            : '<span class="assign-badge off">미배정</span>';
+        // stu-assign-cb는 hidden — 저장 로직 호환용 (is_assigned 상태 보관)
         html += `
-        <label class="unit-row ${isCurrent ? 'current-unit' : ''}" data-uid="${u.id}">
-            <input type="checkbox" class="form-check-input stu-assign-cb" value="${u.id}" ${u.is_assigned ? 'checked' : ''}>
+        <div class="unit-row ${isCurrent ? 'current-unit' : ''}" data-uid="${u.id}">
+            <input type="checkbox" class="form-check-input select-cb" value="${u.id}" title="선택">
             <span class="grade-badge">${escapeHtml(u.grade || '-')}</span>
             <span class="flex-grow-1"><strong>${escapeHtml(u.title)}</strong>
                 ${u.publisher ? `<span class="publisher ms-2">${escapeHtml(u.publisher)}</span>` : ''}
                 ${isCurrent ? '<span class="badge bg-warning text-dark ms-2">현재 단원</span>' : ''}
             </span>
             <span class="text-muted small">${u.problem_count}문제</span>
-        </label>`;
+            ${badge}
+            <input type="checkbox" class="stu-assign-cb d-none" value="${u.id}" ${u.is_assigned ? 'checked' : ''}>
+        </div>`;
     }
     wrap.innerHTML = html;
     wrap.querySelectorAll('.stu-assign-cb').forEach(cb => cb.addEventListener('change', updateStuAssignCount));
+    // 행 클릭 → 선택 토글
+    wrap.querySelectorAll('.unit-row').forEach(row => {
+        row.addEventListener('click', e => {
+            if (e.target.matches('input,button,a')) return;
+            const cb = row.querySelector('.select-cb');
+            cb.checked = !cb.checked;
+            updateStuAssignBulkUI();
+        });
+    });
+    wrap.querySelectorAll('.select-cb').forEach(cb => cb.addEventListener('change', updateStuAssignBulkUI));
     updateStuAssignCount();
+    updateStuAssignBulkUI();
+}
+
+function updateStuAssignBulkUI() {
+    const wrap = document.getElementById('stuAssignUnitListWrap');
+    const all = wrap.querySelectorAll('.select-cb');
+    const checked = wrap.querySelectorAll('.select-cb:checked');
+    const bar = document.getElementById('stuAssignBulkBar');
+    const cnt = document.getElementById('stuAssignBulkCount');
+    if (bar && cnt) {
+        cnt.textContent = checked.length;
+        if (checked.length > 0) bar.classList.add('show');
+        else bar.classList.remove('show');
+    }
+    all.forEach(cb => {
+        const row = cb.closest('.unit-row');
+        if (cb.checked) row.classList.add('row-selected');
+        else row.classList.remove('row-selected');
+    });
 }
 
 function updateStuAssignCount() {
@@ -1112,7 +1204,9 @@ function syncStuAssignBack() {
 function applyStuAssignFilter() {
     const q = document.getElementById('stuAssignUnitSearch').value.trim().toLowerCase();
     const grade = document.getElementById('stuAssignGradeFilter').value;
+    const mode = document.querySelector('input[name=stuAssignViewMode]:checked')?.value || 'assigned';
     const filtered = stuAssignAllUnits.filter(u => {
+        if (mode === 'assigned' && !u.is_assigned) return false;
         if (grade && u.grade !== grade) return false;
         if (!q) return true;
         const tokens = q.split(/\s+/).filter(Boolean);
@@ -1124,14 +1218,76 @@ function applyStuAssignFilter() {
 
 document.getElementById('stuAssignUnitSearch').addEventListener('input', () => { syncStuAssignBack(); applyStuAssignFilter(); });
 document.getElementById('stuAssignGradeFilter').addEventListener('change', () => { syncStuAssignBack(); applyStuAssignFilter(); });
+document.querySelectorAll('input[name=stuAssignViewMode]').forEach(r => {
+    r.addEventListener('change', () => { syncStuAssignBack(); applyStuAssignFilter(); });
+});
+// 전체 선택 / 해제 — 보이는 행의 select-cb 토글
 document.getElementById('stuAssignAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('#stuAssignUnitListWrap .stu-assign-cb').forEach(cb => cb.checked = true);
-    updateStuAssignCount();
+    document.querySelectorAll('#stuAssignUnitListWrap .select-cb').forEach(cb => cb.checked = true);
+    updateStuAssignBulkUI();
 });
 document.getElementById('stuAssignNoneBtn').addEventListener('click', () => {
-    document.querySelectorAll('#stuAssignUnitListWrap .stu-assign-cb').forEach(cb => cb.checked = false);
-    updateStuAssignCount();
+    document.querySelectorAll('#stuAssignUnitListWrap .select-cb').forEach(cb => cb.checked = false);
+    updateStuAssignBulkUI();
 });
+
+// 일괄 추가 / 삭제
+async function stuAssignBulkUpdate(targetAssigned) {
+    const selectedIds = Array.from(document.querySelectorAll('#stuAssignUnitListWrap .select-cb:checked'))
+        .map(cb => parseInt(cb.value));
+    if (!selectedIds.length) return;
+    const action = targetAssigned ? '배정 추가' : '배정 해제';
+    const sample = selectedIds.slice(0, 5).map(id => {
+        const u = stuAssignAllUnits.find(x => x.id === id);
+        return u ? `${u.grade} ${u.title}` : `#${id}`;
+    }).join(', ');
+    const more = selectedIds.length > 5 ? ` 외 ${selectedIds.length - 5}개` : '';
+    if (!confirm(`선택한 ${selectedIds.length}개 단원을 ${action}합니다.\n[${sample}${more}]\n진행할까요?`)) return;
+
+    // allUnits 업데이트
+    for (const id of selectedIds) {
+        const u = stuAssignAllUnits.find(x => x.id === id);
+        if (u) u.is_assigned = targetAssigned;
+    }
+    const unit_ids = stuAssignAllUnits.filter(u => u.is_assigned).map(u => u.id);
+
+    const addBtn = document.getElementById('stuAssignBulkAddBtn');
+    const delBtn = document.getElementById('stuAssignBulkDeleteBtn');
+    [addBtn, delBtn].forEach(b => b.disabled = true);
+    try {
+        const r = await fetch(`/training/writing/admin/api/students/${stuAssignCurrentId}/assignments/update/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ unit_ids }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (!data.success) throw new Error('save failed');
+        // 현재 단원 배정 상태 동기화
+        const stillHasCurrent = unit_ids.includes(UNIT_ID);
+        const s = (ALL_STUDENTS || []).find(x => x.id === stuAssignCurrentId);
+        if (s) s.is_assigned = stillHasCurrent;
+        const newCount = (ALL_STUDENTS || []).filter(x => x.is_assigned).length;
+        document.getElementById('assignedCountBadge').textContent = newCount;
+        // 선택 해제 + 재렌더
+        document.querySelectorAll('#stuAssignUnitListWrap .select-cb').forEach(cb => cb.checked = false);
+        applyStuAssignFilter();
+    } catch (e) {
+        alert(`${action} 실패: ${e.message}`);
+        // 롤백
+        for (const id of selectedIds) {
+            const u = stuAssignAllUnits.find(x => x.id === id);
+            if (u) u.is_assigned = !targetAssigned;
+        }
+        applyStuAssignFilter();
+    } finally {
+        [addBtn, delBtn].forEach(b => b.disabled = false);
+    }
+}
+
+document.getElementById('stuAssignBulkAddBtn').addEventListener('click', () => stuAssignBulkUpdate(true));
+document.getElementById('stuAssignBulkDeleteBtn').addEventListener('click', () => stuAssignBulkUpdate(false));
 
 document.getElementById('stuAssignBackBtn').addEventListener('click', () => {
     stuAssignEditModal().hide();
