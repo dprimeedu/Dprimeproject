@@ -41,25 +41,125 @@
 .editable-cell.saved-flash { background-color: #d1fae5; transition: background-color 1s; }
 .hints-clickable { cursor: pointer; }
 .hints-clickable:hover .badge { filter: brightness(0.9); transform: scale(1.05); }
-.hints-row {
-    display: flex;
-    gap: .5rem;
+/* 단어 뜻 카드 — Quizlet 풍 */
+#hintsList { padding: .5rem 0; }
+.hint-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    display: grid;
+    grid-template-columns: 36px 1fr 1fr auto;
+    gap: 1rem;
     align-items: center;
-    padding: .5rem;
-    border-bottom: 1px solid #f1f5f9;
+    transition: box-shadow .15s, opacity .15s;
 }
-.hints-row input[type=text] {
-    flex: 1;
+.hint-card.dragging { opacity: .4; }
+.hint-card.drag-over-top { box-shadow: 0 -3px 0 0 var(--primary-color); }
+.hint-card.drag-over-bottom { box-shadow: 0 3px 0 0 var(--primary-color); }
+.hint-card .num {
+    color: #9ca3af;
+    font-weight: 600;
+    text-align: center;
+    user-select: none;
+}
+.hint-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.hint-field input[type=text] {
+    width: 100%;
+    border: 0;
+    background: #f8fafc;
+    padding: .6rem .8rem;
+    border-radius: 8px;
+    font-size: .95rem;
+}
+.hint-field input[type=text]:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 0;
+    background: #fff;
+}
+.hint-field label.field-lbl {
+    margin-top: .25rem;
+    font-size: .7rem;
+    color: #9ca3af;
+    text-transform: lowercase;
+}
+.hint-actions {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+.hint-actions .pn-toggle {
+    font-size: .75rem;
+    color: #6b7280;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: .25rem;
     padding: .25rem .5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
+    border-radius: 6px;
+    cursor: pointer;
 }
-.hints-row .word-input { max-width: 180px; font-family: monospace; font-weight: 600; }
-.hints-row .pn-toggle { white-space: nowrap; }
-.hints-row .del-btn {
-    background: none; border: 0; color: #ef4444; font-size: 1.1rem; cursor: pointer; padding: .25rem .5rem;
+.hint-actions .pn-toggle:has(.pn-check:checked) {
+    background: #ede9fe;
+    color: #6d28d9;
+    font-weight: 600;
 }
-.hints-row .del-btn:hover { background: #fee2e2; border-radius: 4px; }
+.hint-actions .drag-handle,
+.hint-actions .del-btn {
+    background: none;
+    border: 0;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: .35rem .5rem;
+    border-radius: 6px;
+    font-size: 1rem;
+}
+.hint-actions .drag-handle { cursor: grab; }
+.hint-actions .drag-handle:active { cursor: grabbing; }
+.hint-actions .drag-handle:hover { background: #f1f5f9; color: #374151; }
+.hint-actions .del-btn:hover { background: #fee2e2; color: #ef4444; }
+
+/* 카드 사이 + 영역 */
+.hint-gap {
+    position: relative;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hint-gap .add-between-btn {
+    opacity: 0;
+    transform: scale(.7);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: var(--primary-color);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(124, 58, 237, .35);
+    transition: opacity .15s, transform .15s;
+}
+.hint-gap:hover .add-between-btn,
+.hint-gap .add-between-btn:focus {
+    opacity: 1;
+    transform: scale(1);
+}
+.hint-gap::before {
+    content: '';
+    position: absolute;
+    left: 1rem; right: 1rem;
+    top: 50%;
+    border-top: 1px dashed transparent;
+}
+.hint-gap:hover::before { border-top-color: #cbd5e1; }
 .assigned-link {
     background: none;
     border: 0;
@@ -642,41 +742,154 @@ async function openHintsModal(tr) {
 
 function renderHintsList(hints, english) {
     hintsListEl.innerHTML = '';
-    if (hints.length === 0) {
-        hintsListEl.innerHTML = '<div class="alert alert-warning mb-3">아직 단어 뜻이 없습니다. "영어에서 자동 채우기" 또는 "단어 추가"로 시작하세요.</div>';
-    }
-    for (const h of hints) addHintRow(h);
-    // english 보관 (auto fill 용)
     hintsListEl.dataset.english = english;
+    if (hints.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'alert alert-warning mb-3';
+        empty.id = 'hintsEmptyMsg';
+        empty.textContent = '아직 단어 뜻이 없습니다. "영어에서 자동 채우기" 또는 "단어 추가"로 시작하세요.';
+        hintsListEl.appendChild(empty);
+    }
+    // 첫 + 갭 (맨 위에 삽입)
+    hintsListEl.appendChild(makeGap(0));
+    for (let i = 0; i < hints.length; i++) {
+        const card = makeHintCard(hints[i]);
+        hintsListEl.appendChild(card);
+        hintsListEl.appendChild(makeGap(i + 1));
+    }
+    renumber();
+}
+
+function makeGap() {
+    const gap = document.createElement('div');
+    gap.className = 'hint-gap';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'add-between-btn';
+    btn.title = '여기에 새 카드 추가';
+    btn.innerHTML = '<i class="fas fa-plus"></i>';
+    btn.addEventListener('click', () => {
+        const card = makeHintCard({ word: '', meaning: '', proper_noun: false });
+        const newGap = makeGap();
+        gap.after(card, newGap);
+        // 빈 안내 메시지 제거
+        const empty = document.getElementById('hintsEmptyMsg');
+        if (empty) empty.remove();
+        renumber();
+        card.querySelector('.word-input').focus();
+    });
+    gap.appendChild(btn);
+    return gap;
+}
+
+function makeHintCard(h) {
+    const card = document.createElement('div');
+    card.className = 'hint-card';
+    card.innerHTML = `
+        <div class="num">1</div>
+        <div class="hint-field">
+            <input type="text" class="word-input" placeholder="단어" value="${escapeHtml(h.word || '')}">
+            <label class="field-lbl">단어</label>
+        </div>
+        <div class="hint-field">
+            <input type="text" class="meaning-input" placeholder="뜻" value="${escapeHtml(h.meaning || '')}">
+            <label class="field-lbl">뜻</label>
+        </div>
+        <div class="hint-actions">
+            <label class="pn-toggle" title="고유명사로 표시 (학습 시 자동 채워짐)">
+                <input type="checkbox" class="pn-check" ${h.proper_noun ? 'checked' : ''}>
+                고유명사
+            </label>
+            <button type="button" class="drag-handle" title="끌어서 순서 변경"><i class="fas fa-grip-lines"></i></button>
+            <button type="button" class="del-btn" title="삭제"><i class="fas fa-trash"></i></button>
+        </div>
+    `;
+    // 삭제
+    card.querySelector('.del-btn').addEventListener('click', () => {
+        const next = card.nextElementSibling;
+        card.remove();
+        // 카드 뒤의 gap도 같이 제거
+        if (next && next.classList.contains('hint-gap')) next.remove();
+        renumber();
+    });
+    // 드래그 — 핸들 mousedown 시에만 draggable=true
+    const handle = card.querySelector('.drag-handle');
+    handle.addEventListener('mousedown', () => { card.draggable = true; });
+    handle.addEventListener('touchstart', () => { card.draggable = true; }, { passive: true });
+    card.addEventListener('dragstart', e => {
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'hint-card');
+    });
+    card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        card.draggable = false;
+        hintsListEl.querySelectorAll('.hint-card').forEach(c => {
+            c.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+    });
+    card.addEventListener('dragover', e => {
+        const dragging = hintsListEl.querySelector('.hint-card.dragging');
+        if (!dragging || dragging === card) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = card.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        card.classList.toggle('drag-over-top', before);
+        card.classList.toggle('drag-over-bottom', !before);
+    });
+    card.addEventListener('dragleave', () => {
+        card.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    card.addEventListener('drop', e => {
+        const dragging = hintsListEl.querySelector('.hint-card.dragging');
+        if (!dragging || dragging === card) return;
+        e.preventDefault();
+        const rect = card.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        // dragging 카드 + 그 다음 gap을 함께 이동
+        const dragGap = dragging.nextElementSibling;
+        if (before) {
+            const prevGap = card.previousElementSibling;
+            prevGap.before(dragging, dragGap);
+        } else {
+            const nextGap = card.nextElementSibling;
+            nextGap.after(dragging, dragGap);
+        }
+        card.classList.remove('drag-over-top', 'drag-over-bottom');
+        renumber();
+    });
+    return card;
+}
+
+function renumber() {
+    const cards = hintsListEl.querySelectorAll('.hint-card');
+    cards.forEach((c, i) => {
+        c.querySelector('.num').textContent = i + 1;
+    });
 }
 
 function addHintRow(h) {
-    const row = document.createElement('div');
-    row.className = 'hints-row';
-    row.innerHTML = `
-        <input type="text" class="word-input" placeholder="단어" value="${escapeHtml(h.word || '')}">
-        <input type="text" class="meaning-input" placeholder="한글뜻" value="${escapeHtml(h.meaning || '')}">
-        <label class="pn-toggle small text-muted">
-            <input type="checkbox" class="pn-check" ${h.proper_noun ? 'checked' : ''}>
-            고유명사
-        </label>
-        <button type="button" class="del-btn" title="삭제"><i class="fas fa-times"></i></button>
-    `;
-    row.querySelector('.del-btn').addEventListener('click', () => row.remove());
-    hintsListEl.appendChild(row);
+    // 호환용 — 맨 아래 카드 추가
+    const empty = document.getElementById('hintsEmptyMsg');
+    if (empty) empty.remove();
+    const card = makeHintCard(h);
+    hintsListEl.appendChild(card);
+    hintsListEl.appendChild(makeGap());
+    renumber();
+    return card;
 }
 
 document.getElementById('hintAddBtn').addEventListener('click', () => {
-    addHintRow({ word: '', meaning: '', proper_noun: false });
-    const inputs = hintsListEl.querySelectorAll('.hints-row .word-input');
-    inputs[inputs.length - 1].focus();
+    const card = addHintRow({ word: '', meaning: '', proper_noun: false });
+    card.querySelector('.word-input').focus();
 });
 
 document.getElementById('hintFillFromEnBtn').addEventListener('click', () => {
     const english = hintsListEl.dataset.english || '';
     if (!english) { alert('영어 문장이 비어있습니다.'); return; }
     const existing = new Set(
-        Array.from(hintsListEl.querySelectorAll('.word-input')).map(i => i.value.trim().toLowerCase())
+        Array.from(hintsListEl.querySelectorAll('.hint-card .word-input')).map(i => i.value.trim().toLowerCase()).filter(Boolean)
     );
     const words = english.split(/\s+/).map(w => w.replace(/[.,!?;:'"()\[\]{}]/g, '')).filter(Boolean);
     let added = 0;
@@ -692,10 +905,10 @@ document.getElementById('hintFillFromEnBtn').addEventListener('click', () => {
 hintsSaveBtn.addEventListener('click', async () => {
     if (!currentHintsProblemId) return;
     const hints = [];
-    hintsListEl.querySelectorAll('.hints-row').forEach(row => {
-        const word = row.querySelector('.word-input').value.trim();
-        const meaning = row.querySelector('.meaning-input').value.trim();
-        const proper_noun = row.querySelector('.pn-check').checked;
+    hintsListEl.querySelectorAll('.hint-card').forEach(card => {
+        const word = card.querySelector('.word-input').value.trim();
+        const meaning = card.querySelector('.meaning-input').value.trim();
+        const proper_noun = card.querySelector('.pn-check').checked;
         if (word) hints.push({ word, meaning, proper_noun });
     });
     hintsSaveBtn.disabled = true;
