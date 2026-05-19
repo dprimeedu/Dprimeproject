@@ -53,13 +53,34 @@
     color: #6b7280;
     font-size: .85rem;
 }
-.unit-row .remove-btn {
-    background: none; border: 0;
-    color: #9ca3af; padding: .25rem .5rem;
-    border-radius: 6px; cursor: pointer;
-    margin-left: .5rem;
+.unit-row .select-cb {
+    width: 1.1rem; height: 1.1rem;
+    border: 2px solid #9ca3af; cursor: pointer;
+    margin-right: .25rem;
 }
-.unit-row .remove-btn:hover { background: #fee2e2; color: #ef4444; }
+.unit-row .select-cb:hover { border-color: var(--primary-color); }
+.unit-row .select-cb:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+.unit-row.row-selected { background-color: #f3e8ff; }
+.unit-row .assign-badge {
+    font-size: .7rem; padding: .15rem .5rem; border-radius: 999px;
+    margin-left: .25rem; white-space: nowrap;
+}
+.unit-row .assign-badge.on { background: #d1fae5; color: #047857; }
+.unit-row .assign-badge.off { background: #f3f4f6; color: #6b7280; }
+.unit-bulk-bar {
+    display: none;
+    align-items: center; gap: .5rem;
+    padding: .5rem .75rem;
+    background: #faf5ff;
+    border: 1px solid #e9d5ff;
+    border-radius: 8px;
+    margin-bottom: .5rem;
+}
+.unit-bulk-bar.show { display: flex; }
+.unit-bulk-bar .count { font-weight: 600; color: var(--primary-color); }
 #assignUnitListWrap { max-height: 50vh; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
 </style>
 {% endblock %}
@@ -205,6 +226,19 @@
           <span class="ms-auto small text-muted"><span id="assignSelectedCount">0</span>개 선택됨 / 전체 <span id="assignTotalCount">0</span></span>
         </div>
 
+        <div id="unitBulkBar" class="unit-bulk-bar">
+          <span class="count"><span id="unitBulkCount">0</span>개 선택됨</span>
+          <button type="button" id="unitBulkAllBtn" class="btn btn-sm btn-outline-secondary">전체 선택</button>
+          <button type="button" id="unitBulkNoneBtn" class="btn btn-sm btn-outline-secondary">전체 해제</button>
+          <span class="ms-auto"></span>
+          <button type="button" id="unitBulkAddBtn" class="btn btn-sm btn-primary">
+            <i class="fas fa-plus me-1"></i>선택 추가 (배정)
+          </button>
+          <button type="button" id="unitBulkDeleteBtn" class="btn btn-sm btn-danger">
+            <i class="fas fa-trash me-1"></i>선택 삭제 (배정 해제)
+          </button>
+        </div>
+
         <div id="assignUnitListWrap">
           <div class="text-center text-muted py-4">불러오는 중...</div>
         </div>
@@ -285,35 +319,57 @@ document.addEventListener('DOMContentLoaded', function () {
                 : '해당 단원이 없습니다.';
             wrap.innerHTML = `<div class="alert alert-warning mb-0 m-2">${msg}</div>`;
             updateAssignCount();
+            updateUnitBulkUI();
             return;
         }
         let html = '';
         for (const u of list) {
-            const showRemove = (mode === 'assigned');
+            const badge = u.is_assigned
+                ? '<span class="assign-badge on">✓ 배정중</span>'
+                : '<span class="assign-badge off">미배정</span>';
+            // assign-unit-cb는 화면 외 hidden — 저장 로직 호환
             html += `
-            <label class="unit-row" data-uid="${u.id}">
-                <input type="checkbox" class="form-check-input assign-unit-cb" value="${u.id}" ${u.is_assigned ? 'checked' : ''}>
+            <div class="unit-row" data-uid="${u.id}">
+                <input type="checkbox" class="form-check-input select-cb" value="${u.id}" title="선택">
                 <span class="grade-badge">${escapeHtml(u.grade || '-')}</span>
                 <span class="flex-grow-1"><strong>${escapeHtml(u.title)}</strong>
                     ${u.publisher ? `<span class="publisher ms-2">${escapeHtml(u.publisher)}</span>` : ''}
                 </span>
                 <span class="text-muted small">${u.problem_count}문제</span>
-                ${showRemove ? `<button type="button" class="remove-btn" data-uid="${u.id}" title="배정 제거"><i class="fas fa-times"></i></button>` : ''}
-            </label>`;
+                ${badge}
+                <input type="checkbox" class="assign-unit-cb d-none" value="${u.id}" ${u.is_assigned ? 'checked' : ''}>
+            </div>`;
         }
         wrap.innerHTML = html;
-        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.addEventListener('change', updateAssignCount));
-        wrap.querySelectorAll('.remove-btn').forEach(btn => {
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                const uid = parseInt(btn.dataset.uid);
-                const u = allUnits.find(x => x.id === uid);
-                if (u) u.is_assigned = false;
-                applyFilter();
+        // 행 클릭 → 선택 토글 (선택 체크박스/뱃지 영역 외 클릭)
+        wrap.querySelectorAll('.unit-row').forEach(row => {
+            row.addEventListener('click', e => {
+                if (e.target.matches('input,button,a')) return;
+                const cb = row.querySelector('.select-cb');
+                cb.checked = !cb.checked;
+                updateUnitBulkUI();
             });
         });
+        wrap.querySelectorAll('.select-cb').forEach(cb => cb.addEventListener('change', updateUnitBulkUI));
         updateAssignCount();
+        updateUnitBulkUI();
+    }
+
+    function updateUnitBulkUI() {
+        const all = wrap.querySelectorAll('.select-cb');
+        const checked = wrap.querySelectorAll('.select-cb:checked');
+        const bar = document.getElementById('unitBulkBar');
+        const cnt = document.getElementById('unitBulkCount');
+        if (bar && cnt) {
+            cnt.textContent = checked.length;
+            if (checked.length > 0) bar.classList.add('show');
+            else bar.classList.remove('show');
+        }
+        all.forEach(cb => {
+            const row = cb.closest('.unit-row');
+            if (cb.checked) row.classList.add('row-selected');
+            else row.classList.remove('row-selected');
+        });
     }
 
     function updateAssignCount() {
@@ -389,6 +445,70 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('input[name=assignViewMode]').forEach(r => {
         r.addEventListener('change', () => { syncBackToAllUnits(); applyFilter(); });
     });
+
+    // 선택 토글 (선택 체크박스 자체는 별도 의미 — 일괄 작업용)
+    document.getElementById('unitBulkAllBtn').addEventListener('click', () => {
+        wrap.querySelectorAll('.select-cb').forEach(cb => cb.checked = true);
+        updateUnitBulkUI();
+    });
+    document.getElementById('unitBulkNoneBtn').addEventListener('click', () => {
+        wrap.querySelectorAll('.select-cb').forEach(cb => cb.checked = false);
+        updateUnitBulkUI();
+    });
+
+    async function bulkAssign(targetAssigned) {
+        const selectedIds = Array.from(wrap.querySelectorAll('.select-cb:checked'))
+            .map(cb => parseInt(cb.value));
+        if (!selectedIds.length) return;
+
+        const action = targetAssigned ? '배정 추가' : '배정 해제';
+        const verb = targetAssigned ? '배정' : '해제';
+        const sample = selectedIds.slice(0, 5).map(id => {
+            const u = allUnits.find(x => x.id === id);
+            return u ? `${u.grade} ${u.title}` : `#${id}`;
+        }).join(', ');
+        const more = selectedIds.length > 5 ? ` 외 ${selectedIds.length - 5}개` : '';
+        if (!confirm(`선택한 ${selectedIds.length}개 단원을 ${action}합니다.\n[${sample}${more}]\n진행할까요?`)) return;
+
+        // allUnits 의 is_assigned 업데이트 (요청 전 미리)
+        for (const id of selectedIds) {
+            const u = allUnits.find(x => x.id === id);
+            if (u) u.is_assigned = targetAssigned;
+        }
+        const unit_ids = allUnits.filter(u => u.is_assigned).map(u => u.id);
+
+        try {
+            const r = await fetch(`/training/writing/admin/api/students/${currentStudentId}/assignments/update/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ unit_ids }),
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const data = await r.json();
+            if (!data.success) throw new Error('save failed');
+            // 표의 배정 카운트 갱신
+            const row = document.querySelector(`.student-row[data-student-id="${currentStudentId}"]`);
+            if (row) {
+                const btn = row.querySelector('.assign-count-btn');
+                if (btn) btn.textContent = data.assigned_count;
+            }
+            // 선택 해제하고 재렌더
+            wrap.querySelectorAll('.select-cb').forEach(cb => cb.checked = false);
+            applyFilter();
+        } catch (e) {
+            alert(`${action} 실패: ${e.message}`);
+            // 실패 시 allUnits 롤백
+            for (const id of selectedIds) {
+                const u = allUnits.find(x => x.id === id);
+                if (u) u.is_assigned = !targetAssigned;
+            }
+            applyFilter();
+        }
+    }
+
+    document.getElementById('unitBulkAddBtn').addEventListener('click', () => bulkAssign(true));
+    document.getElementById('unitBulkDeleteBtn').addEventListener('click', () => bulkAssign(false));
 
     document.getElementById('assign-units-all').addEventListener('click', () => {
         wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.checked = true);
