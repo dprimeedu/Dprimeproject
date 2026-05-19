@@ -1017,12 +1017,12 @@ def problem_insert(request, unit_id):
         for i, p in enumerate(existing):
             WritingProblem.objects.filter(pk=p.pk).update(index=-(i + 1))
 
-        # 새 문제 위치 = new_pos + 1 (1-base)
+        # 새 문제 위치 = new_pos + 1 (1-base) — 빈 셀로 시작
         new_problem = WritingProblem.objects.create(
             unit=unit,
             index=new_pos + 1,
-            korean='(클릭해서 한글 입력)',
-            english='(click to enter english)',
+            korean='',
+            english='',
             word_hints=[],
         )
 
