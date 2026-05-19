@@ -295,3 +295,56 @@ class StudentAchievement(models.Model):
 
     def __str__(self):
         return f'{self.student.username} ← {self.achievement.name}'
+
+
+class BugReport(models.Model):
+    """학생이 풀이 중 누른 '버그 신고' — 관리자가 검토·수정용."""
+    STATUS_CHOICES = [
+        ('pending', '대기'),
+        ('reviewing', '검토중'),
+        ('fixed', '수정 완료'),
+        ('dismissed', '해당 없음'),
+    ]
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='writing_bug_reports', verbose_name='신고 학생',
+    )
+    session = models.ForeignKey(
+        WritingSession,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='bug_reports', verbose_name='세션',
+    )
+    problem = models.ForeignKey(
+        WritingProblem,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='bug_reports', verbose_name='문제',
+    )
+    unit = models.ForeignKey(
+        WritingUnit,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='bug_reports', verbose_name='단원',
+    )
+    url = models.CharField(max_length=500, blank=True, default='', verbose_name='URL')
+    description = models.TextField(blank=True, default='', verbose_name='신고 내용')
+    screen_state = models.JSONField(
+        default=dict, blank=True, verbose_name='화면 상태',
+        help_text='입력 상태/시도 횟수/현재 단어 인덱스 등 스냅샷',
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='pending',
+        verbose_name='상태',
+    )
+    admin_note = models.TextField(blank=True, default='', verbose_name='관리자 메모')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'writing_bug_report'
+        verbose_name = '버그 신고'
+        verbose_name_plural = '버그 신고'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        who = self.student.username if self.student else '알수없음'
+        return f'[{self.get_status_display()}] {who} — {self.unit.title if self.unit else "?"}'

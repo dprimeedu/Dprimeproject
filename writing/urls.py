@@ -48,4 +48,9 @@ urlpatterns = [
     path('admin/units/<int:unit_id>/generate-hints/status/', views.generate_hints_status, name='generate_hints_status'),
     path('admin/units/<int:unit_id>/assignments/', views.assignment_list, name='assignment_list'),
     path('admin/units/<int:unit_id>/assignments/update/', views.assignment_update, name='assignment_update'),
+
+    # 버그 신고
+    path('api/bug-report/', views.bug_report_create, name='bug_report_create'),
+    path('admin/bugs/', views.bug_report_list, name='bug_report_list'),
+    path('admin/bugs/<int:report_id>/', views.bug_report_detail, name='bug_report_detail'),
 ]

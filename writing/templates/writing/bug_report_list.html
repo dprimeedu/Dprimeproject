@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'writing:unit_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단원 관리</a>
+
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3><i class="fas fa-bug me-2 text-danger"></i>버그 신고 목록</h3>
+            <p class="section-desc mb-0">학생이 풀이 중 누른 버그 신고. 대기: <strong>{{ pending_count }}</strong>건</p>
+        </div>
+        <div class="btn-group">
+            <a href="?" class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">전체</a>
+            {% for code, label in status_choices %}
+            <a href="?status={{ code }}" class="btn btn-sm {% if status_filter == code %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if reports %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>상태</th>
+                        <th>학생</th>
+                        <th>단원 / 문제</th>
+                        <th>신고 내용</th>
+                        <th>신고 시각</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reports %}
+                    <tr>
+                        <td>
+                            {% if r.status == 'pending' %}<span class="badge bg-danger">{{ r.get_status_display }}</span>
+                            {% elif r.status == 'reviewing' %}<span class="badge bg-warning text-dark">{{ r.get_status_display }}</span>
+                            {% elif r.status == 'fixed' %}<span class="badge bg-success">{{ r.get_status_display }}</span>
+                            {% else %}<span class="badge bg-secondary">{{ r.get_status_display }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if r.student %}
+                                <code>{{ r.student.username|default:r.student.login_id|default:r.student.email }}</code>
+                            {% else %}<span class="text-muted">(삭제됨)</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if r.unit %}<strong>{{ r.unit.title }}</strong>{% endif %}
+                            {% if r.problem %}<span class="text-muted small d-block">#{{ r.problem.index }} {{ r.problem.korean|truncatechars:40 }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if r.description %}{{ r.description|truncatechars:80 }}{% else %}<span class="text-muted">(설명 없음)</span>{% endif %}
+                        </td>
+                        <td>{{ r.created_at|date:'Y-m-d H:i' }}</td>
+                        <td>
+                            <a href="{% url 'writing:bug_report_detail' r.id %}" class="btn btn-sm btn-outline-primary">
+                                상세 <i class="fas fa-chevron-right ms-1"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <p class="text-muted small mt-3">최근 200건 표시</p>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        신고된 버그가 없습니다.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

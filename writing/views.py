@@ -16,6 +16,7 @@ from .models import (
     WritingUnit, WritingProblem, UnitAssignment,
     WritingSession, WritingAttempt,
     StudentProfile, Achievement, StudentAchievement,
+    BugReport,
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
@@ -1757,3 +1758,78 @@ def generate_hints_status(request, unit_id):
     payload['has_hints'] = has_hints
     payload['unit_total'] = unit_total
     return JsonResponse(payload)
+
+
+# ─────────────────────────────────────────────
+# 버그 신고
+# ─────────────────────────────────────────────
+
+@login_required
+@require_POST
+def bug_report_create(request):
+    """학생/사용자의 버그 신고 접수.
+    body: {session_id?, problem_id?, description?, screen_state?, url?}
+    """
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest('Invalid JSON')
+
+    session = None
+    problem = None
+    unit = None
+    sid = data.get('session_id')
+    pid = data.get('problem_id')
+    if sid:
+        session = WritingSession.objects.filter(pk=sid).first()
+        if session:
+            unit = session.unit
+    if pid:
+        problem = WritingProblem.objects.filter(pk=pid).first()
+        if problem and not unit:
+            unit = problem.unit
+
+    report = BugReport.objects.create(
+        student=request.user,
+        session=session,
+        problem=problem,
+        unit=unit,
+        url=str(data.get('url', ''))[:500],
+        description=str(data.get('description', ''))[:5000],
+        screen_state=data.get('screen_state') if isinstance(data.get('screen_state'), dict) else {},
+    )
+    return JsonResponse({'success': True, 'id': report.id})
+
+
+@teacher_required
+def bug_report_list(request):
+    """관리자 — 버그 신고 목록"""
+    status_filter = request.GET.get('status', '')
+    qs = BugReport.objects.select_related('student', 'unit', 'problem').order_by('-created_at')
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    return render(request, 'writing/bug_report_list.html', {
+        'reports': qs[:200],
+        'status_filter': status_filter,
+        'status_choices': BugReport.STATUS_CHOICES,
+        'pending_count': BugReport.objects.filter(status='pending').count(),
+    })
+
+
+@teacher_required
+def bug_report_detail(request, report_id):
+    """관리자 — 버그 신고 1건 상세 + 상태/메모 갱신"""
+    report = get_object_or_404(BugReport, pk=report_id)
+    if request.method == 'POST':
+        new_status = request.POST.get('status')
+        note = request.POST.get('admin_note', '')
+        if new_status in dict(BugReport.STATUS_CHOICES):
+            report.status = new_status
+        report.admin_note = note
+        report.save(update_fields=['status', 'admin_note', 'updated_at'])
+        messages.success(request, '저장되었습니다.')
+        return redirect('writing:bug_report_detail', report_id=report.id)
+    return render(request, 'writing/bug_report_detail.html', {
+        'report': report,
+        'status_choices': BugReport.STATUS_CHOICES,
+    })
