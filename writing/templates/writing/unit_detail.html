@@ -103,6 +103,21 @@
     pointer-events: none;
 }
 .problem-insert-row:hover::before { border-top-color: #cbd5e1; }
+/* 행마다 드래그 + 휴지통 */
+.row-actions { display: flex; gap: .25rem; justify-content: center; }
+.row-actions .row-act-btn {
+    background: none; border: 0;
+    color: #9ca3af; padding: .35rem .5rem;
+    border-radius: 6px; cursor: pointer;
+    font-size: 1rem;
+}
+.row-actions .row-drag { cursor: grab; }
+.row-actions .row-drag:active { cursor: grabbing; }
+.row-actions .row-drag:hover { background: #f1f5f9; color: #374151; }
+.row-actions .row-trash:hover { background: #fee2e2; color: #ef4444; }
+tr.dragging { opacity: .4; }
+tr.drag-over-top td { box-shadow: inset 0 3px 0 0 var(--primary-color); }
+tr.drag-over-bottom td { box-shadow: inset 0 -3px 0 0 var(--primary-color); }
 /* 단어 뜻 카드 — Quizlet 풍 */
 #hintsList { padding: .5rem 0; }
 .hint-card {
@@ -378,12 +393,13 @@
                         <th>한글</th>
                         <th>영어 정답</th>
                         <th class="text-center" style="width: 100px;">단어 뜻</th>
+                        <th class="text-center" style="width: 90px;">관리</th>
                     </tr>
                 </thead>
                 <tbody>
                     {# 맨 위 삽입 슬롯 #}
                     <tr class="problem-insert-row" data-after-index="0">
-                        <td colspan="5">
+                        <td colspan="6">
                             <button type="button" class="insert-btn" title="여기에 새 문제 삽입">
                                 <i class="fas fa-plus"></i>
                             </button>
@@ -404,9 +420,15 @@
                                 <span class="badge bg-secondary">편집</span>
                             {% endif %}
                         </td>
+                        <td>
+                            <div class="row-actions">
+                                <button type="button" class="row-act-btn row-drag" title="끌어서 순서 변경"><i class="fas fa-grip-lines"></i></button>
+                                <button type="button" class="row-act-btn row-trash" title="이 문제 삭제"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </td>
                     </tr>
                     <tr class="problem-insert-row" data-after-index="{{ forloop.counter }}">
-                        <td colspan="5">
+                        <td colspan="6">
                             <button type="button" class="insert-btn" title="여기에 새 문제 삽입">
                                 <i class="fas fa-plus"></i>
                             </button>
@@ -1382,6 +1404,127 @@ document.getElementById('stuAssignSaveBtn').addEventListener('click', async () =
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
     }
+});
+
+// ── 단일 행 삭제 (휴지통) ──
+document.querySelectorAll('.row-trash').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const tr = btn.closest('tr[data-problem-id]');
+        const pid = parseInt(tr.dataset.problemId);
+        const idx = tr.querySelector('td:nth-child(2)').textContent.trim();
+        if (!confirm(`#${idx} 문제를 삭제합니다.\n관련 풀이 기록도 함께 삭제되고 번호가 다시 매겨집니다.\n진행할까요?`)) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const r = await fetch('/training/writing/admin/problems/delete/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ problem_ids: [pid] }),
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const data = await r.json();
+            if (!data.success) throw new Error('delete failed');
+            location.reload();
+        } catch (e) {
+            alert(`삭제 실패: ${e.message}`);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-trash"></i>';
+        }
+    });
+});
+
+// ── 행 드래그 순서 변경 ──
+const tbody = document.querySelector('table.table tbody');
+let draggingRow = null;
+
+document.querySelectorAll('.row-drag').forEach(handle => {
+    const tr = handle.closest('tr[data-problem-id]');
+    handle.addEventListener('mousedown', () => { tr.draggable = true; });
+    handle.addEventListener('touchstart', () => { tr.draggable = true; }, { passive: true });
+});
+
+document.querySelectorAll('tr[data-problem-id]').forEach(tr => {
+    tr.addEventListener('dragstart', e => {
+        draggingRow = tr;
+        tr.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'row');
+    });
+    tr.addEventListener('dragend', async () => {
+        const moved = (tr === draggingRow);
+        tr.classList.remove('dragging');
+        tr.draggable = false;
+        document.querySelectorAll('tr[data-problem-id]').forEach(r => {
+            r.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+        if (!moved) { draggingRow = null; return; }
+        draggingRow = null;
+        // 현재 DOM 순서대로 problem_id 배열 만들기 → 서버 저장
+        const order = Array.from(document.querySelectorAll('tr[data-problem-id]'))
+            .map(r => parseInt(r.dataset.problemId));
+        try {
+            const r = await fetch(`/training/writing/admin/units/${UNIT_ID}/problem-reorder/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ order }),
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const data = await r.json();
+            if (!data.success) throw new Error('reorder failed');
+            // 표 위 번호 재부여 (UI 즉시 갱신)
+            document.querySelectorAll('tr[data-problem-id]').forEach((r, i) => {
+                const numCell = r.querySelector('td:nth-child(2) strong');
+                if (numCell) numCell.textContent = i + 1;
+            });
+        } catch (e) {
+            alert(`순서 저장 실패: ${e.message}\n새로고침합니다.`);
+            location.reload();
+        }
+    });
+    tr.addEventListener('dragover', e => {
+        if (!draggingRow || draggingRow === tr) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = tr.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        tr.classList.toggle('drag-over-top', before);
+        tr.classList.toggle('drag-over-bottom', !before);
+    });
+    tr.addEventListener('dragleave', () => {
+        tr.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    tr.addEventListener('drop', e => {
+        if (!draggingRow || draggingRow === tr) return;
+        e.preventDefault();
+        const rect = tr.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        // 드래그된 행 + 그 다음 insert-row 같이 이동
+        const dragInsert = draggingRow.nextElementSibling;
+        if (before) {
+            // 이 행의 바로 앞 (즉 이전 insert-row의 다음 = 이 행) 앞에 끼움
+            tr.parentNode.insertBefore(draggingRow, tr);
+            if (dragInsert && dragInsert.classList.contains('problem-insert-row')) {
+                tr.parentNode.insertBefore(dragInsert, tr);
+            }
+        } else {
+            // 이 행의 바로 다음 insert-row 뒤
+            const nextInsert = tr.nextElementSibling;
+            if (nextInsert && nextInsert.classList.contains('problem-insert-row')) {
+                nextInsert.parentNode.insertBefore(draggingRow, nextInsert.nextElementSibling);
+                if (dragInsert && dragInsert.classList.contains('problem-insert-row')) {
+                    draggingRow.parentNode.insertBefore(dragInsert, draggingRow.nextElementSibling);
+                }
+            } else {
+                tr.parentNode.insertBefore(draggingRow, tr.nextElementSibling);
+                if (dragInsert && dragInsert.classList.contains('problem-insert-row')) {
+                    draggingRow.parentNode.insertBefore(dragInsert, draggingRow.nextElementSibling);
+                }
+            }
+        }
+        tr.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
 });
 
 // ── 문제 행 사이 + 버튼 (새 문제 삽입) ──

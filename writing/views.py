@@ -969,6 +969,34 @@ def unit_delete(request):
 
 @teacher_required
 @require_POST
+def problem_reorder(request, unit_id):
+    """단원 문제 순서 일괄 갱신. body: {order: [pid1, pid2, ...]}."""
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+    try:
+        data = json.loads(request.body or '{}')
+        order = [int(x) for x in data.get('order', [])]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+    if not order:
+        return HttpResponseBadRequest('Empty order')
+
+    pids_in_unit = set(
+        WritingProblem.objects.filter(unit=unit).values_list('id', flat=True)
+    )
+    filtered = [pid for pid in order if pid in pids_in_unit]
+
+    with transaction.atomic():
+        # unique_together 회피용 — 음수로 옮긴 뒤 재부여
+        for offset, pid in enumerate(filtered):
+            WritingProblem.objects.filter(pk=pid).update(index=-(offset + 1))
+        for offset, pid in enumerate(filtered):
+            WritingProblem.objects.filter(pk=pid).update(index=offset + 1)
+
+    return JsonResponse({'success': True, 'count': len(filtered)})
+
+
+@teacher_required
+@require_POST
 def problem_insert(request, unit_id):
     """단원에 새 문제 행 삽입. body: {after_index: int}.
     after_index=0 → 맨 위, after_index=N → N번째 뒤. 인덱스 자동 재정렬."""
