@@ -22,6 +22,7 @@ urlpatterns = [
     path('course/', include('course.urls')),
     path('member/', include('member.urls')),
     path('training/writing/', include('writing.urls')),
+    path('tools/', include('academy_tools.urls')),
 ]
 
 handler404 = 'config.views.custom_404'

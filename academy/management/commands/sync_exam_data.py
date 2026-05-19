@@ -52,8 +52,11 @@ SHEET_SPECS = {
         "table": "WordTest",
         "cols": {
             "word": "단어",
-            "english_definition": "영영",
             "korean_definition": "해석",
+        },
+        "optional_cols": {
+            # EBS '내신단어'에는 '영영' 없음 (별도 '영영단어' 시트 존재)
+            "english_definition": "영영",
         },
         "natural_key": ["word"],
     },
@@ -80,8 +83,11 @@ SHEET_SPECS = {
     "중요영작": {
         "table": "Translation",
         "cols": {
-            "Sentence": "영작",
-            "Translation": "해석",
+            # EBS는 컬럼명이 다름: 영어/한글, '회화..'/'중요영작' 컬럼은 부재
+            "Sentence": ["영작", "영어"],
+            "Translation": ["해석", "한글"],
+        },
+        "optional_cols": {
             "ETC": "회화/Extra/기타여부",
             "Key_sentence": "중요영작",
         },
@@ -135,9 +141,12 @@ SHEET_SPECS = {
         "table": "FillinBlank",
         "cols": {
             "Question": "문제",
-            "Sentence": "지문",
             "Options": "보기",
             "Answer": "정답",
+        },
+        "optional_cols": {
+            # EBS 객관식빈칸은 '지문' 없이 보기만으로 출제하는 형태가 있음
+            "Sentence": "지문",
         },
         "natural_key": ["Question"],
     },
@@ -154,10 +163,16 @@ SHEET_SPECS = {
             "Sentence": "지문",
             "Option": "보기",
             "Answer": "정답",
-            "Modified": "(변형)정답",
+            # EBS/교과서 통합본은 '변형', 모의고사 통합본은 '(변형)정답'
+            "Modified": ["(변형)정답", "변형"],
         },
         "natural_key": ["Question"],
     },
+}
+
+# 시트명 alias — 통합본마다 시트 제목이 다르면 spec 키로 매핑
+SHEET_NAME_ALIASES = {
+    "변형문제": "보기변형",   # EBS/교과서 통합본
 }
 
 # 처리 순서: 문제출력 먼저, 나머지는 SHEET_SPECS 순서대로
@@ -523,6 +538,13 @@ class Command(BaseCommand):
                 return stats
             excel_idx[db_col] = idx
 
+        # optional 컬럼 — 없으면 빈 문자열로 채움
+        optional_idx = {}
+        for db_col, excel_col_spec in spec.get("optional_cols", {}).items():
+            idx = _resolve_col(col, excel_col_spec)
+            if idx is not None:
+                optional_idx[db_col] = idx
+
         table = spec["table"]
         qtype = spec.get("qtype", "")
         natural_key = spec.get("natural_key", [])
@@ -558,8 +580,10 @@ class Command(BaseCommand):
                     stats["skipped"] += 1
                     continue
 
-                # 데이터 추출
+                # 데이터 추출 (필수 + optional, optional은 부재시 빈 문자열)
                 data = {db_col: _s(row[idx]) for db_col, idx in excel_idx.items()}
+                for db_col in spec.get("optional_cols", {}):
+                    data[db_col] = _s(row[optional_idx[db_col]]) if db_col in optional_idx else ""
 
                 # KEY_TABLE 조회/생성
                 pk = self._get_or_create_key(cursor, grade, year, month, number, qtype)

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'acad',
     'common',
     'writing',
+    'academy_tools',
 
 ]
 
@@ -161,3 +162,9 @@ CSRF_COOKIE_HTTPONLY = True
 CSRF_USE_SESSIONS = False
 # 대용량 단원(수백 문제) admin 편집 허용
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 50000
+
+# .pedu 보안 export 키 (base64, 32바이트씩).
+# 운영에서는 반드시 .env 에 무작위 키를 지정. 부재 시 secure_export 모듈이
+# 개발용 결정적 키로 폴백하므로 운영 부적합 — settings/.env 에 강제 등록 권장.
+PEDU_AES_KEY = os.getenv('PEDU_AES_KEY', '')
+PEDU_HMAC_KEY = os.getenv('PEDU_HMAC_KEY', '')

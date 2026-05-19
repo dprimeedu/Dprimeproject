@@ -1,0 +1,528 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}부교재 출력 — 프라임에듀{% endblock %}
+
+{% block extra_css %}
+<style>
+  .tool-wrap { max-width: 1080px; margin: 1rem auto; padding: 0 1rem; }
+  .tool-title { font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+  .tool-title .back-link { font-size: .9rem; font-weight: 400; }
+
+  .tool-section { border: 1px solid #d4d4d4; border-radius: 6px; padding: .75rem 1rem 1rem;
+                  margin-bottom: 1rem; background: #fafafa; position: relative; }
+  .tool-section > legend { font-size: .85rem; font-weight: 600; padding: 0 .35rem; color: #444;
+                           background: #fafafa; width: auto; margin-bottom: .5rem; }
+
+  .opt-grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: .35rem .75rem; }
+  .opt-grid label { display: flex; align-items: center; gap: .35rem; font-size: .9rem;
+                    white-space: nowrap; line-height: 1.15; cursor: pointer; }
+  .opt-grid label.disabled { color: #aaa; cursor: not-allowed; }
+  .opt-grid label.highlight-red { color: #c0392b; font-weight: 600; }
+  .opt-grid input[type="checkbox"]:disabled + span { color: #aaa; }
+  .opt-toolbar { display: flex; gap: .5rem; margin-top: .6rem; }
+  .opt-toolbar .btn { font-size: .8rem; padding: .15rem .6rem; }
+
+  .num-grid { display: grid; grid-template-columns: repeat(15, minmax(0,1fr)); gap: .25rem .5rem; }
+  .num-grid label { display: flex; align-items: center; gap: .2rem; font-size: .85rem; cursor: pointer; }
+  .num-toolbar { display: flex; flex-direction: column; gap: .25rem; margin-left: .75rem; justify-content: center; }
+  .num-row { display: flex; align-items: flex-start; }
+  .num-row .num-grid { flex: 1; }
+
+  .grade-tabs .nav-link { padding: .3rem .9rem; font-size: .9rem; }
+  .dataset-tabs { border-bottom: 2px solid #2a72b8; margin-bottom: .8rem; }
+  .dataset-tabs .nav-link { padding: .45rem 1.1rem; font-size: .95rem; font-weight: 500;
+                             border-radius: 4px 4px 0 0; }
+  .dataset-tabs .nav-link.active { background: #2a72b8; color: #fff; border-color: #2a72b8; }
+  .dataset-tabs .nav-link.disabled { color: #aaa; background: #f0f0f0; cursor: not-allowed; }
+  .dataset-desc { font-size: .8rem; color: #777; margin: -.4rem 0 .8rem .2rem; }
+  .ds-placeholder { background: #fff; border: 1px dashed #c4d4e3; border-radius: 6px;
+                    padding: 2rem 1rem; text-align: center; color: #888; }
+  .ds-placeholder b { color: #1e5894; }
+
+  .paste-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .paste-row textarea { width: 100%; min-height: 90px; font-family: inherit; font-size: .85rem; }
+  .paste-row .hint { font-size: .78rem; color: #b94343; line-height: 1.4; }
+  .paste-row .hint b { color: #c0392b; }
+  .paste-row .small-row { display: flex; gap: .35rem; margin-top: .35rem; }
+  .paste-row .small-row .btn { font-size: .8rem; padding: .15rem .6rem; }
+
+  .name-row { display: flex; gap: .5rem; align-items: center; }
+  .name-row input { max-width: 240px; }
+  .name-row select { max-width: 180px; }
+
+  .inst-box { font-size: .85rem; line-height: 1.55; color: #444; background: #fff;
+              border: 1px dashed #ccc; padding: .55rem .8rem; border-radius: 4px; }
+  .inst-box b.warn { color: #c0392b; }
+
+  .start-row { text-align: center; margin: 1.25rem 0 2.5rem; }
+  .start-row button { padding: .5rem 2rem; font-weight: 600; }
+
+  .result-card { border: 1px solid #2a72b8; background: #f4f9ff; border-radius: 6px;
+                 padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .result-card h5 { font-size: 1rem; font-weight: 700; color: #1e5894; margin-bottom: .6rem;
+                    display: flex; align-items: center; gap: .4rem; }
+  .result-summary { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-bottom: .8rem;
+                    font-size: .9rem; }
+  .result-summary span b { color: #1e5894; }
+  .result-options { display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+                    gap: .35rem .9rem; font-size: .85rem; margin: .5rem 0 1rem; }
+  .result-options .row-item b { color: #c0392b; }
+  .result-options .row-item.zero b { color: #999; }
+  .result-table { width: 100%; font-size: .82rem; border-collapse: collapse; background: #fff; }
+  .result-table th, .result-table td { border: 1px solid #e0e0e0; padding: .25rem .5rem; }
+  .result-table th { background: #eaf2fb; }
+  .result-empty { color: #888; font-size: .9rem; padding: .8rem; text-align: center; background: #fff; border-radius: 4px; }
+
+  @media (max-width: 992px) {
+    .opt-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .num-grid { grid-template-columns: repeat(8, minmax(0,1fr)); }
+    .paste-row { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tool-wrap">
+
+  <h4 class="tool-title">
+    <i class="fas fa-print me-1"></i>부교재 출력 툴
+    <a href="{% url 'index' %}" class="back-link ms-auto text-muted">
+      <i class="fas fa-arrow-left me-1"></i>메인으로
+    </a>
+  </h4>
+
+  {% if has_result %}
+    <div class="result-card">
+      <h5><i class="fas fa-database me-1"></i>매칭 결과</h5>
+      <div class="result-summary">
+        <span>매칭된 KEY_TABLE 행: <b>{{ result_total }}</b>개</span>
+        {% if selected_name %}<span>이름: <b>{{ selected_name }}</b></span>{% endif %}
+        {% if selected_test_type %}<span>시험구분: <b>{{ selected_test_type }}</b></span>{% endif %}
+      </div>
+
+      {% if result_options %}
+      <div class="result-options">
+        {% for o in result_options %}
+          <div class="row-item {% if o.count == 0 %}zero{% endif %}">
+            {{ o.label|linebreaksbr }}:
+            {% if o.count is None %}<b>{{ o.note }}</b>{% else %}<b>{{ o.count }}</b>건{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if result_preview %}
+      <div class="table-responsive">
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th>교재</th><th>학년</th><th>연도</th><th>강(단원)</th><th>번호</th><th>색인</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in result_preview %}
+            <tr>
+              <td>{{ r.book|default:'-' }}</td>
+              <td>{{ r.grade }}</td>
+              <td>{{ r.year|default:'-' }}</td>
+              <td>{{ r.month }}</td>
+              <td>{{ r.number }}</td>
+              <td>{{ r.total_number }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if result_total > 30 %}
+        <div class="small text-muted mt-1">상위 30개만 미리보기 — 전체 {{ result_total }}개</div>
+      {% endif %}
+
+      <div class="mt-2">
+        <button type="button" class="btn btn-success btn-sm" data-action="download-csv"
+                data-format="csv">
+          <i class="fas fa-file-csv me-1"></i>CSV
+        </button>
+        <button type="button" class="btn btn-outline-success btn-sm ms-1" data-action="download-csv"
+                data-format="xlsx">
+          <i class="fas fa-file-excel me-1"></i>Excel
+        </button>
+        <button type="button" class="btn btn-danger btn-sm ms-1" data-action="download-csv"
+                data-format="pdf"
+                title="브라우저에서 바로 받을 수 있는 PDF (한글 폰트 포함)">
+          <i class="fas fa-file-pdf me-1"></i>PDF
+        </button>
+        <button type="button" class="btn btn-primary btn-sm ms-1" data-action="download-csv"
+                data-format="pedu"
+                title=".pedu 파일을 받아 'Hwp변환기.exe'로 열면 HWP가 생성됩니다.">
+          <i class="fas fa-file-word me-1"></i>HWP (보안 다운로드)
+        </button>
+        <div class="small text-muted mt-1">
+          <i class="fas fa-info-circle me-1"></i>
+          HWP는 암호화된 <code>.pedu</code> 파일로 받습니다 —
+          PC에 설치된 변환 프로그램으로 열어야 한글 파일이 생성됩니다.
+          (만료 {{ pedu_expiry_hours|default:8 }}시간)
+        </div>
+      </div>
+      {% else %}
+        <div class="result-empty">선택한 조건에 매칭되는 데이터가 없습니다.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <form id="subBookForm" method="post" action="">
+    {% csrf_token %}
+
+    <!-- 옵션 선택 메뉴 -->
+    <fieldset class="tool-section">
+      <legend>옵션 선택 메뉴</legend>
+
+      <div class="opt-grid">
+        {% for o in options %}
+          <label class="{% if o.disabled %}disabled{% endif %} {% if o.highlight == 'red' %}highlight-red{% endif %}">
+            <input type="checkbox" name="option" value="{{ o.key }}"
+                   {% if o.checked %}checked{% endif %}
+                   {% if o.disabled %}disabled{% endif %}>
+            <span>{{ o.label|linebreaksbr }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="opt-toolbar">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="opt-all">옵션 전체 선택</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-action="opt-clear">옵션 전체 해제</button>
+      </div>
+    </fieldset>
+
+    <!-- 데이터셋 + 단원·번호 선택 -->
+    <fieldset class="tool-section">
+      <legend>데이터셋 / 단원·번호 선택</legend>
+
+      <ul class="nav nav-tabs dataset-tabs" role="tablist">
+        {% for ds in datasets %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {% if ds.key == active_dataset %}active{% endif %} {% if not ds.enabled %}disabled{% endif %}"
+                    type="button" data-bs-toggle="tab"
+                    data-bs-target="#ds-{{ ds.key }}"
+                    data-ds-key="{{ ds.key }}"
+                    {% if not ds.enabled %}disabled aria-disabled="true"{% endif %}>
+              {{ ds.label }}{% if not ds.enabled %} <small>(준비중)</small>{% endif %}
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <input type="hidden" name="dataset" value="{{ active_dataset }}">
+
+      <div class="tab-content">
+        {% for ds in datasets %}
+          <div class="tab-pane fade {% if ds.key == active_dataset %}show active{% endif %}" id="ds-{{ ds.key }}">
+            <div class="dataset-desc">{{ ds.desc }}</div>
+
+            {% if ds.enabled %}
+              <ul class="nav nav-tabs grade-tabs mb-2" role="tablist">
+                {% for gt in grade_tabs %}
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link {% if forloop.first %}active{% endif %}"
+                            type="button" data-bs-toggle="tab"
+                            data-bs-target="#tab-{{ ds.key }}-{{ gt.idx }}">
+                      {{ gt.grade }}
+                    </button>
+                  </li>
+                {% endfor %}
+              </ul>
+
+              <div class="tab-content">
+                {% for gt in grade_tabs %}
+                <div class="tab-pane fade {% if forloop.first %}show active{% endif %}" id="tab-{{ ds.key }}-{{ gt.idx }}">
+
+                  <div class="mb-2"><strong class="small">단원 선택</strong></div>
+                  <div class="num-row">
+                    <div class="num-grid" data-group="unit-{{ ds.key }}-{{ gt.idx }}">
+                      {% for n in gt.unit_numbers %}
+                        <label>
+                          <input type="checkbox" name="unit_{{ gt.grade }}" value="{{ n }}"
+                                 {% if n in gt.selected_units %}checked{% endif %}>
+                          <span>{{ n }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                    <div class="num-toolbar">
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              data-action="group-all" data-target="unit-{{ ds.key }}-{{ gt.idx }}">번호 전체 선택</button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              data-action="group-clear" data-target="unit-{{ ds.key }}-{{ gt.idx }}">번호 전체 해제</button>
+                    </div>
+                  </div>
+
+                  <div class="mt-3 mb-2"><strong class="small">번호 선택</strong></div>
+                  <div class="num-row">
+                    <div class="num-grid" data-group="qnum-{{ ds.key }}-{{ gt.idx }}">
+                      {% for n in gt.question_numbers %}
+                        <label>
+                          <input type="checkbox" name="qnum_{{ gt.grade }}" value="{{ n }}"
+                                 {% if n in gt.selected_numbers %}checked{% endif %}>
+                          <span>{{ n }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                    <div class="num-toolbar">
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              data-action="group-all" data-target="qnum-{{ ds.key }}-{{ gt.idx }}">번호 전체 선택</button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm"
+                              data-action="group-clear" data-target="qnum-{{ ds.key }}-{{ gt.idx }}">번호 전체 해제</button>
+                    </div>
+                  </div>
+
+                </div>
+                {% endfor %}
+              </div>
+
+            {% else %}
+              <div class="ds-placeholder">
+                <b>{{ ds.label }}</b> 데이터는 아직 DB에 sync되지 않았습니다.<br>
+                <span class="small">관리자 메뉴에서 sync 명령을 실행한 뒤 사용할 수 있습니다.</span>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <!-- 스프레드시트 일괄 입력 / 번호 추가입력 -->
+    <fieldset class="tool-section">
+      <legend>일괄 입력</legend>
+
+      <div class="paste-row">
+        <div>
+          <strong class="small">스프레드시트 일괄 입력 (행 통째로 붙여넣기)</strong>
+          <div class="hint mt-1">
+            Google 스프레드시트의 행을 복사해 아래에 붙여넣고 <b>"적용"</b>을 누르세요.<br>
+            열 순서: [학교명] [교재구분] [교재명] [시험범위]<br>
+            (Tab 구분, 시험범위 셀은 줄바꿈 허용)
+          </div>
+          <textarea name="paste_sheet" placeholder="여기에 붙여넣기"></textarea>
+          <div class="small-row">
+            <button type="button" class="btn btn-outline-primary btn-sm" data-action="paste-apply">적용</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-action="paste-clear">입력창 비우기</button>
+            <span data-role="paste-status" class="small ms-2"></span>
+          </div>
+        </div>
+
+        <div>
+          <strong class="small">번호 추가입력</strong>
+          <div class="hint mt-1" style="color:#555;">
+            선택 메뉴에 없는 단원 입력하기 ex) 25-23
+          </div>
+          <div class="small-row mb-1">
+            <input type="text" name="extra_unit" class="form-control form-control-sm"
+                   placeholder="단원-번호 형식 (예: 25-23)">
+            <button type="button" class="btn btn-outline-primary btn-sm" data-action="extra-add">단원-번호 추가</button>
+          </div>
+          <textarea name="extra_preview" readonly
+                    placeholder="현재 선택된 번호가 여기에 표시됩니다.">{{ selected_extra_preview|default:'' }}</textarea>
+          <div class="small text-muted mt-1">현재 선택된 번호 개수 : <span data-role="extra-count">0</span>개</div>
+        </div>
+      </div>
+    </fieldset>
+
+    <!-- 이름 입력 -->
+    <fieldset class="tool-section">
+      <legend>이름 입력 메뉴</legend>
+      <div class="name-row">
+        <label class="small mb-0">이름을 입력해 주세요.</label>
+        <input type="text" name="name" class="form-control form-control-sm"
+               placeholder="예: 백현고1, 동백고1" value="{{ selected_name|default:'' }}">
+        <select name="test_type" class="form-select form-select-sm">
+          {% for t in test_types %}
+            <option value="{{ t }}"
+                    {% if selected_test_type %}{% if t == selected_test_type %}selected{% endif %}
+                    {% else %}{% if t == '1학기 기말고사' %}selected{% endif %}{% endif %}>
+              {{ t }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </fieldset>
+
+    <!-- 설명 -->
+    <fieldset class="tool-section">
+      <legend>설명</legend>
+      <div class="inst-box">
+        <strong>이름 입력 메뉴 예시</strong><br>
+        Ex) 백현고1 1학기 중간고사(part1)<br>
+        이름에 학교명 (백현고1, 동백고1)만 입력해 주세요. (part 자동 인식)<br>
+        <b class="warn">'파일병합'</b> 옵션은 책표지를 포함해서 파일을 통합합니다. 이를 꼭 확인하세요.
+      </div>
+    </fieldset>
+
+    <div class="start-row">
+      <button type="submit" class="btn btn-primary">작업 시작</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById('subBookForm');
+  if (!form) return;
+
+  // 페이지 로드 시: extra_preview에 값이 남아있으면 카운트 갱신
+  const previewEl = form.querySelector('textarea[name="extra_preview"]');
+  const countEl = form.querySelector('[data-role="extra-count"]');
+  if (previewEl && countEl) {
+    const lines = previewEl.value.split('\n').filter(Boolean).length;
+    countEl.textContent = lines;
+  }
+
+  // 데이터셋 탭 클릭 시 hidden input 갱신
+  const datasetInput = form.querySelector('input[name="dataset"]');
+  form.querySelectorAll('.dataset-tabs .nav-link[data-ds-key]').forEach(btn => {
+    btn.addEventListener('shown.bs.tab', () => {
+      if (datasetInput) datasetInput.value = btn.dataset.dsKey;
+    });
+  });
+
+  function setStatus(el, msg, kind) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = kind === 'err' ? '#c0392b' : '#1e5894';
+  }
+
+  function checkBoxesByName(name, values) {
+    const set = new Set(values.map(String));
+    let matched = 0;
+    form.querySelectorAll(`input[type="checkbox"][name="${name}"]`).forEach(c => {
+      if (set.has(c.value)) { c.checked = true; matched++; }
+    });
+    return matched;
+  }
+
+  function activateGradeTab(grade) {
+    const btn = form.querySelector(`.grade-tabs .nav-link[data-bs-target]`);
+    // 학년명으로 탭 텍스트 매칭
+    form.querySelectorAll('.grade-tabs .nav-link').forEach(b => {
+      if (b.textContent.trim() === grade) {
+        // Bootstrap 5 Tab API
+        const target = b.dataset.bsTarget;
+        if (window.bootstrap && bootstrap.Tab) {
+          bootstrap.Tab.getOrCreateInstance(b).show();
+        } else {
+          // 폴백
+          form.querySelectorAll('.grade-tabs .nav-link').forEach(x => x.classList.remove('active'));
+          form.querySelectorAll('.tab-pane').forEach(x => x.classList.remove('show', 'active'));
+          b.classList.add('active');
+          form.querySelector(target)?.classList.add('show', 'active');
+        }
+      }
+    });
+  }
+
+  function submitForDownload(fmt) {
+    // 폼을 그대로 download 엔드포인트로 한 번 submit (현 페이지는 유지)
+    const tmp = document.createElement('form');
+    tmp.method = 'POST';
+    tmp.action = '{% url "academy_tools:download" %}';
+    tmp.style.display = 'none';
+
+    // form 입력값 복사 (체크박스/텍스트/select/hidden)
+    new FormData(form).forEach((value, key) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = value;
+      tmp.appendChild(input);
+    });
+
+    // format 추가
+    const fInput = document.createElement('input');
+    fInput.type = 'hidden';
+    fInput.name = 'format';
+    fInput.value = fmt;
+    tmp.appendChild(fInput);
+
+    document.body.appendChild(tmp);
+    tmp.submit();
+    document.body.removeChild(tmp);
+  }
+
+  function applyPasteResult(res, statusEl) {
+    if (!res.ok) { setStatus(statusEl, res.error || '파싱 실패', 'err'); return; }
+
+    const grade = res.grade || '고1';
+    activateGradeTab(grade);
+
+    const u = checkBoxesByName(`unit_${grade}`, res.units || []);
+    const n = checkBoxesByName(`qnum_${grade}`, res.numbers || []);
+
+    if (res.school) {
+      const nameInput = form.querySelector('input[name="name"]');
+      if (nameInput) nameInput.value = res.school;
+    }
+
+    let msg = `${res.mode} ${grade} / 단원 ${u}개 · 번호 ${n}개 적용`;
+    if (res.school) msg += ` / 이름: ${res.school}`;
+    setStatus(statusEl, msg, 'ok');
+  }
+
+  // 그룹 전체 선택/해제
+  form.addEventListener('click', function (e) {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+
+    if (action === 'opt-all' || action === 'opt-clear') {
+      form.querySelectorAll('input[name="option"]:not(:disabled)').forEach(c => {
+        c.checked = (action === 'opt-all');
+      });
+    }
+
+    if (action === 'group-all' || action === 'group-clear') {
+      const target = btn.dataset.target;
+      const wrap = form.querySelector(`[data-group="${target}"]`);
+      if (!wrap) return;
+      wrap.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(c => {
+        c.checked = (action === 'group-all');
+      });
+    }
+
+    if (action === 'paste-clear') {
+      form.querySelector('textarea[name="paste_sheet"]').value = '';
+    }
+
+    if (action === 'paste-apply') {
+      const textarea = form.querySelector('textarea[name="paste_sheet"]');
+      const status = form.querySelector('[data-role="paste-status"]');
+      const text = textarea.value.trim();
+      if (!text) { setStatus(status, '입력된 내용이 없습니다.', 'err'); return; }
+
+      const data = new FormData();
+      data.append('paste_sheet', text);
+      data.append('csrfmiddlewaretoken', form.querySelector('[name="csrfmiddlewaretoken"]').value);
+
+      fetch('{% url "academy_tools:parse_paste" %}', { method: 'POST', body: data, credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(res => applyPasteResult(res, status))
+        .catch(err => setStatus(status, '서버 오류: ' + err, 'err'));
+    }
+
+    if (action === 'download-csv') {
+      submitForDownload(btn.dataset.format || 'csv');
+      return;
+    }
+
+    if (action === 'extra-add') {
+      const input = form.querySelector('input[name="extra_unit"]');
+      const preview = form.querySelector('textarea[name="extra_preview"]');
+      const v = input.value.trim();
+      if (!v) return;
+      preview.value = (preview.value ? preview.value + '\n' : '') + v;
+      input.value = '';
+      const count = preview.value.split('\n').filter(Boolean).length;
+      form.querySelector('[data-role="extra-count"]').textContent = count;
+    }
+  });
+})();
+</script>
+{% endblock %}

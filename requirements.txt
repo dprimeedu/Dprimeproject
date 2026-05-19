@@ -11,3 +11,4 @@ reportlab==4.5.1
 openpyxl
 google-generativeai
 google-genai
+weasyprint==68.1

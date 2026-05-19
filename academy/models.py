@@ -47,6 +47,13 @@ class QuestionData(models.Model):
         return f"{self.색인} - {self.문제[:20]}"
 
 class KeyTable(models.Model):
+    CATEGORY_CHOICES = [
+        ('mock_exam',  '모의고사'),
+        ('ebs_high3',  'EBS 고3'),
+        ('ebs_naesin', 'EBS 내신교재'),
+        ('textbook',   '교과서'),
+    ]
+
     pk_number = models.IntegerField(db_column='PK_number', primary_key=True)
     total_number = models.TextField(db_column='Total_number')
     grade = models.TextField(db_column='grade')
@@ -54,9 +61,23 @@ class KeyTable(models.Model):
     month = models.TextField(db_column='month')
     number = models.TextField(db_column='number')
     qtype = models.TextField(db_column='Qtype')
+    category = models.CharField(
+        db_column='category', max_length=20,
+        choices=CATEGORY_CHOICES, default='mock_exam',
+        verbose_name='카테고리',
+    )
+    book = models.CharField(
+        db_column='book', max_length=255,
+        blank=True, default='',
+        verbose_name='교재명',
+    )
 
     class Meta:
         db_table = 'KEY_TABLE'
+        indexes = [
+            models.Index(fields=['category', 'grade'], name='kt_cat_grade_idx'),
+            models.Index(fields=['category', 'book'], name='kt_cat_book_idx'),
+        ]
 
 
 class CountTable(models.Model):
