@@ -38,6 +38,7 @@ urlpatterns = [
     path('admin/students/action/', views.student_action, name='student_action'),
     path('admin/students/template.xlsx', views.student_template_xlsx, name='student_template'),
     path('admin/api/students/', views.student_list_api, name='student_list_api'),
+    path('admin/api/students/<int:student_id>/info/', views.student_info_api, name='student_info_api'),
     path('admin/api/students/<int:student_id>/assignments/', views.student_assignments, name='student_assignments'),
     path('admin/api/students/<int:student_id>/assignments/update/', views.student_assignments_update, name='student_assignments_update'),
 

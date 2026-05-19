@@ -1590,6 +1590,42 @@ def student_action(request):
 
 @teacher_required
 @require_GET
+def student_info_api(request, student_id):
+    """학생 정보 + 풀이 통계 — 학생 정보 모달용."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Max, Avg, Sum
+    User = get_user_model()
+    s = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+    assigned_count = UnitAssignment.objects.filter(student=s).count()
+    finished = WritingSession.objects.filter(student=s, finished_at__isnull=False)
+    session_count = finished.count()
+    best_score = finished.aggregate(Max('total_score'))['total_score__max'] or 0
+    profile = StudentProfile.objects.filter(student=s).first()
+    total_xp = profile.total_xp if profile else 0
+    level = scoring.compute_level(total_xp)
+
+    return JsonResponse({
+        'id': s.id,
+        'username': s.username or '',
+        'login_id': getattr(s, 'login_id', '') or '',
+        'email': s.email or '',
+        'is_active': s.is_active,
+        'is_approved': bool(getattr(s, 'is_approved', False)),
+        'date_joined': s.date_joined.strftime('%Y-%m-%d %H:%M') if s.date_joined else '',
+        'assigned_count': assigned_count,
+        'session_count': session_count,
+        'best_score': best_score,
+        'total_xp': total_xp,
+        'level': level,
+        'title': scoring.compute_title(level),
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
+@require_GET
 def student_assignments(request, student_id):
     """학생 1명의 배정 현황 + 전체 단원 — 학생 편집 모달용."""
     from django.contrib.auth import get_user_model

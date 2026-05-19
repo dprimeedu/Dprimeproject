@@ -17,9 +17,18 @@
 .student-checkbox:focus, #student-header-cb:focus {
     box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.25);
 }
-.student-row { cursor: pointer; }
+.student-row { background-color: transparent; }
 .student-row:hover { background-color: rgba(124, 58, 237, 0.04); }
-.student-row td.no-click { cursor: default; }
+.student-info-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.student-info-btn:hover { color: var(--primary-color); text-decoration: underline; }
+.student-info-btn:hover code { color: var(--primary-color); }
 .assign-count-btn {
     background: none;
     border: 0;
@@ -27,8 +36,22 @@
     font-weight: 600;
     text-decoration: underline;
     padding: 0;
+    cursor: pointer;
 }
 .assign-count-btn:hover { color: #5b21b6; }
+.info-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: .75rem;
+}
+.info-stat-card {
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: .75rem;
+}
+.info-stat-card .lbl { font-size: .75rem; color: #6b7280; }
+.info-stat-card .val { font-size: 1.25rem; font-weight: 700; color: var(--primary-color); margin-top: .25rem; }
 .unit-row {
     display: flex;
     align-items: center;
@@ -155,8 +178,16 @@
                             data-student-id="{{ s.id }}"
                             data-student-label="{{ s.username|default:s.login_id|default:s.email|default:'학생' }}">
                             <td class="no-click"><input type="checkbox" name="student_ids" value="{{ s.id }}" class="form-check-input student-checkbox"></td>
-                            <td><code>{{ s.login_id|default:s.email|default:'-' }}</code></td>
-                            <td>{{ s.username|default:'-' }}</td>
+                            <td>
+                                <button type="button" class="student-info-btn" title="학생 정보 보기">
+                                    <code>{{ s.login_id|default:s.email|default:'-' }}</code>
+                                </button>
+                            </td>
+                            <td>
+                                <button type="button" class="student-info-btn" title="학생 정보 보기">
+                                    {{ s.username|default:'-' }}
+                                </button>
+                            </td>
                             <td class="text-center">
                                 {% if s.is_academy %}<span class="badge bg-info text-dark">학원</span>
                                 {% else %}<span class="badge bg-light text-dark">학생</span>{% endif %}
@@ -188,6 +219,29 @@
         <a href="{% url 'writing:student_upload' %}" class="btn btn-primary mt-3">엑셀로 일괄 등록</a>
     </div>
     {% endif %}
+</div>
+
+<!-- 학생 정보 모달 -->
+<div class="modal fade" id="studentInfoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-user-circle me-2"></i><span id="studentInfoTitle">학생 정보</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="studentInfoBody">
+        <div class="text-center text-muted py-4">불러오는 중...</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-primary" id="openAssignFromInfo">
+          <i class="fas fa-book-open me-1"></i>배정 단원 편집
+        </button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 학생 배정 편집 모달 -->
@@ -549,16 +603,87 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // 행/카운트 버튼 클릭으로 모달 오픈 (체크박스 영역은 제외)
-    document.querySelectorAll('.student-row').forEach(row => {
-        row.addEventListener('click', e => {
-            // 체크박스 컬럼 클릭은 무시
-            if (e.target.closest('td.no-click')) return;
-            if (e.target.tagName === 'INPUT') return;
+    // 배정 단원 숫자 클릭 → 단원 배정 모달
+    document.querySelectorAll('.assign-count-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const row = btn.closest('.student-row');
+            if (!row) return;
             const sid = parseInt(row.dataset.studentId);
             const label = row.dataset.studentLabel || '학생';
             openAssignModal(sid, label);
         });
+    });
+
+    // 학생 이름 / 로그인 ID 클릭 → 학생 정보 모달
+    const infoModalEl = document.getElementById('studentInfoModal');
+    const infoModal = new bootstrap.Modal(infoModalEl);
+    const infoTitleEl = document.getElementById('studentInfoTitle');
+    const infoBodyEl = document.getElementById('studentInfoBody');
+    const openAssignFromInfoBtn = document.getElementById('openAssignFromInfo');
+    let infoCurrentSid = null;
+    let infoCurrentLabel = '';
+
+    document.querySelectorAll('.student-info-btn').forEach(btn => {
+        btn.addEventListener('click', async e => {
+            e.stopPropagation();
+            const row = btn.closest('.student-row');
+            if (!row) return;
+            const sid = parseInt(row.dataset.studentId);
+            const label = row.dataset.studentLabel || '학생';
+            infoCurrentSid = sid;
+            infoCurrentLabel = label;
+            infoTitleEl.textContent = `학생 정보 — ${label}`;
+            infoBodyEl.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
+            infoModal.show();
+            try {
+                const r = await fetch(`/training/writing/admin/api/students/${sid}/info/`, { credentials: 'same-origin' });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const d = await r.json();
+                infoBodyEl.innerHTML = `
+                    <dl class="row mb-3">
+                        <dt class="col-sm-4">로그인 ID</dt>
+                        <dd class="col-sm-8"><code>${escapeHtml(d.login_id || '-')}</code></dd>
+                        <dt class="col-sm-4">이름</dt>
+                        <dd class="col-sm-8">${escapeHtml(d.username || '-')}</dd>
+                        <dt class="col-sm-4">이메일</dt>
+                        <dd class="col-sm-8">${escapeHtml(d.email || '-')}</dd>
+                        <dt class="col-sm-4">활성</dt>
+                        <dd class="col-sm-8">${d.is_active ? '<span class="badge bg-success">활성</span>' : '<span class="badge bg-secondary">비활성</span>'}</dd>
+                        <dt class="col-sm-4">재원생 승인</dt>
+                        <dd class="col-sm-8">${d.is_approved ? '<span class="badge bg-success">✓ 승인</span>' : '<span class="badge bg-warning text-dark">대기</span>'}</dd>
+                        <dt class="col-sm-4">가입일</dt>
+                        <dd class="col-sm-8">${escapeHtml(d.date_joined || '-')}</dd>
+                    </dl>
+                    <div class="info-stat-grid">
+                        <div class="info-stat-card">
+                            <div class="lbl">배정 단원</div>
+                            <div class="val">${d.assigned_count}<span style="font-size:.8rem; font-weight:400; color:#9ca3af;">개</span></div>
+                        </div>
+                        <div class="info-stat-card">
+                            <div class="lbl">완료 세션</div>
+                            <div class="val">${d.session_count}<span style="font-size:.8rem; font-weight:400; color:#9ca3af;">회</span></div>
+                        </div>
+                        <div class="info-stat-card">
+                            <div class="lbl">최고 점수</div>
+                            <div class="val">${d.best_score}<span style="font-size:.8rem; font-weight:400; color:#9ca3af;">점</span></div>
+                        </div>
+                        <div class="info-stat-card">
+                            <div class="lbl">레벨 (XP)</div>
+                            <div class="val">Lv ${d.level}<span style="font-size:.8rem; font-weight:400; color:#9ca3af;"> · ${d.total_xp} XP</span></div>
+                            <div style="font-size:.75rem; color:#6b7280; margin-top:.15rem;">${escapeHtml(d.title || '')}</div>
+                        </div>
+                    </div>`;
+            } catch (e2) {
+                infoBodyEl.innerHTML = `<div class="alert alert-danger m-2">불러오기 실패: ${e2.message}</div>`;
+            }
+        });
+    });
+
+    openAssignFromInfoBtn.addEventListener('click', () => {
+        if (!infoCurrentSid) return;
+        infoModal.hide();
+        setTimeout(() => openAssignModal(infoCurrentSid, infoCurrentLabel), 200);
     });
 });
 </script>

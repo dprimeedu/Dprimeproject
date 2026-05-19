@@ -3,6 +3,15 @@
 
 {% block extra_css %}
 <style>
+.unit-title-link {
+    color: #111827;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+}
+.unit-title-link:hover {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
 .unit-checkbox,
 #header-checkbox {
     width: 1.25rem;
@@ -113,7 +122,12 @@
                                        class="form-check-input unit-checkbox"
                                        data-title="{{ unit.title }}" data-count="{{ unit.total_count }}">
                             </td>
-                            <td><strong>{{ unit.title }}</strong></td>
+                            <td>
+                                <a href="{% url 'writing:unit_detail' unit.id %}"
+                                   class="unit-title-link" title="이 단원 편집">
+                                    <strong>{{ unit.title }}</strong>
+                                </a>
+                            </td>
                             <td>{{ unit.grade }}</td>
                             <td>{{ unit.publisher|default:'-' }}</td>
                             <td class="text-center">{{ unit.total_count }}</td>
