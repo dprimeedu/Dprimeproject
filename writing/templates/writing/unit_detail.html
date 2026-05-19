@@ -1,6 +1,68 @@
 {% extends 'base.html' %}
 {% load static %}
 
+{% block extra_css %}
+<style>
+.editable-cell { cursor: text; position: relative; }
+.editable-cell:hover {
+    background-color: rgba(124, 58, 237, 0.06);
+    outline: 1px dashed rgba(124, 58, 237, 0.5);
+    outline-offset: -1px;
+}
+.editable-cell:hover::after {
+    content: '\f044';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    font-size: .7rem;
+    color: var(--primary-color);
+    opacity: .6;
+}
+.editable-cell textarea {
+    width: 100%;
+    border: 2px solid var(--primary-color);
+    border-radius: 4px;
+    padding: .4rem .5rem;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.4;
+    resize: vertical;
+    min-height: 2.5rem;
+    background: #fff;
+}
+.editable-cell .edit-hint {
+    font-size: .7rem;
+    color: #6b7280;
+    margin-top: .25rem;
+}
+.editable-cell.saving { opacity: .6; }
+.editable-cell.saved-flash { background-color: #d1fae5; transition: background-color 1s; }
+.hints-clickable { cursor: pointer; }
+.hints-clickable:hover .badge { filter: brightness(0.9); transform: scale(1.05); }
+.hints-row {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    padding: .5rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.hints-row input[type=text] {
+    flex: 1;
+    padding: .25rem .5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+}
+.hints-row .word-input { max-width: 180px; font-family: monospace; font-weight: 600; }
+.hints-row .pn-toggle { white-space: nowrap; }
+.hints-row .del-btn {
+    background: none; border: 0; color: #ef4444; font-size: 1.1rem; cursor: pointer; padding: .25rem .5rem;
+}
+.hints-row .del-btn:hover { background: #fee2e2; border-radius: 4px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="home-wrap">
     <a href="{% url 'writing:unit_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단원 목록</a>
@@ -21,6 +83,12 @@
             </p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-success"
+                    data-bs-toggle="modal" data-bs-target="#replaceExcelModal"
+                    title="엑셀로 이 단원의 문제를 통째 교체합니다">
+                <i class="fas fa-file-excel me-1"></i>엑셀 업로드
+            </button>
+
             {% if has_hints_count < total_count %}
             <button id="generateHintsBtn" class="btn btn-primary" onclick="generateHints({{ unit.id }})">
                 <i class="fas fa-magic me-1"></i>AI 한글뜻 생성
@@ -55,15 +123,15 @@
                 </thead>
                 <tbody>
                     {% for p in problems %}
-                    <tr>
+                    <tr data-problem-id="{{ p.id }}">
                         <td class="text-center"><strong>{{ p.index }}</strong></td>
-                        <td>{{ p.korean }}</td>
-                        <td><code>{{ p.english }}</code></td>
-                        <td class="text-center">
+                        <td class="editable-cell" data-field="korean" title="클릭해서 편집">{{ p.korean }}</td>
+                        <td class="editable-cell" data-field="english" title="클릭해서 편집"><code>{{ p.english }}</code></td>
+                        <td class="text-center hints-clickable" data-hints-count="{{ p.word_hints|length }}" title="클릭해서 단어 뜻 편집">
                             {% if p.word_hints %}
-                                <span class="badge bg-success">✅</span>
+                                <span class="badge bg-success">✅ {{ p.word_hints|length }}</span>
                             {% else %}
-                                <span class="badge bg-secondary">-</span>
+                                <span class="badge bg-secondary">편집</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -114,6 +182,69 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- 엑셀 업로드(교체) 모달 -->
+<div class="modal fade" id="replaceExcelModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" enctype="multipart/form-data" action="{% url 'writing:unit_replace_excel' unit.id %}">
+      {% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-file-excel me-2 text-success"></i>엑셀로 문제 교체</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning small mb-3">
+            <strong>⚠ 주의</strong> — 이 단원의 기존 문제 <strong>{{ total_count }}개</strong>가 모두 삭제되고 업로드한 엑셀로 교체됩니다.
+            AI 한글뜻도 초기화되니 필요 시 다시 생성하세요. 배정 학생·풀이 기록은 유지됩니다.
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted">엑셀 파일 <code>(.xlsx / .xls)</code></label>
+            <input type="file" name="excel_file" accept=".xlsx,.xls" class="form-control" required>
+          </div>
+          <div class="small text-muted">
+            형식: 1행 헤더(<code>색인 · 영어 · 한글</code>) + 2행부터 데이터.
+            <a href="{% url 'writing:writing_template' %}" class="ms-1">양식 다운로드</a>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="submit" class="btn btn-success" id="replaceExcelSubmit">
+            <i class="fas fa-upload me-1"></i>업로드 & 교체
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 단어 뜻 편집 모달 -->
+<div class="modal fade" id="hintsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-language me-2"></i>단어 뜻 편집 — <span id="hintsModalTitle">#</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small mb-3">
+          단어별 한글뜻을 편집하세요. 고유명사로 표시한 단어는 학습 시 자동 채워집니다.
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+          <button type="button" id="hintAddBtn" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus me-1"></i>단어 추가</button>
+          <button type="button" id="hintFillFromEnBtn" class="btn btn-sm btn-outline-secondary" title="현재 영어 정답에서 단어 자동 추출">
+            <i class="fas fa-wand-magic-sparkles me-1"></i>영어에서 자동 채우기
+          </button>
+        </div>
+        <div id="hintsList"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" id="hintsSaveBtn" class="btn btn-primary"><i class="fas fa-save me-1"></i>저장</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -255,6 +386,242 @@ async function generateHints(unitId) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-magic me-1"></i>AI 한글뜻 생성';
     }
+}
+
+// ── 인라인 편집 (한글 / 영어) ──
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderCellContent(td, value) {
+    const field = td.dataset.field;
+    if (field === 'english') {
+        td.innerHTML = `<code>${escapeHtml(value)}</code>`;
+    } else {
+        td.textContent = value;
+    }
+}
+
+document.querySelectorAll('.editable-cell').forEach(td => {
+    td.addEventListener('click', () => {
+        if (td.querySelector('textarea')) return;
+        startEdit(td);
+    });
+});
+
+function startEdit(td) {
+    const field = td.dataset.field;
+    const original = (field === 'english')
+        ? td.querySelector('code')?.textContent ?? td.textContent.trim()
+        : td.textContent.trim();
+    td.dataset.original = original;
+
+    td.innerHTML = '';
+    const ta = document.createElement('textarea');
+    ta.value = original;
+    ta.rows = Math.max(2, Math.min(6, original.split('\n').length + 1));
+    td.appendChild(ta);
+
+    const hint = document.createElement('div');
+    hint.className = 'edit-hint';
+    hint.textContent = 'Ctrl+Enter 저장 · Esc 취소';
+    td.appendChild(hint);
+
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+
+    let committed = false;
+    const commit = async () => {
+        if (committed) return; committed = true;
+        const newVal = ta.value.trim();
+        if (newVal === original) {
+            renderCellContent(td, original);
+            return;
+        }
+        if (!newVal) {
+            alert(`${field === 'korean' ? '한글' : '영어'}은 비울 수 없습니다.`);
+            renderCellContent(td, original);
+            return;
+        }
+        await saveCellEdit(td, field, newVal, original);
+    };
+    const cancel = () => {
+        if (committed) return; committed = true;
+        renderCellContent(td, original);
+    };
+
+    ta.addEventListener('blur', commit);
+    ta.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { e.preventDefault(); ta.removeEventListener('blur', commit); cancel(); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ta.blur(); }
+    });
+}
+
+async function saveCellEdit(td, field, newVal, original) {
+    const tr = td.closest('tr');
+    const pid = tr.dataset.problemId;
+    td.classList.add('saving');
+    renderCellContent(td, newVal);
+    try {
+        const r = await fetch(`/training/writing/admin/problems/${pid}/update/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ [field]: newVal }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (!data.success) throw new Error('save failed');
+        renderCellContent(td, data[field] ?? newVal);
+        td.classList.add('saved-flash');
+        setTimeout(() => td.classList.remove('saved-flash'), 1000);
+    } catch (e) {
+        alert(`저장 실패: ${e.message}`);
+        renderCellContent(td, original);
+    } finally {
+        td.classList.remove('saving');
+    }
+}
+
+// ── 단어 뜻 모달 ──
+const hintsModalEl = document.getElementById('hintsModal');
+const hintsModal = new bootstrap.Modal(hintsModalEl);
+const hintsListEl = document.getElementById('hintsList');
+const hintsTitleEl = document.getElementById('hintsModalTitle');
+const hintsSaveBtn = document.getElementById('hintsSaveBtn');
+let currentHintsProblemId = null;
+
+document.querySelectorAll('.hints-clickable').forEach(td => {
+    td.addEventListener('click', () => {
+        const tr = td.closest('tr');
+        openHintsModal(tr);
+    });
+});
+
+async function openHintsModal(tr) {
+    const pid = tr.dataset.problemId;
+    const idx = tr.querySelector('td:first-child').textContent.trim();
+    const english = tr.querySelector('td.editable-cell[data-field=english] code')?.textContent
+                 ?? tr.querySelector('td.editable-cell[data-field=english]').textContent.trim();
+    currentHintsProblemId = pid;
+    hintsTitleEl.textContent = `#${idx}`;
+    hintsListEl.innerHTML = '<div class="text-center text-muted py-3">불러오는 중...</div>';
+    hintsModal.show();
+
+    // 기존 word_hints가 표에는 없으니, GET 별도 API 없이 영어 텍스트에서 추출하거나
+    // 페이지의 data로 fetch. 여기선 problem_update GET 없으니 별도 fetch.
+    try {
+        const r = await fetch(`/training/writing/admin/problems/${pid}/hints/`, { credentials: 'same-origin' });
+        if (r.ok) {
+            const data = await r.json();
+            renderHintsList(data.word_hints || [], english);
+        } else {
+            renderHintsList([], english);
+        }
+    } catch (e) {
+        renderHintsList([], english);
+    }
+}
+
+function renderHintsList(hints, english) {
+    hintsListEl.innerHTML = '';
+    if (hints.length === 0) {
+        hintsListEl.innerHTML = '<div class="alert alert-warning mb-3">아직 단어 뜻이 없습니다. "영어에서 자동 채우기" 또는 "단어 추가"로 시작하세요.</div>';
+    }
+    for (const h of hints) addHintRow(h);
+    // english 보관 (auto fill 용)
+    hintsListEl.dataset.english = english;
+}
+
+function addHintRow(h) {
+    const row = document.createElement('div');
+    row.className = 'hints-row';
+    row.innerHTML = `
+        <input type="text" class="word-input" placeholder="단어" value="${escapeHtml(h.word || '')}">
+        <input type="text" class="meaning-input" placeholder="한글뜻" value="${escapeHtml(h.meaning || '')}">
+        <label class="pn-toggle small text-muted">
+            <input type="checkbox" class="pn-check" ${h.proper_noun ? 'checked' : ''}>
+            고유명사
+        </label>
+        <button type="button" class="del-btn" title="삭제"><i class="fas fa-times"></i></button>
+    `;
+    row.querySelector('.del-btn').addEventListener('click', () => row.remove());
+    hintsListEl.appendChild(row);
+}
+
+document.getElementById('hintAddBtn').addEventListener('click', () => {
+    addHintRow({ word: '', meaning: '', proper_noun: false });
+    const inputs = hintsListEl.querySelectorAll('.hints-row .word-input');
+    inputs[inputs.length - 1].focus();
+});
+
+document.getElementById('hintFillFromEnBtn').addEventListener('click', () => {
+    const english = hintsListEl.dataset.english || '';
+    if (!english) { alert('영어 문장이 비어있습니다.'); return; }
+    const existing = new Set(
+        Array.from(hintsListEl.querySelectorAll('.word-input')).map(i => i.value.trim().toLowerCase())
+    );
+    const words = english.split(/\s+/).map(w => w.replace(/[.,!?;:'"()\[\]{}]/g, '')).filter(Boolean);
+    let added = 0;
+    for (const w of words) {
+        if (existing.has(w.toLowerCase())) continue;
+        existing.add(w.toLowerCase());
+        addHintRow({ word: w, meaning: '', proper_noun: false });
+        added++;
+    }
+    if (added === 0) alert('새로 추가할 단어가 없습니다.');
+});
+
+hintsSaveBtn.addEventListener('click', async () => {
+    if (!currentHintsProblemId) return;
+    const hints = [];
+    hintsListEl.querySelectorAll('.hints-row').forEach(row => {
+        const word = row.querySelector('.word-input').value.trim();
+        const meaning = row.querySelector('.meaning-input').value.trim();
+        const proper_noun = row.querySelector('.pn-check').checked;
+        if (word) hints.push({ word, meaning, proper_noun });
+    });
+    hintsSaveBtn.disabled = true;
+    hintsSaveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+    try {
+        const r = await fetch(`/training/writing/admin/problems/${currentHintsProblemId}/update/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ word_hints: hints }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (!data.success) throw new Error('save failed');
+        // 표의 단어뜻 배지 갱신
+        const tr = document.querySelector(`tr[data-problem-id="${currentHintsProblemId}"]`);
+        if (tr) {
+            const td = tr.querySelector('.hints-clickable');
+            const n = (data.word_hints || []).length;
+            td.dataset.hintsCount = n;
+            td.innerHTML = n > 0
+                ? `<span class="badge bg-success">✅ ${n}</span>`
+                : `<span class="badge bg-secondary">편집</span>`;
+        }
+        hintsModal.hide();
+    } catch (e) {
+        alert(`저장 실패: ${e.message}`);
+    } finally {
+        hintsSaveBtn.disabled = false;
+        hintsSaveBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+    }
+});
+
+// ── 엑셀 업로드 교체 — 확인 ──
+const replaceExcelForm = document.querySelector('#replaceExcelModal form');
+if (replaceExcelForm) {
+    replaceExcelForm.addEventListener('submit', e => {
+        const f = replaceExcelForm.querySelector('input[name=excel_file]').files[0];
+        if (!f) { e.preventDefault(); return; }
+        if (!confirm(`현재 단원의 기존 문제 {{ total_count }}개가 모두 삭제되고 "${f.name}"의 내용으로 교체됩니다.\nAI 한글뜻도 초기화됩니다. 계속할까요?`)) {
+            e.preventDefault();
+        }
+    });
 }
 
 async function pollProgress(unitId, btn) {

@@ -940,6 +940,113 @@ def unit_delete(request):
 
 
 @teacher_required
+@require_GET
+def problem_hints_get(request, problem_id):
+    """문제의 word_hints 조회 — 편집 모달용."""
+    problem = get_object_or_404(WritingProblem, pk=problem_id)
+    return JsonResponse({
+        'id': problem.id,
+        'english': problem.english,
+        'korean': problem.korean,
+        'word_hints': problem.word_hints or [],
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
+@require_POST
+def unit_replace_excel(request, unit_id):
+    """기존 단원의 문제를 업로드한 엑셀로 통째 교체.
+
+    POST multipart: excel_file
+    동작: 기존 problems 전부 삭제 → 엑셀 파싱 결과로 재생성.
+    AI 한글뜻은 비워짐 (필요 시 별도 일괄 생성).
+    """
+    unit = get_object_or_404(WritingUnit, pk=unit_id)
+    f = request.FILES.get('excel_file')
+    if not f:
+        messages.error(request, '엑셀 파일을 선택해주세요.')
+        return redirect('writing:unit_detail', unit_id=unit_id)
+    if not f.name.lower().endswith(('.xlsx', '.xls')):
+        messages.error(request, 'xlsx 또는 xls 파일만 가능합니다.')
+        return redirect('writing:unit_detail', unit_id=unit_id)
+
+    result = parse_writing_excel(f)
+    if not result['success']:
+        for err in result['errors']:
+            messages.error(request, err)
+        return redirect('writing:unit_detail', unit_id=unit_id)
+
+    problems = result['problems']
+    with transaction.atomic():
+        WritingProblem.objects.filter(unit=unit).delete()
+        WritingProblem.objects.bulk_create([
+            WritingProblem(
+                unit=unit,
+                index=p['index'],
+                korean=p['korean'],
+                english=p['english'],
+                word_hints=[],
+            ) for p in problems
+        ])
+
+    parts = [f'{len(problems)}개 문제로 교체 완료']
+    if result.get('skipped_short'):
+        parts.append(f'3단어 이하 {result["skipped_short"]}개 자동 제외')
+    parts.append('AI 한글뜻은 초기화됨 — 필요 시 재생성하세요')
+    messages.success(request, ' · '.join(parts))
+    return redirect('writing:unit_detail', unit_id=unit_id)
+
+
+@teacher_required
+@require_POST
+def problem_update(request, problem_id):
+    """문제 인라인 편집 — body: {korean?, english?, word_hints?} 중 보낸 필드만 갱신."""
+    problem = get_object_or_404(WritingProblem, pk=problem_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest('Invalid JSON')
+
+    update_fields = []
+    if 'korean' in data:
+        problem.korean = str(data['korean']).strip()
+        update_fields.append('korean')
+    if 'english' in data:
+        problem.english = str(data['english']).strip()
+        update_fields.append('english')
+    if 'word_hints' in data:
+        hints = data['word_hints']
+        if not isinstance(hints, list):
+            return HttpResponseBadRequest('word_hints must be a list')
+        clean = []
+        for h in hints:
+            if not isinstance(h, dict):
+                continue
+            word = str(h.get('word', '')).strip()
+            if not word:
+                continue
+            clean.append({
+                'word': word,
+                'meaning': str(h.get('meaning', '')).strip(),
+                'proper_noun': bool(h.get('proper_noun', False)),
+            })
+        problem.word_hints = clean
+        update_fields.append('word_hints')
+
+    if not update_fields:
+        return HttpResponseBadRequest('No fields to update')
+
+    problem.save(update_fields=update_fields)
+    return JsonResponse({
+        'success': True,
+        'id': problem.id,
+        'korean': problem.korean,
+        'english': problem.english,
+        'word_hints': problem.word_hints,
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
 def unit_detail(request, unit_id):
     unit = get_object_or_404(WritingUnit, pk=unit_id)
     problems = unit.problems.all().order_by('index')
