@@ -223,7 +223,7 @@
           </select>
           <button type="button" id="assign-units-all" class="btn btn-sm btn-outline-secondary">전체 선택</button>
           <button type="button" id="assign-units-none" class="btn btn-sm btn-outline-secondary">전체 해제</button>
-          <span class="ms-auto small text-muted"><span id="assignSelectedCount">0</span>개 선택됨 / 전체 <span id="assignTotalCount">0</span></span>
+          <span class="ms-auto small text-muted">배정중 <span id="assignSelectedCount">0</span> / 표시 <span id="assignTotalCount">0</span></span>
         </div>
 
         <div id="unitBulkBar" class="unit-bulk-bar">
@@ -511,12 +511,12 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('unitBulkDeleteBtn').addEventListener('click', () => bulkAssign(false));
 
     document.getElementById('assign-units-all').addEventListener('click', () => {
-        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.checked = true);
-        updateAssignCount();
+        wrap.querySelectorAll('.select-cb').forEach(cb => cb.checked = true);
+        updateUnitBulkUI();
     });
     document.getElementById('assign-units-none').addEventListener('click', () => {
-        wrap.querySelectorAll('.assign-unit-cb').forEach(cb => cb.checked = false);
-        updateAssignCount();
+        wrap.querySelectorAll('.select-cb').forEach(cb => cb.checked = false);
+        updateUnitBulkUI();
     });
 
     saveBtn.addEventListener('click', async () => {
