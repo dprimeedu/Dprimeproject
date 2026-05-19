@@ -701,11 +701,16 @@ async function saveCellEdit(td, field, newVal, original) {
 }
 
 // ── 단어 뜻 모달 ──
+// bootstrap이 페이지 하단에서 로드되므로 Modal 인스턴스는 lazy-init
 const hintsModalEl = document.getElementById('hintsModal');
-const hintsModal = new bootstrap.Modal(hintsModalEl);
 const hintsListEl = document.getElementById('hintsList');
 const hintsTitleEl = document.getElementById('hintsModalTitle');
 const hintsSaveBtn = document.getElementById('hintsSaveBtn');
+let _hintsModal = null;
+function hintsModal() {
+    if (!_hintsModal) _hintsModal = new bootstrap.Modal(hintsModalEl);
+    return _hintsModal;
+}
 let currentHintsProblemId = null;
 
 document.querySelectorAll('.hints-clickable').forEach(td => {
@@ -723,7 +728,7 @@ async function openHintsModal(tr) {
     currentHintsProblemId = pid;
     hintsTitleEl.textContent = `#${idx}`;
     hintsListEl.innerHTML = '<div class="text-center text-muted py-3">불러오는 중...</div>';
-    hintsModal.show();
+    hintsModal().show();
 
     // 기존 word_hints가 표에는 없으니, GET 별도 API 없이 영어 텍스트에서 추출하거나
     // 페이지의 data로 fetch. 여기선 problem_update GET 없으니 별도 fetch.
@@ -933,7 +938,7 @@ hintsSaveBtn.addEventListener('click', async () => {
                 ? `<span class="badge bg-success">✅ ${n}</span>`
                 : `<span class="badge bg-secondary">편집</span>`;
         }
-        hintsModal.hide();
+        hintsModal().hide();
     } catch (e) {
         alert(`저장 실패: ${e.message}`);
     } finally {
@@ -943,8 +948,17 @@ hintsSaveBtn.addEventListener('click', async () => {
 });
 
 // ── 배정 학생 목록 모달 + 학생별 단원 편집 모달 ──
-const assignedStudentsModal = new bootstrap.Modal(document.getElementById('assignedStudentsModal'));
-const stuAssignEditModal = new bootstrap.Modal(document.getElementById('stuAssignEditModal'));
+// lazy-init (bootstrap이 페이지 하단에서 로드되므로)
+let _assignedStudentsModal = null;
+function assignedStudentsModal() {
+    if (!_assignedStudentsModal) _assignedStudentsModal = new bootstrap.Modal(document.getElementById('assignedStudentsModal'));
+    return _assignedStudentsModal;
+}
+let _stuAssignEditModal = null;
+function stuAssignEditModal() {
+    if (!_stuAssignEditModal) _stuAssignEditModal = new bootstrap.Modal(document.getElementById('stuAssignEditModal'));
+    return _stuAssignEditModal;
+}
 
 document.getElementById('assignedStudentsBtn').addEventListener('click', async () => {
     // ALL_STUDENTS가 비어있으면 먼저 로드
@@ -952,7 +966,7 @@ document.getElementById('assignedStudentsBtn').addEventListener('click', async (
         await fetchAssignedCount();
     }
     renderAssignedStudentsList();
-    assignedStudentsModal.show();
+    assignedStudentsModal().show();
 });
 
 function renderAssignedStudentsList() {
@@ -979,7 +993,7 @@ function renderAssignedStudentsList() {
         row.addEventListener('click', () => {
             const sid = parseInt(row.dataset.studentId);
             const label = row.dataset.studentLabel || '학생';
-            assignedStudentsModal.hide();
+            assignedStudentsModal().hide();
             openStudentAssignEditModal(sid, label);
         });
     });
@@ -997,7 +1011,7 @@ async function openStudentAssignEditModal(studentId, label) {
     gradeEl.innerHTML = '<option value="">전체 학년</option>';
     const wrap = document.getElementById('stuAssignUnitListWrap');
     wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
-    stuAssignEditModal.show();
+    stuAssignEditModal().show();
     try {
         const r = await fetch(`/training/writing/admin/api/students/${studentId}/assignments/`, { credentials: 'same-origin' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1083,8 +1097,8 @@ document.getElementById('stuAssignNoneBtn').addEventListener('click', () => {
 });
 
 document.getElementById('stuAssignBackBtn').addEventListener('click', () => {
-    stuAssignEditModal.hide();
-    setTimeout(() => assignedStudentsModal.show(), 200);
+    stuAssignEditModal().hide();
+    setTimeout(() => assignedStudentsModal().show(), 200);
 });
 
 document.getElementById('stuAssignSaveBtn').addEventListener('click', async () => {
@@ -1111,7 +1125,7 @@ document.getElementById('stuAssignSaveBtn').addEventListener('click', async () =
         // 카운트 갱신
         const newCount = (ALL_STUDENTS || []).filter(x => x.is_assigned).length;
         document.getElementById('assignedCountBadge').textContent = newCount;
-        stuAssignEditModal.hide();
+        stuAssignEditModal().hide();
     } catch (e) {
         alert(`저장 실패: ${e.message}`);
     } finally {
