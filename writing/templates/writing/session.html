@@ -95,6 +95,14 @@
     .word-feedback.great   { color: #10b981; font-weight: 800; }       /* 초록 */
     .word-feedback.good    { color: #3b82f6; font-weight: 800; }       /* 파랑 */
     .word-feedback.boo     { color: #ef4444; font-weight: 800; }       /* 빨강 (답 공개) */
+    .word-feedback .penalty {
+        display: block;
+        color: #ef4444;
+        font-size: .7rem;
+        font-weight: 700;
+        margin-top: 2px;
+        letter-spacing: 0;
+    }
     .word-feedback.x { color: #ef4444; font-size: 1rem; }
     .word-feedback.hint-korean { color: #6b7280; font-weight: 500; font-size: .8rem; }
     .word-feedback.hint-letter { color: #f59e0b; font-family: monospace; font-size: 1rem; letter-spacing: 2px; }
@@ -760,15 +768,15 @@ function applyWordResponse(wordIdx, data) {
         inp.disabled = true;
         inp.classList.remove('is-wrong');
         inp.classList.add('is-correct');
-        // 시도 횟수에 따라 라벨 변경
+        // 시도 횟수에 따라 라벨 변경 (PERFECT=10점 기준 차감 표시)
         if (data.attempt_num === 1) {
-            fb.textContent = 'PERFECT!';
+            fb.innerHTML = 'PERFECT!';
             fb.className = 'word-feedback perfect';
         } else if (data.attempt_num === 2) {
-            fb.textContent = 'GREAT';
+            fb.innerHTML = 'GREAT<span class="penalty">-4점</span>';
             fb.className = 'word-feedback great';
         } else {
-            fb.textContent = 'GOOD';
+            fb.innerHTML = 'GOOD<span class="penalty">-7점</span>';
             fb.className = 'word-feedback good';
         }
         state.done = true;
@@ -788,7 +796,7 @@ function applyWordResponse(wordIdx, data) {
             inp.classList.remove('is-wrong');
             inp.classList.add('is-revealed');
             inp.value = data.next_hint?.content || '';
-            fb.textContent = 'BOO~';
+            fb.innerHTML = 'BOO~<span class="penalty">-9점</span>';
             fb.className = 'word-feedback boo';
             state.done = true;
         } else {
