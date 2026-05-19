@@ -574,8 +574,16 @@ def complete_problem_api(request):
         profile.save()
 
     # 이 문장의 점수 비율 계산 (자동 채우기 제외, base 점수만 — speed/콤보 보너스 제외)
+    # 자동 채우기 판정: _should_auto_fill (관사/약자/숫자/대문자약자) + word_hints.proper_noun
     words = problem.english_words
-    non_auto_count = sum(1 for i, w in enumerate(words) if not _should_auto_fill(w, i))
+    hints = problem.word_hints or []
+    def _is_auto(i, w):
+        if _should_auto_fill(w, i):
+            return True
+        if i < len(hints) and isinstance(hints[i], dict) and hints[i].get('proper_noun'):
+            return True
+        return False
+    non_auto_count = sum(1 for i, w in enumerate(words) if not _is_auto(i, w))
     sentence_max = non_auto_count * scoring.SCORE_BY_HINT_LEVEL[0]  # 단어당 10점 만점
 
     sentence_earned = 0
