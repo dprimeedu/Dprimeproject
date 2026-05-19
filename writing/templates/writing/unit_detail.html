@@ -349,12 +349,14 @@ tr.drag-over-bottom td { box-shadow: inset 0 -3px 0 0 var(--primary-color); }
                 <i class="fas fa-file-excel me-1"></i>엑셀 업로드
             </button>
 
-            {% if has_hints_count < total_count %}
+            {% if missing_hints_count > 0 %}
             <button id="generateHintsBtn" class="btn btn-primary" onclick="generateHints({{ unit.id }})">
-                <i class="fas fa-magic me-1"></i>AI 한글뜻 생성
+                <i class="fas fa-magic me-1"></i>AI 한글뜻 보충 ({{ missing_hints_count }}개)
             </button>
             {% else %}
-            <span class="badge bg-success align-self-center">✅ 한글뜻 생성 완료</span>
+            <button id="generateHintsBtn" class="btn btn-outline-success" onclick="if (confirm('이미 모든 문제에 한글뜻이 있습니다. 강제로 재생성할까요? (AI 비용 발생)')) generateHints({{ unit.id }}, true);">
+                ✅ 한글뜻 완료 (재생성)
+            </button>
             {% endif %}
 
             {% if total_count > 0 %}
@@ -746,7 +748,7 @@ async function saveAssignments() {
     }
 }
 
-async function generateHints(unitId) {
+async function generateHints(unitId, force) {
     const btn = document.getElementById('generateHintsBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>시작 중...';
@@ -755,6 +757,7 @@ async function generateHints(unitId) {
         const r = await fetch(`/training/writing/admin/units/${unitId}/generate-hints/`, {
             method: 'POST',
             headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: !!force }),
         });
         const data = await r.json();
 

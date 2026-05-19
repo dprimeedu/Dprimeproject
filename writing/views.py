@@ -1175,11 +1175,13 @@ def unit_detail(request, unit_id):
     unit = get_object_or_404(WritingUnit, pk=unit_id)
     problems = unit.problems.all().order_by('index')
     has_hints_count = sum(1 for p in problems if p.word_hints)
+    total_count = problems.count()
     return render(request, 'writing/unit_detail.html', {
         'unit': unit,
         'problems': problems,
         'has_hints_count': has_hints_count,
-        'total_count': problems.count(),
+        'total_count': total_count,
+        'missing_hints_count': total_count - has_hints_count,
     })
 
 
@@ -1226,8 +1228,14 @@ def _run_hint_generation(unit_id):
 @teacher_required
 @require_POST
 def generate_hints_ajax(request, unit_id):
-    """단원의 한글뜻 생성 시작 (백그라운드)"""
+    """단원의 한글뜻 생성 시작 (백그라운드). body.force=true면 기존 한글뜻도 강제 재생성."""
     unit = get_object_or_404(WritingUnit, pk=unit_id)
+    force = False
+    try:
+        if request.body:
+            force = bool(json.loads(request.body).get('force', False))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        force = False
 
     with _hint_progress_lock:
         existing = _hint_progress.get(unit_id)
@@ -1237,6 +1245,10 @@ def generate_hints_ajax(request, unit_id):
                 'message': '이미 생성 중입니다.',
                 **existing,
             })
+
+        if force:
+            # 모든 word_hints 초기화 → 다음 단계의 query가 전부 잡음
+            WritingProblem.objects.filter(unit_id=unit_id).update(word_hints=[])
 
         _hint_progress[unit_id] = {
             'total': unit.problems.filter(word_hints=[]).count(),
