@@ -155,8 +155,9 @@ _ABBREV_PATTERN = re.compile(
     r'^(Mt|Dr|Mr|Mrs|Ms|St|Jr|Sr|Prof|Inc|Ltd|Co|vs|etc|Ave|Blvd|Rd)\.?$',
     re.IGNORECASE,
 )
-# 숫자 (1815, 5, 1st, 2nd, 1990s 등)
+# 숫자 (1815, 5, 1st, 2nd, 1990s, 7,000 / 1,500,000 등 — 콤마 포함)
 _NUMBER_PATTERN = re.compile(r'^\d+(st|nd|rd|th|s)?$', re.IGNORECASE)
+_NUMBER_WITH_COMMA_PATTERN = re.compile(r'^\d{1,3}(,\d{3})+(st|nd|rd|th|s)?$', re.IGNORECASE)
 
 _PUNCT = ',.!?;:"\'()[]{}'
 
@@ -175,8 +176,10 @@ def _should_auto_fill(word, position):
     # 관사
     if cleaned.lower() in IGNORED_WORDS:
         return True
-    # 숫자 (서수/연도 포함)
+    # 숫자 (서수/연도 + 콤마 포함 숫자 7,000 / 1,500,000 등)
     if _NUMBER_PATTERN.match(cleaned):
+        return True
+    if _NUMBER_WITH_COMMA_PATTERN.match(cleaned):
         return True
     # 약자 (Mt., Dr. 등)
     if _ABBREV_PATTERN.match(cleaned):
