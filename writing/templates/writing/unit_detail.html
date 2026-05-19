@@ -60,6 +60,58 @@
     background: none; border: 0; color: #ef4444; font-size: 1.1rem; cursor: pointer; padding: .25rem .5rem;
 }
 .hints-row .del-btn:hover { background: #fee2e2; border-radius: 4px; }
+.assigned-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--primary-color);
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.assigned-link:hover { color: #5b21b6; }
+.assigned-student-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .6rem .8rem;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    transition: background .15s;
+}
+.assigned-student-row:hover { background: #f8fafc; }
+.assigned-student-row .name { font-weight: 600; flex-grow: 1; }
+.assigned-student-row .login-id { color: #6b7280; font-size: .85rem; font-family: monospace; }
+.assigned-student-row .chev { color: #9ca3af; }
+.unit-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .5rem .75rem;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+}
+.unit-row:hover { background-color: #f8fafc; }
+.unit-row .grade-badge {
+    display: inline-block;
+    min-width: 2.25rem;
+    text-align: center;
+    font-size: .7rem;
+    padding: .15rem .4rem;
+    border-radius: 4px;
+    background: #ede9fe;
+    color: #6d28d9;
+    font-weight: 600;
+}
+.unit-row .publisher {
+    color: #6b7280;
+    font-size: .85rem;
+}
+.unit-row.current-unit { background: #fef3c7; }
+#stuAssignUnitListWrap, #assignedStudentsList {
+    max-height: 50vh; overflow-y: auto;
+    border: 1px solid #e5e7eb; border-radius: 6px;
+}
 </style>
 {% endblock %}
 
@@ -79,7 +131,10 @@
             <p class="section-desc mb-0">
                 {{ unit.grade }} | {{ unit.publisher|default:'기타' }} | 문제 {{ total_count }}개
                 | AI 한글뜻: {{ has_hints_count }} / {{ total_count }}
-                | 배정 학생: <span id="assignedCountBadge">-</span>명
+                | <button type="button" class="assigned-link" id="assignedStudentsBtn"
+                          title="클릭하면 배정된 학생 목록이 보입니다">
+                    배정 학생: <span id="assignedCountBadge">-</span>명
+                </button>
             </p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
@@ -182,6 +237,68 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- 배정된 학생 목록 모달 -->
+<div class="modal fade" id="assignedStudentsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users me-2"></i>이 단원에 배정된 학생 <span id="assignedCountInModal" class="badge bg-primary ms-2"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small mb-3">
+          학생을 클릭하면 해당 학생의 전체 단원 배정을 편집할 수 있습니다.
+        </div>
+        <div id="assignedStudentsList">
+          <div class="text-center text-muted py-4">불러오는 중...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 한 학생의 단원 배정 편집 모달 -->
+<div class="modal fade" id="stuAssignEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-book-open me-2"></i><span id="stuAssignTitle">단원 배정</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small mb-3">
+          체크된 단원만 학생에게 배정됩니다. 현재 단원은 노란색으로 표시됩니다.
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <input type="text" id="stuAssignUnitSearch" class="form-control form-control-sm" style="max-width: 240px;" placeholder="단원명/학년/출판사 검색">
+          <select id="stuAssignGradeFilter" class="form-select form-select-sm" style="max-width: 110px;">
+            <option value="">전체 학년</option>
+          </select>
+          <button type="button" id="stuAssignAllBtn" class="btn btn-sm btn-outline-secondary">전체 선택</button>
+          <button type="button" id="stuAssignNoneBtn" class="btn btn-sm btn-outline-secondary">전체 해제</button>
+          <span class="ms-auto small text-muted"><span id="stuAssignSelCount">0</span>개 선택 / 전체 <span id="stuAssignTotalCount">0</span></span>
+        </div>
+        <div id="stuAssignUnitListWrap">
+          <div class="text-center text-muted py-4">불러오는 중...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="stuAssignBackBtn">
+          <i class="fas fa-arrow-left me-1"></i>학생 목록으로
+        </button>
+        <button type="button" id="stuAssignSaveBtn" class="btn btn-primary">
+          <i class="fas fa-save me-1"></i>저장
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 엑셀 업로드(교체) 모달 -->
@@ -609,6 +726,184 @@ hintsSaveBtn.addEventListener('click', async () => {
     } finally {
         hintsSaveBtn.disabled = false;
         hintsSaveBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+    }
+});
+
+// ── 배정 학생 목록 모달 + 학생별 단원 편집 모달 ──
+const assignedStudentsModal = new bootstrap.Modal(document.getElementById('assignedStudentsModal'));
+const stuAssignEditModal = new bootstrap.Modal(document.getElementById('stuAssignEditModal'));
+
+document.getElementById('assignedStudentsBtn').addEventListener('click', async () => {
+    // ALL_STUDENTS가 비어있으면 먼저 로드
+    if (!ALL_STUDENTS || !ALL_STUDENTS.length) {
+        await fetchAssignedCount();
+    }
+    renderAssignedStudentsList();
+    assignedStudentsModal.show();
+});
+
+function renderAssignedStudentsList() {
+    const wrap = document.getElementById('assignedStudentsList');
+    const assigned = (ALL_STUDENTS || []).filter(s => s.is_assigned);
+    document.getElementById('assignedCountInModal').textContent = `${assigned.length}명`;
+    if (!assigned.length) {
+        wrap.innerHTML = '<div class="alert alert-warning mb-0 m-2">이 단원에 배정된 학생이 없습니다.</div>';
+        return;
+    }
+    let html = '';
+    for (const s of assigned) {
+        const label = s.name ? escapeHtml(s.name) : escapeHtml(s.username);
+        html += `
+        <div class="assigned-student-row" data-student-id="${s.id}" data-student-label="${escapeHtml(label)}">
+            <i class="fas fa-user-graduate text-muted"></i>
+            <span class="name">${label}</span>
+            <span class="login-id">${escapeHtml(s.username)}</span>
+            <i class="fas fa-chevron-right chev"></i>
+        </div>`;
+    }
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('.assigned-student-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const sid = parseInt(row.dataset.studentId);
+            const label = row.dataset.studentLabel || '학생';
+            assignedStudentsModal.hide();
+            openStudentAssignEditModal(sid, label);
+        });
+    });
+}
+
+// 학생 단원 배정 편집 (학생 관리 페이지와 동일 UX)
+let stuAssignCurrentId = null;
+let stuAssignAllUnits = [];
+
+async function openStudentAssignEditModal(studentId, label) {
+    stuAssignCurrentId = studentId;
+    document.getElementById('stuAssignTitle').textContent = `단원 배정 — ${label}`;
+    document.getElementById('stuAssignUnitSearch').value = '';
+    const gradeEl = document.getElementById('stuAssignGradeFilter');
+    gradeEl.innerHTML = '<option value="">전체 학년</option>';
+    const wrap = document.getElementById('stuAssignUnitListWrap');
+    wrap.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
+    stuAssignEditModal.show();
+    try {
+        const r = await fetch(`/training/writing/admin/api/students/${studentId}/assignments/`, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        stuAssignAllUnits = data.units || [];
+        const grades = Array.from(new Set(stuAssignAllUnits.map(u => u.grade).filter(Boolean))).sort();
+        for (const g of grades) {
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = g;
+            gradeEl.appendChild(opt);
+        }
+        renderStuAssignUnits(stuAssignAllUnits);
+    } catch (e) {
+        wrap.innerHTML = `<div class="alert alert-danger m-2">불러오기 실패: ${e.message}</div>`;
+    }
+}
+
+function renderStuAssignUnits(list) {
+    const wrap = document.getElementById('stuAssignUnitListWrap');
+    if (!list.length) {
+        wrap.innerHTML = '<div class="alert alert-warning mb-0 m-2">해당 단원이 없습니다.</div>';
+        updateStuAssignCount();
+        return;
+    }
+    let html = '';
+    for (const u of list) {
+        const isCurrent = (u.id === UNIT_ID);
+        html += `
+        <label class="unit-row ${isCurrent ? 'current-unit' : ''}" data-uid="${u.id}">
+            <input type="checkbox" class="form-check-input stu-assign-cb" value="${u.id}" ${u.is_assigned ? 'checked' : ''}>
+            <span class="grade-badge">${escapeHtml(u.grade || '-')}</span>
+            <span class="flex-grow-1"><strong>${escapeHtml(u.title)}</strong>
+                ${u.publisher ? `<span class="publisher ms-2">${escapeHtml(u.publisher)}</span>` : ''}
+                ${isCurrent ? '<span class="badge bg-warning text-dark ms-2">현재 단원</span>' : ''}
+            </span>
+            <span class="text-muted small">${u.problem_count}문제</span>
+        </label>`;
+    }
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('.stu-assign-cb').forEach(cb => cb.addEventListener('change', updateStuAssignCount));
+    updateStuAssignCount();
+}
+
+function updateStuAssignCount() {
+    const wrap = document.getElementById('stuAssignUnitListWrap');
+    const cbs = wrap.querySelectorAll('.stu-assign-cb');
+    const n = wrap.querySelectorAll('.stu-assign-cb:checked').length;
+    document.getElementById('stuAssignSelCount').textContent = n;
+    document.getElementById('stuAssignTotalCount').textContent = cbs.length;
+}
+
+function syncStuAssignBack() {
+    document.querySelectorAll('#stuAssignUnitListWrap .stu-assign-cb').forEach(cb => {
+        const id = parseInt(cb.value);
+        const u = stuAssignAllUnits.find(x => x.id === id);
+        if (u) u.is_assigned = cb.checked;
+    });
+}
+
+function applyStuAssignFilter() {
+    const q = document.getElementById('stuAssignUnitSearch').value.trim().toLowerCase();
+    const grade = document.getElementById('stuAssignGradeFilter').value;
+    const filtered = stuAssignAllUnits.filter(u => {
+        if (grade && u.grade !== grade) return false;
+        if (!q) return true;
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const hay = `${u.title} ${u.grade} ${u.publisher}`.toLowerCase();
+        return tokens.every(t => hay.includes(t));
+    });
+    renderStuAssignUnits(filtered);
+}
+
+document.getElementById('stuAssignUnitSearch').addEventListener('input', () => { syncStuAssignBack(); applyStuAssignFilter(); });
+document.getElementById('stuAssignGradeFilter').addEventListener('change', () => { syncStuAssignBack(); applyStuAssignFilter(); });
+document.getElementById('stuAssignAllBtn').addEventListener('click', () => {
+    document.querySelectorAll('#stuAssignUnitListWrap .stu-assign-cb').forEach(cb => cb.checked = true);
+    updateStuAssignCount();
+});
+document.getElementById('stuAssignNoneBtn').addEventListener('click', () => {
+    document.querySelectorAll('#stuAssignUnitListWrap .stu-assign-cb').forEach(cb => cb.checked = false);
+    updateStuAssignCount();
+});
+
+document.getElementById('stuAssignBackBtn').addEventListener('click', () => {
+    stuAssignEditModal.hide();
+    setTimeout(() => assignedStudentsModal.show(), 200);
+});
+
+document.getElementById('stuAssignSaveBtn').addEventListener('click', async () => {
+    if (!stuAssignCurrentId) return;
+    syncStuAssignBack();
+    const unit_ids = stuAssignAllUnits.filter(u => u.is_assigned).map(u => u.id);
+    const btn = document.getElementById('stuAssignSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+    try {
+        const r = await fetch(`/training/writing/admin/api/students/${stuAssignCurrentId}/assignments/update/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ unit_ids }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (!data.success) throw new Error('save failed');
+        // 현재 단원 배정 상태 갱신 — ALL_STUDENTS의 해당 학생을 다시 계산
+        const stillHasCurrent = unit_ids.includes(UNIT_ID);
+        const s = (ALL_STUDENTS || []).find(x => x.id === stuAssignCurrentId);
+        if (s) s.is_assigned = stillHasCurrent;
+        // 카운트 갱신
+        const newCount = (ALL_STUDENTS || []).filter(x => x.is_assigned).length;
+        document.getElementById('assignedCountBadge').textContent = newCount;
+        stuAssignEditModal.hide();
+    } catch (e) {
+        alert(`저장 실패: ${e.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
     }
 });
 
