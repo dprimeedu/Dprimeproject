@@ -16,12 +16,13 @@ from .models import (
     WritingUnit, WritingProblem, UnitAssignment,
     WritingSession, WritingAttempt,
     StudentProfile, Achievement, StudentAchievement,
+    StudentUnitLevel,
     BugReport,
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
 from .services.ai import generate_word_hints, generate_word_hints_batch
-from .services import scoring
+from .services import scoring, level as level_service
 
 
 # 진행 상태 추적 (메모리, 프로세스당)
@@ -93,17 +94,38 @@ def student_home(request):
         units = [a.unit for a in assignments if a.unit.is_active]
         is_assigned_view = True
 
+    # 학생의 단원별 숙련 Lv 일괄 조회 (학생 화면만 적용 — 선생님은 정렬에 영향 X)
+    if is_assigned_view:
+        level_map = {
+            sul.unit_id: sul.level
+            for sul in StudentUnitLevel.objects.filter(student=request.user)
+        }
+    else:
+        level_map = {}
+
     # 각 단원마다 학생의 진행 상태
     unit_info = []
     for unit in units:
         sessions = WritingSession.objects.filter(student=request.user, unit=unit)
         last = sessions.order_by('-started_at').first()
+        u_level = level_map.get(unit.id, 1)
         unit_info.append({
             'unit': unit,
             'attempts_count': sessions.count(),
             'last_score': last.total_score if last else None,
             'last_started': last.started_at if last else None,
+            'unit_level': u_level,
+            'level_info': level_service.level_summary(u_level),
         })
+
+    # 학생 화면만 Lv 오름차순 정렬 (약한 단원 위로 — 우선 학습 유도).
+    # 동일 Lv 안에서는 안 풀어본 단원 우선, 그 다음 오래 못 풀어본 단원.
+    if is_assigned_view:
+        unit_info.sort(key=lambda x: (
+            x['unit_level'],
+            0 if x['last_started'] is None else 1,
+            x['last_started'].timestamp() if x['last_started'] else 0,
+        ))
 
     return render(request, 'writing/home.html', {
         'profile': profile,
@@ -215,6 +237,14 @@ def session_view(request, session_id):
     profile = get_or_create_profile(request.user)
     problems = list(session.unit.problems.all().order_by('index'))
 
+    # 이 세션 동안 적용될 단원 Lv (세션 시작 시 frozen — 풀이 중 흔들리지 않게)
+    is_preview = is_teacher(session.student)
+    if is_preview:
+        unit_level = 1
+    else:
+        unit_level = level_service.get_or_create_unit_level(session.student, session.unit).level
+    unit_level_info = level_service.level_summary(unit_level)
+
     # 클라이언트에 보낼 문제 데이터
     # 관사/고유명사/숫자/약자는 자동 채우기 — 정답값을 노출하지만 학습 가치 낮은 단어들
     problems_data = []
@@ -243,6 +273,9 @@ def session_view(request, session_id):
         'profile': profile,
         'problems_json': json.dumps(problems_data, ensure_ascii=False),
         'total_problems': len(problems),
+        'unit_level': unit_level,
+        'unit_level_info': unit_level_info,
+        'unit_level_json': json.dumps(unit_level_info, ensure_ascii=False),
     })
 
 
@@ -355,6 +388,14 @@ def check_word_api(request):
 
     profile = get_or_create_profile(request.user)
 
+    # 단원 Lv — 세션 동안 freeze (recompute는 세션 완료 시). 미리보기는 항상 Lv1.
+    if is_preview:
+        unit_level = 1
+    else:
+        unit_level = level_service.get_or_create_unit_level(request.user, session.unit).level
+    max_attempts = level_service.max_attempts_for(unit_level)
+    xp_mult = level_service.xp_multiplier(unit_level)
+
     score_earned = 0
     combo_bonus = 0
     hint_level_to_show = 0
@@ -370,7 +411,8 @@ def check_word_api(request):
             # 자동 채우기는 점수/콤보 없음 (학생이 노력한 게 아님)
             score_earned = 0
         else:
-            score_earned = scoring.calculate_word_score(attempt_num, time_taken)
+            base_score = scoring.calculate_word_score(attempt_num, time_taken)
+            score_earned = round(base_score * xp_mult)
             if is_preview:
                 # 관리자 미리보기 — 프로필/콤보에 영향 X (점수는 세션 표시용으로 유지)
                 pass
@@ -380,19 +422,18 @@ def check_word_api(request):
                     combo_bonus = scoring.WORD_COMBO_BONUSES.get(new_combo, 0)
                 score_earned += combo_bonus
     else:
-        # 오답
-        if attempt_num >= 3:
-            # 3번째도 틀림 → 정답 공개로 종료
+        # 오답 — 그 Lv의 최대 시도 도달 시 정답 공개
+        if attempt_num >= max_attempts:
             word_done = True
             fully_failed = True
             hint_level_to_show = 3
-            score_earned = scoring.SCORE_REVEAL
+            score_earned = round(scoring.SCORE_REVEAL * xp_mult)
             next_hint = scoring.get_hint_content(problem, word_index, 3)
             # 콤보 끊김
             if not is_preview:
                 scoring.update_word_combo(profile, False, True)
         else:
-            # 다음 힌트 보여줌 (1 또는 2)
+            # 다음 힌트 보여줌 (Lv1: 1차→한글, 2차→첫글자 / Lv2: 1차→한글)
             hint_level_to_show = attempt_num
             score_earned = 0
             # 학생 입력이 정답의 70% 이상 prefix 매칭이면 정답 markup으로 (한글뜻 건너뜀)
@@ -713,12 +754,22 @@ def complete_session_api(request):
         elapsed = int((session.finished_at - session.started_at).total_seconds())
         time_bonus = session.time_bonus_earned
 
+    # 단원 단계 재계산 — 이번 세션 결과 기준 (다음 풀이부터 적용)
+    old_level = new_level = 1
+    if not is_preview:
+        old_level, new_level = level_service.recompute_unit_level(
+            request.user, session.unit, session
+        )
+
     return JsonResponse({
         'success': True,
         'time_bonus': time_bonus,
         'elapsed_seconds': elapsed,
         'baseline_seconds': baseline,
         'broke_baseline': elapsed <= baseline,
+        'unit_level_old': old_level,
+        'unit_level_new': new_level,
+        'unit_level_changed': old_level != new_level,
         'redirect_url': f'/training/writing/result/{session.id}/',
     })
 

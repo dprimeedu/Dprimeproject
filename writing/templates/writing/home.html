@@ -2,6 +2,23 @@
 {% load static %}
 
 {% block content %}
+<style>
+    .tier-pill {
+        display: inline-block;
+        padding: .2rem .55rem;
+        border-radius: 6px;
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .02em;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .tier-pill.lv-1 { background: #ede9fe; color: #4c1d95; }
+    .tier-pill.lv-2 { background: linear-gradient(90deg, #fde68a, #fcd34d); color: #78350f; }
+    .tier-pill.lv-3 { background: linear-gradient(90deg, #c4b5fd, #a78bfa); color: white; }
+    .unit-card.has-level-2 { border-top: 3px solid #f59e0b; }
+    .unit-card.has-level-3 { border-top: 3px solid #7c3aed; }
+</style>
 <div class="home-wrap">
     <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
 
@@ -47,9 +64,16 @@
     <div class="row g-3">
         {% for info in unit_info %}
         <div class="col-md-6 col-lg-4">
-            <div class="card h-100">
+            <div class="card h-100 unit-card{% if is_assigned_view %} has-level-{{ info.unit_level }}{% endif %}">
                 <div class="card-body">
-                    <h5 class="card-title">{{ info.unit.title }}</h5>
+                    <h5 class="card-title d-flex justify-content-between align-items-start gap-2">
+                        <span>{{ info.unit.title }}</span>
+                        {% if is_assigned_view %}
+                        <span class="tier-pill lv-{{ info.unit_level }}" title="{{ info.level_info.desc }} · XP ×{{ info.level_info.multiplier }}">
+                            {{ info.level_info.name }}{% if info.level_info.stars %} {{ info.level_info.stars }}{% endif %} ×{{ info.level_info.multiplier }}
+                        </span>
+                        {% endif %}
+                    </h5>
                     <p class="text-muted small mb-2">
                         {{ info.unit.grade }} · 문제 {{ info.unit.problem_count }}개
                         {% if info.unit.publisher %} · {{ info.unit.publisher }}{% endif %}

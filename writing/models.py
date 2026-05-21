@@ -297,6 +297,38 @@ class StudentAchievement(models.Model):
         return f'{self.student.username} ← {self.achievement.name}'
 
 
+class StudentUnitLevel(models.Model):
+    """학생-단원별 숙련 레벨 (1/2/3).
+
+    Lv1: 한글 → 첫글자 → 정답 (기본)
+    Lv2: 한글 → 정답 (첫글자 단계 제거, XP ×1.2)
+    Lv3: 정답만 (힌트 전부 제거, XP ×1.5)
+
+    승급/강등 기준은 그 단원의 최근 N개 단어 결과 비율 (services/level.py).
+    """
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='unit_levels',
+    )
+    unit = models.ForeignKey(
+        WritingUnit,
+        on_delete=models.CASCADE,
+        related_name='student_levels',
+    )
+    level = models.IntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'writing_student_unit_level'
+        verbose_name = '학생 단원 레벨'
+        verbose_name_plural = '학생 단원 레벨'
+        unique_together = [['student', 'unit']]
+
+    def __str__(self):
+        return f'{self.student.username} - {self.unit.title} Lv{self.level}'
+
+
 class BugReport(models.Model):
     """학생이 풀이 중 누른 '버그 신고' — 관리자가 검토·수정용."""
     STATUS_CHOICES = [
