@@ -34,6 +34,7 @@
                         <th>학생</th>
                         <th>단원 / 문제</th>
                         <th>신고 내용</th>
+                        <th>XP</th>
                         <th>신고 시각</th>
                         <th></th>
                     </tr>
@@ -58,6 +59,14 @@
                         </td>
                         <td>
                             {% if r.description %}{{ r.description|truncatechars:80 }}{% else %}<span class="text-muted">(설명 없음)</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if r.xp_awarded > 0 %}
+                                +{{ r.xp_awarded }}
+                                {% if r.xp_rolled_back %}<span class="badge bg-secondary ms-1">회수</span>{% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
                         </td>
                         <td>{{ r.created_at|date:'Y-m-d H:i' }}</td>
                         <td>

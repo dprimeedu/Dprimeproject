@@ -153,7 +153,10 @@ def flashcard_view(request, unit_id):
 
 @login_required
 def start_session(request, unit_id):
-    """단원 풀이 시작 — WritingSession 생성 후 풀이 화면으로"""
+    """단원 풀이 시작 — WritingSession 생성 후 풀이 화면으로.
+
+    ?view=1 이면 '보고 학습 모드' (점수 ×0.5, 단계 재계산 X).
+    """
     unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)
 
     # 권한 체크: 일반 학생이면 배정받았는지
@@ -166,7 +169,10 @@ def start_session(request, unit_id):
         messages.error(request, '이 단원에 문제가 없습니다.')
         return redirect('writing:home')
 
-    session = WritingSession.objects.create(student=request.user, unit=unit)
+    view_mode = request.GET.get('view') == '1'
+    session = WritingSession.objects.create(
+        student=request.user, unit=unit, view_mode=view_mode,
+    )
     return redirect('writing:session', session_id=session.id)
 
 
@@ -276,6 +282,7 @@ def session_view(request, session_id):
         'unit_level': unit_level,
         'unit_level_info': unit_level_info,
         'unit_level_json': json.dumps(unit_level_info, ensure_ascii=False),
+        'view_mode': session.view_mode,
     })
 
 
@@ -395,6 +402,8 @@ def check_word_api(request):
         unit_level = level_service.get_or_create_unit_level(request.user, session.unit).level
     max_attempts = level_service.max_attempts_for(unit_level)
     xp_mult = level_service.xp_multiplier(unit_level)
+    # 보고 학습 모드 — 그 세션의 모든 점수에 0.5 곱하기
+    view_mult = scoring.VIEW_MODE_MULTIPLIER if session.view_mode else 1.0
 
     score_earned = 0
     combo_bonus = 0
@@ -412,14 +421,14 @@ def check_word_api(request):
             score_earned = 0
         else:
             base_score = scoring.calculate_word_score(attempt_num, time_taken)
-            score_earned = round(base_score * xp_mult)
+            score_earned = round(base_score * xp_mult * view_mult)
             if is_preview:
                 # 관리자 미리보기 — 프로필/콤보에 영향 X (점수는 세션 표시용으로 유지)
                 pass
             else:
                 new_combo, hit_milestone = scoring.update_word_combo(profile, True, False)
                 if hit_milestone:
-                    combo_bonus = scoring.WORD_COMBO_BONUSES.get(new_combo, 0)
+                    combo_bonus = round(scoring.WORD_COMBO_BONUSES.get(new_combo, 0) * view_mult)
                 score_earned += combo_bonus
     else:
         # 오답 — 그 Lv의 최대 시도 도달 시 정답 공개
@@ -427,7 +436,7 @@ def check_word_api(request):
             word_done = True
             fully_failed = True
             hint_level_to_show = 3
-            score_earned = round(scoring.SCORE_REVEAL * xp_mult)
+            score_earned = round(scoring.SCORE_REVEAL * xp_mult * view_mult)
             next_hint = scoring.get_hint_content(problem, word_index, 3)
             # 콤보 끊김
             if not is_preview:
@@ -571,11 +580,12 @@ def complete_problem_api(request):
     extra_score = 0
     perfect_bonus = 0
     sentence_combo_bonus = 0
+    view_mult = scoring.VIEW_MODE_MULTIPLIER if session.view_mode else 1.0
     if all_first_try:
-        perfect_bonus = scoring.PERFECT_SENTENCE_BONUS
+        perfect_bonus = round(scoring.PERFECT_SENTENCE_BONUS * view_mult)
         session.perfect_sentences += 1
         if milestone:
-            sentence_combo_bonus = scoring.SENTENCE_COMBO_BONUSES.get(new_sent_combo, 0)
+            sentence_combo_bonus = round(scoring.SENTENCE_COMBO_BONUSES.get(new_sent_combo, 0) * view_mult)
         extra_score = perfect_bonus + sentence_combo_bonus
         session.total_score += extra_score
         if not is_preview:
@@ -738,11 +748,12 @@ def complete_session_api(request):
     elapsed = 0
     baseline = session.unit.computed_target_seconds
 
+    view_mult = scoring.VIEW_MODE_MULTIPLIER if session.view_mode else 1.0
     if not session.finished_at:
         session.finished_at = timezone.now()
         elapsed = int((session.finished_at - session.started_at).total_seconds())
         if elapsed <= baseline:
-            time_bonus = TIME_BONUS
+            time_bonus = round(TIME_BONUS * view_mult)
             session.total_score += time_bonus
             session.time_bonus_earned = time_bonus
             if not is_preview:
@@ -754,12 +765,16 @@ def complete_session_api(request):
         elapsed = int((session.finished_at - session.started_at).total_seconds())
         time_bonus = session.time_bonus_earned
 
-    # 단원 단계 재계산 — 이번 세션 결과 기준 (다음 풀이부터 적용)
+    # 단원 단계 재계산 — 보고 학습 모드는 평가에서 제외
     old_level = new_level = 1
-    if not is_preview:
+    if not is_preview and not session.view_mode:
         old_level, new_level = level_service.recompute_unit_level(
             request.user, session.unit, session
         )
+    elif not is_preview:
+        # view_mode면 현재 단계 그대로 응답 (UI 갱신용)
+        sul = level_service.get_or_create_unit_level(request.user, session.unit)
+        old_level = new_level = sul.level
 
     return JsonResponse({
         'success': True,
@@ -1879,16 +1894,54 @@ def bug_report_create(request):
         if problem and not unit:
             unit = problem.unit
 
+    description = str(data.get('description', '')).strip()
+
+    # XP 보상 결정
+    # - 내용이 비어 있으면 보상 X
+    # - 이미 같은 학생-같은 문제에 XP 받은 신고가 있으면 보상 X (다중 신고로 farming 방지)
+    # - 최근 누적 롤백이 BUG_REPORT_ROLLBACK_LIMIT 이상이면 보상 X (남용 학생)
+    xp_awarded = 0
+    award_reason = 'empty'
+    if description and problem and unit:
+        prior_paid = BugReport.objects.filter(
+            student=request.user, problem=problem, xp_awarded__gt=0,
+        ).exists()
+        rollback_count = BugReport.objects.filter(
+            student=request.user, xp_rolled_back=True,
+        ).count()
+        if prior_paid:
+            award_reason = 'duplicate_problem'
+        elif rollback_count >= scoring.BUG_REPORT_ROLLBACK_LIMIT:
+            award_reason = 'rollback_limit'
+        else:
+            sul = level_service.get_or_create_unit_level(request.user, unit)
+            mult = level_service.xp_multiplier(sul.level)
+            perfect_xp = scoring.calc_perfect_unit_xp(unit, level_multiplier=mult)
+            xp_awarded = perfect_xp * scoring.BUG_REPORT_REWARD_MULTIPLIER
+            award_reason = 'paid'
+
     report = BugReport.objects.create(
         student=request.user,
         session=session,
         problem=problem,
         unit=unit,
         url=str(data.get('url', ''))[:500],
-        description=str(data.get('description', ''))[:5000],
+        description=description[:5000],
         screen_state=data.get('screen_state') if isinstance(data.get('screen_state'), dict) else {},
+        xp_awarded=xp_awarded,
     )
-    return JsonResponse({'success': True, 'id': report.id})
+
+    if xp_awarded > 0:
+        profile = get_or_create_profile(request.user)
+        profile.total_xp += xp_awarded
+        profile.save(update_fields=['total_xp'])
+
+    return JsonResponse({
+        'success': True, 'id': report.id,
+        'xp_awarded': xp_awarded,
+        'award_reason': award_reason,
+        'rollback_limit': scoring.BUG_REPORT_ROLLBACK_LIMIT,
+    })
 
 
 @teacher_required
@@ -1919,7 +1972,47 @@ def bug_report_detail(request, report_id):
         report.save(update_fields=['status', 'admin_note', 'updated_at'])
         messages.success(request, '저장되었습니다.')
         return redirect('writing:bug_report_detail', report_id=report.id)
+    # 학생의 누적 롤백 신고 수 (5회 이상이면 이후 신고에 XP 지급 X)
+    student_rollback_count = 0
+    if report.student:
+        student_rollback_count = BugReport.objects.filter(
+            student=report.student, xp_rolled_back=True,
+        ).count()
     return render(request, 'writing/bug_report_detail.html', {
         'report': report,
         'status_choices': BugReport.STATUS_CHOICES,
+        'student_rollback_count': student_rollback_count,
+        'rollback_limit': scoring.BUG_REPORT_ROLLBACK_LIMIT,
     })
+
+
+@teacher_required
+@require_POST
+def bug_report_rollback(request, report_id):
+    """관리자가 '이상 없음' 판단 — 학생 XP 회수.
+
+    같은 학생의 누적 롤백이 BUG_REPORT_ROLLBACK_LIMIT 이상이면
+    그 학생은 추가 신고에 XP 지급 안 됨 (bug_report_create의 가드).
+    """
+    report = get_object_or_404(BugReport, pk=report_id)
+    if report.xp_rolled_back:
+        messages.info(request, '이미 회수된 신고입니다.')
+    elif report.xp_awarded <= 0:
+        messages.info(request, '이 신고는 지급된 XP가 없습니다.')
+    elif not report.student:
+        messages.error(request, '학생 정보가 없어 회수할 수 없습니다.')
+    else:
+        profile, _ = StudentProfile.objects.get_or_create(student=report.student)
+        profile.total_xp = max(0, profile.total_xp - report.xp_awarded)
+        profile.save(update_fields=['total_xp'])
+        report.xp_rolled_back = True
+        report.xp_rolled_back_at = timezone.now()
+        report.status = 'dismissed'
+        report.save(update_fields=[
+            'xp_rolled_back', 'xp_rolled_back_at', 'status', 'updated_at',
+        ])
+        messages.success(
+            request,
+            f'{report.student.username}에서 {report.xp_awarded} XP 회수 완료',
+        )
+    return redirect('writing:bug_report_detail', report_id=report.id)

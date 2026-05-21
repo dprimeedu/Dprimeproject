@@ -94,6 +94,11 @@
                             <i class="fas fa-bullseye me-1"></i>실전 TEST
                         </a>
                     </div>
+                    <a href="{% url 'writing:start_session' info.unit.id %}?view=1"
+                       class="btn btn-outline-info btn-sm w-100 mt-2"
+                       title="답을 보고 풀기 — XP ×0.5, 단계 평가에서 제외 (실력이 부족할 때 학습용)">
+                        <i class="fas fa-eye me-1"></i>보고 학습 (XP ×0.5)
+                    </a>
                 </div>
             </div>
         </div>

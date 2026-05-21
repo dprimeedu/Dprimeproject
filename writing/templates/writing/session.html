@@ -254,6 +254,25 @@
         border: 1px solid rgba(124,58,237,.3);
     }
 
+    /* 보고 학습 모드 배지 */
+    .view-mode-badge {
+        display: inline-block;
+        padding: .35rem .75rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: .85rem;
+        background: #e0f2fe;
+        color: #075985;
+        border: 1px dashed #0284c7;
+        margin-bottom: .75rem;
+    }
+    /* 보고 학습 모드: 카드에 옅은 청록 색조 */
+    .play-wrap.view-mode .status-bar,
+    .play-wrap.view-mode .problem-area {
+        background: linear-gradient(180deg, #ecfeff, #e0f2fe) !important;
+        border: 1px dashed #0284c7 !important;
+    }
+
     /* 리더보드 */
     .leaderboard {
         background: white;
@@ -341,12 +360,19 @@
     .time-expired-box p { color: #4b5563; font-size: 1.05rem; margin-bottom: 1.5rem; }
 </style>
 
-<div class="play-wrap level-{{ unit_level }}">
-    <!-- 단원 숙련 단계 배지 -->
-    <div class="tier-badge level-{{ unit_level }}">
-        {{ unit_level_info.name }}{% if unit_level_info.stars %} <span class="stars">{{ unit_level_info.stars }}</span>{% endif %}
-        <span class="mult">⚡ XP ×{{ unit_level_info.multiplier }}</span>
-        <span class="desc">· {{ unit_level_info.desc }}</span>
+<div class="play-wrap level-{{ unit_level }}{% if view_mode %} view-mode{% endif %}">
+    <!-- 단원 숙련 단계 배지 + (보고 학습 모드 배지) -->
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center;">
+        <div class="tier-badge level-{{ unit_level }}">
+            {{ unit_level_info.name }}{% if unit_level_info.stars %} <span class="stars">{{ unit_level_info.stars }}</span>{% endif %}
+            <span class="mult">⚡ XP ×{{ unit_level_info.multiplier }}</span>
+            <span class="desc">· {{ unit_level_info.desc }}</span>
+        </div>
+        {% if view_mode %}
+        <div class="view-mode-badge" title="보고 학습 — 점수 ×0.5, 단계 평가에서 제외">
+            👁 보고 학습 · XP ×0.5
+        </div>
+        {% endif %}
     </div>
 
     <!-- 진행도 -->
@@ -380,6 +406,21 @@
         </div>
     </div>
 
+    <!-- 리더보드 (status-bar 바로 아래로 이동 — 풀이 시작 시 잘 보이게) -->
+    <div class="leaderboard" id="leaderboardBox" style="display:none;">
+        <h5>🏆 단원 리더보드 — {{ unit.title }}</h5>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="text-muted small mb-2" style="font-weight:600;">🏆 점수 Top 3</div>
+                <div id="lbScoreBody"></div>
+            </div>
+            <div class="col-md-6">
+                <div class="text-muted small mb-2" style="font-weight:600;">⏱️ 시간 Top 3 <span class="text-muted" style="font-weight:400;">(baseline 깬 학생만)</span></div>
+                <div id="lbTimeBody"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- 문제 영역 -->
     <div class="problem-area">
         <div class="problem-counter" id="problemNumber">Q1.</div>
@@ -401,20 +442,6 @@
         </div>
     </div>
 
-    <!-- 리더보드 (학습 영역 아래 — 학습 공간 위치 고정) -->
-    <div class="leaderboard" id="leaderboardBox" style="display:none;">
-        <h5>🏆 단원 리더보드 — {{ unit.title }}</h5>
-        <div class="row g-3">
-            <div class="col-md-6">
-                <div class="text-muted small mb-2" style="font-weight:600;">🏆 점수 Top 3</div>
-                <div id="lbScoreBody"></div>
-            </div>
-            <div class="col-md-6">
-                <div class="text-muted small mb-2" style="font-weight:600;">⏱️ 시간 Top 3 <span class="text-muted" style="font-weight:400;">(baseline 깬 학생만)</span></div>
-                <div id="lbTimeBody"></div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <form style="display:none">{% csrf_token %}</form>
@@ -1028,7 +1055,13 @@ document.addEventListener('keydown', (e) => {
 
 // ── 버그 신고 ──
 document.getElementById('bugReportBtn').addEventListener('click', async () => {
-    const desc = prompt('이 문제에서 발견한 문제점을 짧게 알려주세요.\n(예: "정답이 이상함", "한글뜻이 틀림" 등 — 빈 칸도 가능)');
+    const desc = prompt(
+        '이 문제에서 발견한 문제점을 짧게 알려주세요.\n\n' +
+        '※ 내용을 적으면 큰 XP 보상이 즉시 지급됩니다.\n' +
+        '※ 단, 관리자 검토 결과 실제 버그가 아니면 XP는 회수되며,\n' +
+        '   5회 이상 회수가 누적되면 이후 신고에 보상이 지급되지 않습니다.\n' +
+        '※ 빈 칸으로 두면 보상 없이 단순 접수만 됩니다.'
+    );
     if (desc === null) return;  // 취소
     const problem = PROBLEMS[currentProblemIdx] || {};
     // 현재 단어별 입력 상태 스냅샷
@@ -1065,12 +1098,32 @@ document.getElementById('bugReportBtn').addEventListener('click', async () => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
         if (!data.success) throw new Error('failed');
-        // 작은 토스트
+
+        // XP 보상 / 보상 미지급 사유에 따라 다른 토스트
+        let msg = '✅ 신고 접수됨 (#' + data.id + ')';
+        if (data.xp_awarded > 0) {
+            msg = '🎁 신고 접수 + XP +' + data.xp_awarded + ' 지급 (검토 후 이상 없으면 회수)';
+        } else if (data.award_reason === 'empty') {
+            msg = '✅ 신고 접수 (내용 미입력 — XP 보상 없음)';
+        } else if (data.award_reason === 'duplicate_problem') {
+            msg = '✅ 신고 접수 (같은 문제 중복 신고 — XP 보상 없음)';
+        } else if (data.award_reason === 'rollback_limit') {
+            msg = '✅ 신고 접수 (회수 누적 ' + data.rollback_limit + '회 이상 — XP 보상 차단)';
+        }
         const toast = document.createElement('div');
-        toast.textContent = '✅ 신고 접수됨 (#' + data.id + ') — 검토 후 반영합니다';
-        toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#16a34a;color:#fff;padding:.75rem 1.25rem;border-radius:8px;z-index:9999;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+        toast.textContent = msg;
+        toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#16a34a;color:#fff;padding:.75rem 1.25rem;border-radius:8px;z-index:9999;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:90%;text-align:center;';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
+
+        // 신고 후 자동으로 다음 문제로 이동 (마지막 문제면 세션 완료)
+        setTimeout(() => {
+            if (currentProblemIdx + 1 >= PROBLEMS.length) {
+                finishSession();
+            } else {
+                nextProblem();
+            }
+        }, 600);
     } catch (e) {
         alert('신고 실패: ' + e.message);
     }

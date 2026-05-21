@@ -49,9 +49,48 @@
                         <dd class="col-sm-9"><a href="{{ report.url }}" target="_blank" class="small text-break">{{ report.url|default:'-' }}</a></dd>
                         <dt class="col-sm-3">신고 내용</dt>
                         <dd class="col-sm-9">{% if report.description %}{{ report.description|linebreaksbr }}{% else %}<span class="text-muted">(설명 없음)</span>{% endif %}</dd>
+                        <dt class="col-sm-3">지급 XP</dt>
+                        <dd class="col-sm-9">
+                            {% if report.xp_awarded > 0 %}
+                                <strong>+{{ report.xp_awarded }}</strong> XP
+                                {% if report.xp_rolled_back %}
+                                <span class="badge bg-secondary ms-1">회수됨 ({{ report.xp_rolled_back_at|date:'Y-m-d H:i' }})</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">0 (보상 없음)</span>
+                            {% endif %}
+                        </dd>
+                        <dt class="col-sm-3">학생 누적 롤백</dt>
+                        <dd class="col-sm-9">
+                            {{ student_rollback_count }}회
+                            {% if student_rollback_count >= rollback_limit %}
+                                <span class="badge bg-danger ms-1">신고 보상 차단</span>
+                            {% else %}
+                                <span class="text-muted small">/ {{ rollback_limit }}회까지 보상 지급</span>
+                            {% endif %}
+                        </dd>
                     </dl>
                 </div>
             </div>
+
+            {% if report.xp_awarded > 0 and not report.xp_rolled_back and report.student %}
+            <div class="card mb-3 border-warning">
+                <div class="card-header bg-warning bg-opacity-25"><strong>⚠️ XP 회수</strong></div>
+                <div class="card-body">
+                    <p class="small text-muted mb-2">
+                        검토 결과 이 신고가 실제 버그가 아니라 판단되면 학생에게 지급된 <strong>{{ report.xp_awarded }} XP</strong>를 회수할 수 있습니다.
+                        한 학생의 누적 회수가 <strong>{{ rollback_limit }}회</strong> 이상이면 그 학생은 이후 신고에 XP 보상이 지급되지 않습니다.
+                    </p>
+                    <form method="post" action="{% url 'writing:bug_report_rollback' report.id %}"
+                          onsubmit="return confirm('정말 {{ report.xp_awarded }} XP를 회수하시겠습니까?\n\n학생: {{ report.student.username }}\n현재 누적 회수: {{ student_rollback_count }}회');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-warning w-100">
+                            <i class="fas fa-undo me-1"></i>XP {{ report.xp_awarded }} 회수
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
 
             {% if report.screen_state %}
             <div class="card mb-3">

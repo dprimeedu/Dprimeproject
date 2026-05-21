@@ -59,6 +59,42 @@ def prefix_match_ratio(student_input, correct_answer):
 NEAR_MISS_THRESHOLD = 0.7  # 70% 이상 prefix 매칭 시 정답 markup 표시
 SENTENCE_PASS_THRESHOLD = 80  # 문장 합격 기준 (백분율). 미만이면 재시도 권장
 
+# 보고 학습 모드: 그 세션의 모든 점수에 곱해지는 페널티 배수
+VIEW_MODE_MULTIPLIER = 0.5
+
+# 버그 신고 누적 롤백 한도 — 이만큼 롤백 당한 학생은 추가 신고에 XP 지급 X
+BUG_REPORT_ROLLBACK_LIMIT = 5
+# 버그 신고 보상 배수 — 그 단원 PERFECT 풀이 XP × 이 값
+BUG_REPORT_REWARD_MULTIPLIER = 2
+
+
+def calc_perfect_unit_xp(unit, level_multiplier=1.0):
+    """
+    그 단원을 PERFECT로 풀었을 때 받는 기본 XP (base + sentence bonus + time bonus).
+    speed bonus / 콤보 보너스 같은 변동 요소는 제외 — 표준화된 기준값.
+
+    bug_report 보상 계산용. 학생의 현재 단원 단계 multiplier가 곱해짐.
+    """
+    # 비-자동 단어 수 = 학생이 직접 입력해야 하는 단어 수
+    from writing.views import _should_auto_fill
+    non_auto_words = 0
+    for p in unit.problems.all():
+        words = p.english_words
+        hints = p.word_hints or []
+        for i, w in enumerate(words):
+            hint = hints[i] if i < len(hints) and isinstance(hints[i], dict) else {}
+            if hint.get('proper_noun'):
+                continue
+            if _should_auto_fill(w, i):
+                continue
+            non_auto_words += 1
+    sentences = unit.problems.count()
+    base = non_auto_words * SCORE_BY_HINT_LEVEL[0]
+    sentence_bonus = sentences * PERFECT_SENTENCE_BONUS
+    # TIME_BONUS는 views.py에 정의되어 있어 import 순환 회피 위해 상수 직접 사용
+    TIME_BONUS = 100
+    return round((base + sentence_bonus) * level_multiplier) + TIME_BONUS
+
 
 def calculate_word_score(attempt_num, time_taken_seconds):
     """

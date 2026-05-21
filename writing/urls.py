@@ -54,4 +54,5 @@ urlpatterns = [
     path('api/bug-report/', views.bug_report_create, name='bug_report_create'),
     path('admin/bugs/', views.bug_report_list, name='bug_report_list'),
     path('admin/bugs/<int:report_id>/', views.bug_report_detail, name='bug_report_detail'),
+    path('admin/bugs/<int:report_id>/rollback/', views.bug_report_rollback, name='bug_report_rollback'),
 ]

@@ -141,6 +141,10 @@ class WritingSession(models.Model):
     max_word_combo = models.IntegerField(default=0)
     max_sentence_combo = models.IntegerField(default=0)
     time_bonus_earned = models.IntegerField(default=0, verbose_name='시간 보너스')
+    view_mode = models.BooleanField(
+        default=False, verbose_name='보고 학습 모드',
+        help_text='켜면 점수 ×0.5, 이 세션은 단계 재계산에서 제외',
+    )
 
     class Meta:
         db_table = 'writing_session'
@@ -368,6 +372,15 @@ class BugReport(models.Model):
         verbose_name='상태',
     )
     admin_note = models.TextField(blank=True, default='', verbose_name='관리자 메모')
+    xp_awarded = models.IntegerField(
+        default=0, verbose_name='지급 XP',
+        help_text='신고 즉시 학생에게 지급된 XP (PERFECT 풀이 XP × 2)',
+    )
+    xp_rolled_back = models.BooleanField(
+        default=False, verbose_name='XP 회수됨',
+        help_text='관리자 검토 후 문제 없는 신고로 판단해 학생 XP에서 회수',
+    )
+    xp_rolled_back_at = models.DateTimeField(null=True, blank=True, verbose_name='XP 회수 시각')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
