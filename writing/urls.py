@@ -4,6 +4,9 @@ from . import views
 app_name = 'writing'
 
 urlpatterns = [
+    # 데모 (시연용 자동 로그인)
+    path('demo/', views.demo_login, name='demo'),
+
     # 학생
     path('', views.student_home, name='home'),
     path('unit/<int:unit_id>/start/', views.start_session, name='start_session'),

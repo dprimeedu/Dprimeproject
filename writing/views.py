@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.contrib.auth import login, get_user_model
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
 from django.db.models import Count, Q, Avg
@@ -68,6 +69,40 @@ def update_login_streak(profile):
         profile.login_streak_days = 1
     profile.last_login_date = today
     profile.save(update_fields=['login_streak_days', 'last_login_date'])
+
+
+# ─────────────────────────────────────────────
+# 데모 (시연용 자동 로그인)
+# ─────────────────────────────────────────────
+
+def demo_login(request):
+    """샘플 시연용 — 로그인 없이 데모 계정으로 자동 진입 + 활성 단원 자동 배정."""
+    Member = get_user_model()
+    user, _ = Member.objects.get_or_create(
+        login_id='demo',
+        defaults={
+            'username': '데모',
+            'member_type': 'user',
+            'is_active': True,
+            'is_approved': True,
+        },
+    )
+    # 기존 계정이 비활성/미승인일 수 있으니 강제로 맞춰둠
+    if not (user.is_active and user.is_approved):
+        user.is_active = True
+        user.is_approved = True
+        user.save(update_fields=['is_active', 'is_approved'])
+
+    # 활성 단원 전부 자동 배정 (중복은 무시)
+    active_units = WritingUnit.objects.filter(is_active=True)
+    UnitAssignment.objects.bulk_create(
+        [UnitAssignment(student=user, unit=u) for u in active_units],
+        ignore_conflicts=True,
+    )
+
+    user.backend = 'member.backends.LoginIdOrEmailBackend'
+    login(request, user)
+    return redirect('writing:home')
 
 
 # ─────────────────────────────────────────────
