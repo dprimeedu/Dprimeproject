@@ -1052,6 +1052,34 @@ _GRADES_ORDER = [
     '중1', '중2', '중3', '고1', '고2', '고3',
 ]
 
+# 단원 title 앞머리에서 '과' 키 추출 — 내신을 과별로 묶기 위함
+_LESSON_KEY_RE = re.compile(
+    r'^\s*((?:\d+\s*-\s*\d+|\d+)\s*과|\d+\s*단원|Lesson\s*\d+)',
+    re.IGNORECASE,
+)
+
+
+def _lesson_key(title: str):
+    """제목에서 '1과', '1-2과', '3단원', 'Lesson 5' 같은 키를 뽑는다. 없으면 None."""
+    if not title:
+        return None
+    m = _LESSON_KEY_RE.match(title)
+    if not m:
+        return None
+    return re.sub(r'\s+', ' ', m.group(1)).strip()
+
+
+def _lesson_sort_key(label: str):
+    """과 라벨을 자연 정렬용 튜플로 변환. '(과 미분류)'는 맨 뒤."""
+    if not label or label == '(과 미분류)':
+        return (1, 9999, 9999, '')
+    nums = re.findall(r'\d+', label)
+    if not nums:
+        return (0, 9998, 9998, label)
+    primary = int(nums[0])
+    secondary = int(nums[1]) if len(nums) > 1 else 0
+    return (0, primary, secondary, label)
+
 
 @teacher_required
 def unit_list(request):
@@ -1063,13 +1091,15 @@ def unit_list(request):
         u.total_count = u.problems.count()
         u.hints_running = u.id in running_ids
 
-    # 내신(학년 → 출판사 → 단원) / 부교재(출판사 → 단원) 그룹핑
-    naesin_by_grade = {}
-    buggyojae_by_pub = {}
+    # 내신(학년 → 출판사 → 과 → 단원) / 부교재(출판사 → 단원) 그룹핑
+    naesin_by_grade = {}   # grade → publisher → lesson_key → [units]
+    buggyojae_by_pub = {}  # publisher → [units]
     for u in units:
         if u.grade in _GRADES_ORDER:
+            lk = _lesson_key(u.title) or '(과 미분류)'
             naesin_by_grade.setdefault(u.grade, {}) \
-                .setdefault(u.publisher or '(미지정)', []).append(u)
+                .setdefault(u.publisher or '(미지정)', {}) \
+                .setdefault(lk, []).append(u)
         else:
             buggyojae_by_pub.setdefault(u.publisher or '(미지정)', []).append(u)
 
@@ -1077,14 +1107,22 @@ def unit_list(request):
     for g in _GRADES_ORDER:
         if g not in naesin_by_grade:
             continue
-        pubs = [
-            {'name': name, 'units': us}
-            for name, us in sorted(naesin_by_grade[g].items())
-        ]
+        pubs = []
+        for pub_name in sorted(naesin_by_grade[g].keys()):
+            lesson_map = naesin_by_grade[g][pub_name]
+            lessons = [
+                {'name': lk, 'units': lesson_map[lk]}
+                for lk in sorted(lesson_map.keys(), key=_lesson_sort_key)
+            ]
+            pubs.append({
+                'name': pub_name,
+                'lessons': lessons,
+                'count': sum(len(l['units']) for l in lessons),
+            })
         naesin_groups.append({
             'grade': g,
             'publishers': pubs,
-            'count': sum(len(p['units']) for p in pubs),
+            'count': sum(p['count'] for p in pubs),
         })
 
     buggyojae_groups = [

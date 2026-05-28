@@ -80,6 +80,10 @@
 .folder-l3 > summary {
     background: #faf5ff;
 }
+.folder-l4 > summary {
+    background: #fdfbff;
+    font-size: .9rem;
+}
 .folder-children {
     padding: .15rem 0 .25rem 1.25rem;
     margin-left: .5rem;
@@ -206,10 +210,22 @@
                                             <span class="caret"><i class="fas fa-chevron-right"></i></span>
                                             <i class="fas fa-folder folder-icon"></i>
                                             <span>{{ pub.name }}</span>
-                                            <span class="folder-count">{{ pub.units|length }}개</span>
+                                            <span class="folder-count">{{ pub.count }}개</span>
                                         </summary>
                                         <div class="folder-children">
-                                            {% for unit in pub.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                            {% for lesson in pub.lessons %}
+                                            <details class="folder folder-l4">
+                                                <summary>
+                                                    <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                    <i class="fas fa-folder folder-icon"></i>
+                                                    <span>{{ lesson.name }}</span>
+                                                    <span class="folder-count">{{ lesson.units|length }}개</span>
+                                                </summary>
+                                                <div class="folder-children">
+                                                    {% for unit in lesson.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                                </div>
+                                            </details>
+                                            {% endfor %}
                                         </div>
                                     </details>
                                     {% endfor %}
