@@ -1047,16 +1047,58 @@ def upload_view(request):
     return redirect('writing:unit_list')
 
 
+_GRADES_ORDER = [
+    '초1', '초2', '초3', '초4', '초5', '초6',
+    '중1', '중2', '중3', '고1', '고2', '고3',
+]
+
+
 @teacher_required
 def unit_list(request):
-    units = list(WritingUnit.objects.all().order_by('-created_at'))
+    units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
     with _hint_progress_lock:
         running_ids = {uid for uid, s in _hint_progress.items() if s.get('running')}
     for u in units:
         u.has_hints_count = u.problems.exclude(word_hints=[]).count()
         u.total_count = u.problems.count()
         u.hints_running = u.id in running_ids
-    return render(request, 'writing/unit_list.html', {'units': units})
+
+    # 내신(학년 → 출판사 → 단원) / 부교재(출판사 → 단원) 그룹핑
+    naesin_by_grade = {}
+    buggyojae_by_pub = {}
+    for u in units:
+        if u.grade in _GRADES_ORDER:
+            naesin_by_grade.setdefault(u.grade, {}) \
+                .setdefault(u.publisher or '(미지정)', []).append(u)
+        else:
+            buggyojae_by_pub.setdefault(u.publisher or '(미지정)', []).append(u)
+
+    naesin_groups = []
+    for g in _GRADES_ORDER:
+        if g not in naesin_by_grade:
+            continue
+        pubs = [
+            {'name': name, 'units': us}
+            for name, us in sorted(naesin_by_grade[g].items())
+        ]
+        naesin_groups.append({
+            'grade': g,
+            'publishers': pubs,
+            'count': sum(len(p['units']) for p in pubs),
+        })
+
+    buggyojae_groups = [
+        {'name': name, 'units': us}
+        for name, us in sorted(buggyojae_by_pub.items())
+    ]
+
+    return render(request, 'writing/unit_list.html', {
+        'units': units,
+        'naesin_groups': naesin_groups,
+        'buggyojae_groups': buggyojae_groups,
+        'naesin_total': sum(g['count'] for g in naesin_groups),
+        'buggyojae_total': sum(len(g['units']) for g in buggyojae_groups),
+    })
 
 
 @teacher_required

@@ -4,11 +4,11 @@
 {% block extra_css %}
 <style>
 .unit-title-link {
-    display: block;
+    display: inline-block;
     color: var(--primary-color);
     text-decoration: none;
-    padding: .25rem 0;
-    font-size: 1rem;
+    padding: .15rem 0;
+    font-size: .95rem;
 }
 .unit-title-link strong { border-bottom: 1px dashed transparent; }
 .unit-title-link:hover {
@@ -21,6 +21,7 @@
     height: 1.25rem;
     border: 2px solid #9ca3af;
     cursor: pointer;
+    flex-shrink: 0;
 }
 .unit-checkbox:hover,
 #header-checkbox:hover {
@@ -36,6 +37,78 @@
 #header-checkbox:focus {
     box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.25);
 }
+
+/* ── 폴더 트리 ── */
+.folder-tree { font-size: .95rem; }
+.folder { margin: 0; }
+.folder > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: .55rem .75rem;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    border-radius: .375rem;
+    user-select: none;
+}
+.folder > summary::-webkit-details-marker { display: none; }
+.folder > summary:hover { filter: brightness(.97); }
+.folder > summary .caret {
+    display: inline-block;
+    transition: transform .15s ease;
+    color: #6b7280;
+    width: .75rem;
+}
+.folder[open] > summary .caret { transform: rotate(90deg); }
+.folder > summary .folder-icon { color: #f59e0b; }
+.folder > summary .folder-count {
+    margin-left: auto;
+    color: #6b7280;
+    font-size: .85rem;
+    font-weight: 400;
+}
+.folder-l1 > summary {
+    background: #ede9fe;
+    font-weight: 600;
+    font-size: 1.02rem;
+    margin-top: .25rem;
+}
+.folder-l2 > summary {
+    background: #f5f3ff;
+    font-weight: 500;
+}
+.folder-l3 > summary {
+    background: #faf5ff;
+}
+.folder-children {
+    padding: .15rem 0 .25rem 1.25rem;
+    margin-left: .5rem;
+    border-left: 2px solid #e9d5ff;
+}
+.unit-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .4rem .6rem;
+    border-bottom: 1px dashed #f0f0f0;
+}
+.unit-row:last-child { border-bottom: none; }
+.unit-row:hover { background: #fafafa; }
+.unit-row .unit-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: .5rem; }
+.unit-row .file-icon { color: #9ca3af; flex-shrink: 0; }
+.unit-row .unit-meta {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    color: #6b7280;
+    font-size: .8rem;
+}
+.unit-row .unit-meta .badge { font-weight: 500; }
+.unit-row .unit-actions { display: flex; gap: .3rem; flex-shrink: 0; }
+.unit-row .unit-actions .btn { padding: .15rem .55rem; font-size: .8rem; }
+.folder.no-match { display: none; }
 </style>
 {% endblock %}
 
@@ -101,55 +174,78 @@
             </div>
         </div>
 
+        <div class="d-flex align-items-center gap-2 mb-2 ms-1">
+            <input type="checkbox" id="header-checkbox" class="form-check-input">
+            <label for="header-checkbox" class="small text-muted mb-0" style="cursor:pointer;">전체 체크</label>
+        </div>
+
         <div class="card">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 40px;"><input type="checkbox" id="header-checkbox" class="form-check-input"></th>
-                            <th>단원명</th>
-                            <th>학년</th>
-                            <th>출판사</th>
-                            <th class="text-center">문제 수</th>
-                            <th class="text-center">AI 한글뜻</th>
-                            <th>등록자</th>
-                            <th>등록일</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for unit in units %}
-                        <tr>
-                            <td>
-                                <input type="checkbox" name="unit_ids" value="{{ unit.id }}"
-                                       class="form-check-input unit-checkbox"
-                                       data-title="{{ unit.title }}" data-count="{{ unit.total_count }}">
-                            </td>
-                            <td>
-                                <a href="{% url 'writing:unit_detail' unit.id %}"
-                                   class="unit-title-link" title="이 단원 편집">
-                                    <strong>{{ unit.title }}</strong>
-                                </a>
-                            </td>
-                            <td>{{ unit.grade }}</td>
-                            <td>{{ unit.publisher|default:'-' }}</td>
-                            <td class="text-center">{{ unit.total_count }}</td>
-                            <td class="text-center hints-cell" data-unit-id="{{ unit.id }}"
-                                data-total="{{ unit.total_count }}" data-has="{{ unit.has_hints_count }}"
-                                data-running="{{ unit.hints_running|yesno:'1,0' }}">
-                                <span class="badge hints-badge"></span>
-                            </td>
-                            <td>{{ unit.created_by.username|default:'-' }}</td>
-                            <td>{{ unit.created_at|date:'Y-m-d H:i' }}</td>
-                            <td class="text-nowrap">
-                                <a href="{% url 'writing:unit_detail' unit.id %}" class="btn btn-sm btn-outline-primary">상세</a>
-                                <button type="button" class="btn btn-sm btn-outline-danger row-delete-btn"
-                                        data-unit-id="{{ unit.id }}">삭제</button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="card-body py-2">
+                <div class="folder-tree">
+                    {% if naesin_groups %}
+                    <details class="folder folder-l1" open>
+                        <summary>
+                            <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                            <i class="fas fa-folder folder-icon"></i>
+                            <strong>내신</strong>
+                            <span class="folder-count">{{ naesin_total }}개</span>
+                        </summary>
+                        <div class="folder-children">
+                            {% for grade_group in naesin_groups %}
+                            <details class="folder folder-l2">
+                                <summary>
+                                    <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                    <i class="fas fa-folder folder-icon"></i>
+                                    <strong>{{ grade_group.grade }}</strong>
+                                    <span class="folder-count">{{ grade_group.count }}개</span>
+                                </summary>
+                                <div class="folder-children">
+                                    {% for pub in grade_group.publishers %}
+                                    <details class="folder folder-l3">
+                                        <summary>
+                                            <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                            <i class="fas fa-folder folder-icon"></i>
+                                            <span>{{ pub.name }}</span>
+                                            <span class="folder-count">{{ pub.units|length }}개</span>
+                                        </summary>
+                                        <div class="folder-children">
+                                            {% for unit in pub.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                        </div>
+                                    </details>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    {% endif %}
+
+                    {% if buggyojae_groups %}
+                    <details class="folder folder-l1" open>
+                        <summary>
+                            <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                            <i class="fas fa-folder folder-icon"></i>
+                            <strong>부교재</strong>
+                            <span class="folder-count">{{ buggyojae_total }}개</span>
+                        </summary>
+                        <div class="folder-children">
+                            {% for pub in buggyojae_groups %}
+                            <details class="folder folder-l2">
+                                <summary>
+                                    <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                    <i class="fas fa-folder folder-icon"></i>
+                                    <span>{{ pub.name }}</span>
+                                    <span class="folder-count">{{ pub.units|length }}개</span>
+                                </summary>
+                                <div class="folder-children">
+                                    {% for unit in pub.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                </div>
+                            </details>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </form>
@@ -207,7 +303,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!form) return;
     const CSRF = form.querySelector('[name=csrfmiddlewaretoken]').value;
     const headerCb = document.getElementById('header-checkbox');
+    // 검색/폴더 닫기로 가려진 행은 제외 — '전체 선택' 시 사용자 의도대로 동작
+    const isVisible = (cb) => cb.offsetParent !== null;
     const allCbs = () => Array.from(form.querySelectorAll('.unit-checkbox'));
+    const visibleCbs = () => allCbs().filter(isVisible);
     const checked = () => allCbs().filter(cb => cb.checked);
 
     const bulkBtns = document.querySelectorAll('.bulk-action');
@@ -215,13 +314,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function updateState() {
         const c = checked();
-        const total = allCbs().length;
+        const visible = visibleCbs();
+        const visibleChecked = visible.filter(cb => cb.checked).length;
         countEl.textContent = `${c.length}개 선택됨`;
         bulkBtns.forEach(b => { b.disabled = c.length === 0; });
-        headerCb.checked = c.length > 0 && c.length === total;
-        headerCb.indeterminate = c.length > 0 && c.length < total;
+        headerCb.checked = visible.length > 0 && visibleChecked === visible.length;
+        headerCb.indeterminate = visibleChecked > 0 && visibleChecked < visible.length;
     }
-    function setAll(v) { allCbs().forEach(cb => { cb.checked = v; }); updateState(); }
+    function setAll(v) { visibleCbs().forEach(cb => { cb.checked = v; }); updateState(); }
 
     headerCb.addEventListener('change', () => setAll(headerCb.checked));
     document.getElementById('select-all-btn').addEventListener('click', () => setAll(true));
@@ -233,15 +333,77 @@ document.addEventListener('DOMContentLoaded', function () {
     const searchBtn = document.getElementById('unit-search-btn');
     const searchClear = document.getElementById('unit-search-clear');
 
+    // 단원 row → 조상 폴더에 검색 컨텍스트 추가 (학년/출판사 텍스트)
+    // summary 의 strong/span 텍스트를 누적해서 row 의 search-text 에 합쳐 검색.
+    function buildRowSearchText(row) {
+        const own = (row.dataset.searchText || '').toLowerCase();
+        const ancestors = [];
+        let el = row.parentElement;
+        while (el) {
+            if (el.tagName === 'DETAILS') {
+                const sum = el.querySelector(':scope > summary');
+                if (sum) ancestors.push(sum.textContent.toLowerCase());
+            }
+            el = el.parentElement;
+        }
+        return own + ' ' + ancestors.join(' ');
+    }
+
     function runSearch() {
         const q = searchEl.value.trim().toLowerCase();
-        // 공백으로 토큰 분리 — 모든 토큰이 row에 들어있어야 매치 (순서 무관 AND)
         const tokens = q.split(/\s+/).filter(t => t);
-        document.querySelectorAll('#unit-form tbody tr').forEach(tr => {
-            const text = tr.textContent.toLowerCase();
+        const rows = document.querySelectorAll('.unit-row');
+
+        // 1) 단원 행 매치 판정
+        rows.forEach(row => {
+            const text = buildRowSearchText(row);
             const match = !tokens.length || tokens.every(t => text.includes(t));
-            tr.style.display = match ? '' : 'none';
+            row.style.display = match ? '' : 'none';
         });
+
+        // 2) 폴더 자체 매치(요약 텍스트만) — 매치되면 그 폴더의 모든 행 표시
+        document.querySelectorAll('details.folder').forEach(d => {
+            const sum = d.querySelector(':scope > summary');
+            const sumText = sum ? sum.textContent.toLowerCase() : '';
+            const folderMatch = tokens.length && tokens.every(t => sumText.includes(t));
+            if (folderMatch) {
+                d.querySelectorAll('.unit-row').forEach(r => { r.style.display = ''; });
+            }
+        });
+
+        // 3) 비어있는(전부 hidden인) 폴더는 숨김, 매치 있는 폴더는 자동 열기
+        // (검색 비활성 상태일 땐 원상복구)
+        const folders = Array.from(document.querySelectorAll('details.folder'));
+        // 안쪽 → 바깥 순으로 처리해야 자식 상태가 반영된 뒤 부모가 결정됨
+        folders.reverse().forEach(d => {
+            const visibleRows = d.querySelectorAll('.unit-row:not([style*="display: none"])').length;
+            if (!tokens.length) {
+                d.classList.remove('no-match');
+                return;
+            }
+            if (visibleRows > 0) {
+                d.classList.remove('no-match');
+                d.open = true;
+            } else {
+                d.classList.add('no-match');
+            }
+        });
+
+        // 검색 결과 0건 안내
+        const totalVisible = document.querySelectorAll('.unit-row:not([style*="display: none"])').length;
+        let empty = document.getElementById('search-empty-msg');
+        if (tokens.length && totalVisible === 0) {
+            if (!empty) {
+                empty = document.createElement('div');
+                empty.id = 'search-empty-msg';
+                empty.className = 'alert alert-warning text-center my-3';
+                empty.textContent = '검색 결과가 없습니다.';
+                document.querySelector('.folder-tree')?.parentElement?.appendChild(empty);
+            }
+            empty.style.display = '';
+        } else if (empty) {
+            empty.style.display = 'none';
+        }
     }
 
     if (searchEl) {

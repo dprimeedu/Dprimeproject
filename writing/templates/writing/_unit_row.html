@@ -1,0 +1,27 @@
+<div class="unit-row" data-unit-id="{{ unit.id }}"
+     data-search-text="{{ unit.title|lower }} {{ unit.grade|lower }} {{ unit.publisher|lower }}">
+    <input type="checkbox" name="unit_ids" value="{{ unit.id }}"
+           class="form-check-input unit-checkbox"
+           data-title="{{ unit.title }}" data-count="{{ unit.total_count }}">
+    <div class="unit-main">
+        <i class="fas fa-file-alt file-icon"></i>
+        <a href="{% url 'writing:unit_detail' unit.id %}"
+           class="unit-title-link" title="이 단원 편집">
+            <strong>{{ unit.title }}</strong>
+        </a>
+    </div>
+    <div class="unit-meta">
+        <span class="badge bg-light text-dark border">문제 {{ unit.total_count }}</span>
+        <span class="hints-cell" data-unit-id="{{ unit.id }}"
+              data-total="{{ unit.total_count }}" data-has="{{ unit.has_hints_count }}"
+              data-running="{{ unit.hints_running|yesno:'1,0' }}">
+            <span class="badge hints-badge"></span>
+        </span>
+        <span class="text-muted">{{ unit.created_by.username|default:'-' }} · {{ unit.created_at|date:'Y-m-d' }}</span>
+    </div>
+    <div class="unit-actions">
+        <a href="{% url 'writing:unit_detail' unit.id %}" class="btn btn-sm btn-outline-primary">상세</a>
+        <button type="button" class="btn btn-sm btn-outline-danger row-delete-btn"
+                data-unit-id="{{ unit.id }}">삭제</button>
+    </div>
+</div>
