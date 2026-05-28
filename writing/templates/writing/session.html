@@ -727,8 +727,15 @@ function loadProblem(idx) {
                 if (!wordTimeStart[i]) wordTimeStart[i] = Date.now();
             });
             inp.addEventListener('keydown', (e) => {
-                if (e.isComposing || e.keyCode === 229) return;
-                if (e.key === 'Tab' || e.key === 'Enter') {
+                // Tab은 IME 합성과 무관 → 항상 제출 (Enter가 한국어 IME에 막혀도 Tab으로 진행 가능)
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    submitWord(i);
+                    return;
+                }
+                // Enter는 IME 합성 중이면 합성 확정으로만 사용 → 다음 Enter에서 제출
+                if (e.key === 'Enter') {
+                    if (e.isComposing || e.keyCode === 229) return;
                     e.preventDefault();
                     submitWord(i);
                 }
@@ -1041,16 +1048,22 @@ function nextProblem() {
     loadProblem(currentProblemIdx + 1);
 }
 
-// Enter 키로 다음 문제 (모든 단어 done 상태일 때)
+// Enter 키로 다음 문제 (합격해서 nextBtn만 떠 있을 때).
+// 실패 케이스(retryBtn도 같이 표시)에서는 Enter를 가로채지 않음 → 포커스된 retryBtn 기본 동작(다시 풀기) 유지.
+// nextBtn은 inline-block으로 표시되므로 display !== 'none' 으로 가시성 판단.
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && $('nextBtn').style.display === 'block') {
-        const isFocusedOnInput = document.activeElement?.tagName === 'INPUT'
-            && !document.activeElement.disabled;
-        if (!isFocusedOnInput) {
-            e.preventDefault();
-            nextProblem();
-        }
-    }
+    if (e.key !== 'Enter') return;
+    const nextBtn = $('nextBtn');
+    const retryBtn = $('retryBtn');
+    if (!nextBtn || nextBtn.style.display === 'none') return;
+    if (retryBtn && retryBtn.style.display !== 'none') return;  // 실패 케이스: 가로채지 않음
+    const ae = document.activeElement;
+    const tag = ae?.tagName;
+    const focusedOnInteractive = (tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA')
+        && !ae.disabled;
+    if (focusedOnInteractive) return;  // 인풋/버튼이면 브라우저 기본 동작에 맡김
+    e.preventDefault();
+    nextProblem();
 });
 
 // ── 버그 신고 ──
