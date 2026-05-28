@@ -54,7 +54,10 @@
         <ul class="mb-0 mt-2">
             <li>줄 앞 노이즈 자동 제거: <code>Q:</code>, <code>A:</code>, <code>B:</code>, <code>G:</code>, <code>1.</code>, <code>2.</code>, <code>-</code>, <code>•</code>, <code>"</code> 등 (반복 적용)</li>
             <li>영어 단어 수가 3개 이하인 행은 자동 제외</li>
-            <li>파일명 예: <code>중2 동아 윤정미 3과.xlsx</code> → 학년 중2 / 출판사 동아 윤정미 / 단원명 3과</li>
+            <li>내신 교과서 예: <code>중2 동아 윤정미 3과.xlsx</code> → 학년 중2 / 출판사 동아 윤정미 / 단원명 3과</li>
+            <li>부교재 예: <code>리딩튜터 스타터 1_S1-1.Nature 나를 맞혀봐! (R).xlsx</code> → 출판사 리딩튜터 스타터 1 / 단원명 S1-1.Nature 나를 맞혀봐! (R)
+                <br><span class="text-muted small">↳ 파일명에 <code>_</code>(언더바)가 있으면 첫 <code>_</code> 앞=출판사 / 뒤=단원명으로 분리됩니다.</span>
+            </li>
             <li>업로드 후 각 단원 상세 페이지에서 "AI 한글뜻 생성" 버튼을 눌러주세요.</li>
             <li>한 단원당 약 1~5원의 API 비용이 발생합니다 (무료 한도 내에선 비용 없음).</li>
         </ul>
@@ -70,10 +73,32 @@
     // 파일명 → {grade, publisher, title} (백엔드 excel.parse_filename 과 동일 로직)
     function parseFilename(raw) {
         let name = raw.replace(/\.[^.]+$/, '');
-        name = name.replace(/[_\-]+/g, ' ').trim();
-
         let grade = '', title = '', publisher = '';
-        const gm = name.match(/^(초[1-6]|중[1-3]|고[1-3])(\s+|$)/);
+        const gradeRe = /^(초[1-6]|중[1-3]|고[1-3])(?:\s+|$)/;
+
+        // 1) '_'가 있으면 첫 '_'를 출판사/단원명 구분자로 (부교재 패턴)
+        const usIdx = name.indexOf('_');
+        if (usIdx >= 0) {
+            let head = name.slice(0, usIdx).trim();
+            let tail = name.slice(usIdx + 1);
+            const gm0 = head.match(gradeRe);
+            let headGrade = '';
+            if (gm0) {
+                headGrade = gm0[1];
+                head = head.slice(gm0[0].length).trim();
+            }
+            // head가 학년만 있고 비었으면 (예: "중2_동아_3과") → 기존 로직으로 폴백
+            if (head) {
+                grade = headGrade;
+                publisher = head.replace(/\s+/g, ' ').trim();
+                title = tail.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+                return { grade, publisher, title };
+            }
+        }
+
+        // 2) '_' 없음 / 폴백: 기존 내신 교과서 패턴 ('과/단원/Lesson' 등)
+        name = name.replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const gm = name.match(gradeRe);
         if (gm) {
             grade = gm[1];
             name = name.slice(gm[0].length).trim();

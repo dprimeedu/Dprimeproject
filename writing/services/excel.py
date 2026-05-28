@@ -137,13 +137,37 @@ _TITLE_PATTERNS = [
 
 
 def parse_filename(raw: str) -> Dict[str, str]:
-    """파일명에서 학년/출판사/단원명 추출. (기존 upload.html JS 로직과 동일)"""
+    """파일명에서 학년/출판사/단원명 추출. (upload.html JS 로직과 동일)
+
+    1) '_'가 있으면 첫 '_'를 출판사/단원명 구분자로 사용 (부교재 패턴)
+       예: "리딩튜터 스타터 1_S1-1.Nature 나를 맞혀봐! (R)"
+           → 출판사="리딩튜터 스타터 1", 단원명="S1-1.Nature 나를 맞혀봐! (R)"
+    2) '_'가 없으면 '과/단원/Lesson/Wrap Up/Review' 키워드 기반 분리 (내신 교과서 패턴)
+    """
     name = re.sub(r'\.[^.]+$', '', raw)
-    name = re.sub(r'[_\-]+', ' ', name).strip()
 
     grade = ''
     title = ''
     publisher = ''
+
+    if '_' in name:
+        head, _, tail = name.partition('_')
+        head = head.strip()
+        # 첫 '_' 앞에 학년 prefix가 있을 수 있음
+        gm = _GRADE_PATTERN.match(head)
+        head_grade = ''
+        if gm:
+            head_grade = gm.group(1)
+            head = head[gm.end():].strip()
+        # head가 학년만 있고 비었으면 (예: "중2_동아_3과") → 기존 로직으로 폴백
+        if head:
+            grade = head_grade
+            publisher = re.sub(r'\s+', ' ', head).strip()
+            title = re.sub(r'\s+', ' ', tail.replace('_', ' ')).strip()
+            return {'grade': grade, 'publisher': publisher, 'title': title}
+
+    name = re.sub(r'[_\-]+', ' ', name).strip()
+    name = re.sub(r'\s+', ' ', name)
 
     gm = _GRADE_PATTERN.match(name)
     if gm:
