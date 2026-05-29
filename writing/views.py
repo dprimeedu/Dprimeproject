@@ -1752,9 +1752,21 @@ def student_admin(request):
             continue
         s.assigned_count = UnitAssignment.objects.filter(student=s).count()
         students.append(s)
+
+    # 오늘 목표를 학생 행에 prefetch
+    today = timezone.now().date()
+    sid_list = [s.id for s in students]
+    goals_today = {
+        g.student_id: g
+        for g in DailyStudyGoal.objects.filter(date=today, student_id__in=sid_list)
+    }
+    for s in students:
+        s.today_goal = goals_today.get(s.id)
+
     return render(request, 'writing/student_list.html', {
         'students': students,
         'default_password': DEFAULT_STUDENT_PASSWORD,
+        'today': today,
     })
 
 
@@ -2238,6 +2250,112 @@ def student_goal_update(request, student_id):
 
     from django.urls import reverse
     return redirect(f"{reverse('writing:student_report', args=[student.id])}?date={target_date}")
+
+
+@teacher_required
+@require_GET
+def student_goal_api(request, student_id):
+    """학생 1명의 특정 날짜 목표 조회 (모달 prefill용)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+    raw_date = (request.GET.get('date') or '').strip()
+    try:
+        target_date = datetime.strptime(raw_date, '%Y-%m-%d').date() if raw_date else timezone.now().date()
+    except ValueError:
+        return HttpResponseBadRequest('Invalid date')
+
+    g = DailyStudyGoal.objects.filter(student=student, date=target_date).first()
+    return JsonResponse({
+        'student_id': student.id,
+        'date': target_date.strftime('%Y-%m-%d'),
+        'target_problems': g.target_problems if g else 0,
+        'target_minutes': g.target_minutes if g else 0,
+        'target_sessions': g.target_sessions if g else 0,
+        'note': g.note if g else '',
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
+@require_POST
+def student_goal_save_api(request):
+    """단일/일괄 목표 저장 API.
+
+    Body: { student_ids: [int], date: 'YYYY-MM-DD', target_problems, target_minutes,
+            target_sessions, note }
+    모든 target=0 + note 비면 그 학생들의 해당 날짜 목표 삭제.
+    """
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest('Invalid JSON')
+
+    raw_ids = data.get('student_ids') or []
+    try:
+        student_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return HttpResponseBadRequest('Invalid student_ids')
+    if not student_ids:
+        return HttpResponseBadRequest('No students')
+
+    raw_date = (data.get('date') or '').strip()
+    try:
+        target_date = datetime.strptime(raw_date, '%Y-%m-%d').date() if raw_date else timezone.now().date()
+    except ValueError:
+        return HttpResponseBadRequest('Invalid date')
+
+    def _int(name):
+        try:
+            return max(0, int(data.get(name) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    tp = _int('target_problems')
+    tm = _int('target_minutes')
+    ts = _int('target_sessions')
+    note = (data.get('note') or '').strip()[:200]
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    valid_ids = list(
+        User.objects.filter(pk__in=student_ids)
+        .exclude(is_staff=True).exclude(is_superuser=True)
+        .values_list('id', flat=True)
+    )
+
+    is_clear = (tp == 0 and tm == 0 and ts == 0 and not note)
+    if is_clear:
+        deleted = DailyStudyGoal.objects.filter(
+            student_id__in=valid_ids, date=target_date,
+        ).delete()[0]
+        return JsonResponse({
+            'success': True, 'action': 'delete',
+            'affected': deleted, 'student_ids': valid_ids,
+        })
+
+    saved = 0
+    for sid in valid_ids:
+        DailyStudyGoal.objects.update_or_create(
+            student_id=sid, date=target_date,
+            defaults={
+                'target_problems': tp,
+                'target_minutes': tm,
+                'target_sessions': ts,
+                'note': note,
+                'set_by': request.user,
+            },
+        )
+        saved += 1
+    return JsonResponse({
+        'success': True, 'action': 'save',
+        'affected': saved, 'student_ids': valid_ids,
+        'target_problems': tp, 'target_minutes': tm,
+        'target_sessions': ts, 'note': note,
+        'date': target_date.strftime('%Y-%m-%d'),
+    }, json_dumps_params={'ensure_ascii': False})
 
 
 @teacher_required

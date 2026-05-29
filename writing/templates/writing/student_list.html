@@ -39,6 +39,28 @@
     cursor: pointer;
 }
 .assign-count-btn:hover { color: #5b21b6; }
+.goal-chip-btn {
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: .8rem;
+    padding: .15rem .55rem;
+    border-radius: 999px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.goal-chip-btn:hover { background: #fde68a; }
+.goal-empty-btn {
+    background: none;
+    border: 1px dashed #d1d5db;
+    color: #9ca3af;
+    font-size: .75rem;
+    padding: .15rem .5rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.goal-empty-btn:hover { border-color: #d97706; color: #d97706; }
 .info-stat-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -164,6 +186,9 @@
                 <button type="submit" name="action" value="delete" class="btn btn-sm btn-danger student-act" disabled id="del-btn">
                     <i class="fas fa-trash me-1"></i>삭제
                 </button>
+                <button type="button" id="bulk-goal-btn" class="btn btn-sm btn-warning student-act" disabled>
+                    <i class="fas fa-bullseye me-1"></i>오늘 목표 일괄 지정
+                </button>
             </div>
         </div>
 
@@ -179,6 +204,7 @@
                             <th class="text-center">활성</th>
                             <th class="text-center">재원생 승인</th>
                             <th class="text-center">배정 단원</th>
+                            <th class="text-center">오늘 목표</th>
                             <th>가입일</th>
                         </tr>
                     </thead>
@@ -214,6 +240,20 @@
                                 <button type="button" class="assign-count-btn" data-assigned-count="{{ s.assigned_count }}">
                                     {{ s.assigned_count }}
                                 </button>
+                            </td>
+                            <td class="text-center no-click goal-cell" data-student-id="{{ s.id }}">
+                                {% if s.today_goal %}
+                                <button type="button" class="goal-chip-btn" title="오늘 목표 편집">
+                                    {% if s.today_goal.target_problems %}{{ s.today_goal.target_problems }}문제 {% endif %}
+                                    {% if s.today_goal.target_minutes %}{{ s.today_goal.target_minutes }}분 {% endif %}
+                                    {% if s.today_goal.target_sessions %}{{ s.today_goal.target_sessions }}단원{% endif %}
+                                    {% if not s.today_goal.target_problems and not s.today_goal.target_minutes and not s.today_goal.target_sessions %}<i class="fas fa-sticky-note"></i>{% endif %}
+                                </button>
+                                {% else %}
+                                <button type="button" class="goal-empty-btn" title="오늘 목표 설정">
+                                    <i class="fas fa-plus me-1"></i>설정
+                                </button>
+                                {% endif %}
                             </td>
                             <td>{{ s.date_joined|date:'Y-m-d H:i' }}</td>
                         </tr>
@@ -313,6 +353,55 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
         <button type="button" id="assign-save-btn" class="btn btn-primary">
+          <i class="fas fa-save me-1"></i>저장
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 오늘 목표 편집 모달 (단일/일괄 공용) -->
+<div class="modal fade" id="goalEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-bullseye me-2" style="color:#d97706;"></i>
+          <span id="goalModalTitle">오늘 목표</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="goalModalInfo" class="alert alert-warning py-2 small mb-3 d-none"></div>
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small">날짜</label>
+            <input type="date" id="goal_date" class="form-control form-control-sm">
+          </div>
+          <div class="col-4">
+            <label class="form-label small">목표 문제 수</label>
+            <input type="number" id="goal_target_problems" min="0" value="0" class="form-control">
+          </div>
+          <div class="col-4">
+            <label class="form-label small">목표 학습 분</label>
+            <input type="number" id="goal_target_minutes" min="0" value="0" class="form-control">
+          </div>
+          <div class="col-4">
+            <label class="form-label small">목표 완료 단원</label>
+            <input type="number" id="goal_target_sessions" min="0" value="0" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label small">메모 (선택)</label>
+            <input type="text" id="goal_note" maxlength="200" class="form-control" placeholder="예: 외부지문 위주">
+          </div>
+        </div>
+        <div class="small text-muted mt-2">
+          모든 값이 0이고 메모가 비어있으면 해당 학생들의 그 날짜 목표가 <strong>삭제</strong>됩니다.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" id="goal-save-btn" class="btn btn-warning">
           <i class="fas fa-save me-1"></i>저장
         </button>
       </div>
@@ -705,6 +794,141 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!infoCurrentSid) return;
         infoModal.hide();
         setTimeout(() => openAssignModal(infoCurrentSid, infoCurrentLabel), 200);
+    });
+
+    // ─── 오늘 목표 모달 (단일/일괄) ───
+    const goalModalEl = document.getElementById('goalEditModal');
+    const goalModal = new bootstrap.Modal(goalModalEl);
+    const goalModalTitle = document.getElementById('goalModalTitle');
+    const goalModalInfo = document.getElementById('goalModalInfo');
+    const goalDate = document.getElementById('goal_date');
+    const goalTP = document.getElementById('goal_target_problems');
+    const goalTM = document.getElementById('goal_target_minutes');
+    const goalTS = document.getElementById('goal_target_sessions');
+    const goalNote = document.getElementById('goal_note');
+    const goalSaveBtn = document.getElementById('goal-save-btn');
+
+    let goalMode = 'single';
+    let goalTargetIds = [];
+    const todayStr = '{{ today|date:"Y-m-d" }}';
+
+    function todayCellOf(sid) {
+        return document.querySelector(`.goal-cell[data-student-id="${sid}"]`);
+    }
+
+    function renderGoalCell(sid, tp, tm, ts, note) {
+        const cell = todayCellOf(sid);
+        if (!cell) return;
+        const hasAny = tp || tm || ts || note;
+        if (!hasAny) {
+            cell.innerHTML = '<button type="button" class="goal-empty-btn" title="오늘 목표 설정"><i class="fas fa-plus me-1"></i>설정</button>';
+        } else {
+            const parts = [];
+            if (tp) parts.push(`${tp}문제`);
+            if (tm) parts.push(`${tm}분`);
+            if (ts) parts.push(`${ts}단원`);
+            const label = parts.length ? parts.join(' ') : '<i class="fas fa-sticky-note"></i>';
+            cell.innerHTML = `<button type="button" class="goal-chip-btn" title="오늘 목표 편집">${label}</button>`;
+        }
+    }
+
+    function clearGoalForm() {
+        goalTP.value = '0';
+        goalTM.value = '0';
+        goalTS.value = '0';
+        goalNote.value = '';
+    }
+
+    function openGoalSingleModal(sid, label) {
+        goalMode = 'single';
+        goalTargetIds = [sid];
+        goalModalTitle.textContent = `오늘 목표 — ${label}`;
+        goalModalInfo.classList.add('d-none');
+        goalDate.value = todayStr;
+        clearGoalForm();
+        // 기존 값 prefill
+        fetch(`/training/writing/admin/api/students/${sid}/goal/?date=${todayStr}`, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(d => {
+                goalTP.value = d.target_problems || 0;
+                goalTM.value = d.target_minutes || 0;
+                goalTS.value = d.target_sessions || 0;
+                goalNote.value = d.note || '';
+            }).catch(() => {});
+        goalModal.show();
+    }
+
+    function openGoalBulkModal(sids) {
+        goalMode = 'bulk';
+        goalTargetIds = sids;
+        goalModalTitle.textContent = `오늘 목표 일괄 지정 — ${sids.length}명`;
+        goalModalInfo.innerHTML = `<i class="fas fa-info-circle me-1"></i>선택한 <strong>${sids.length}명</strong>의 해당 날짜 목표가 아래 값으로 <strong>덮어쓰기</strong>됩니다.`;
+        goalModalInfo.classList.remove('d-none');
+        goalDate.value = todayStr;
+        clearGoalForm();
+        goalModal.show();
+    }
+
+    // 셀 클릭 → 단일 편집
+    document.addEventListener('click', e => {
+        const cellBtn = e.target.closest('.goal-chip-btn, .goal-empty-btn');
+        if (!cellBtn) return;
+        const cell = cellBtn.closest('.goal-cell');
+        if (!cell) return;
+        const sid = parseInt(cell.dataset.studentId);
+        const row = cell.closest('.student-row');
+        const label = row?.dataset.studentLabel || '학생';
+        openGoalSingleModal(sid, label);
+    });
+
+    // 일괄 버튼
+    document.getElementById('bulk-goal-btn').addEventListener('click', () => {
+        const sids = checked().map(cb => parseInt(cb.value));
+        if (!sids.length) return;
+        openGoalBulkModal(sids);
+    });
+
+    // 저장
+    goalSaveBtn.addEventListener('click', async () => {
+        if (!goalTargetIds.length) return;
+        const body = {
+            student_ids: goalTargetIds,
+            date: goalDate.value || todayStr,
+            target_problems: parseInt(goalTP.value) || 0,
+            target_minutes: parseInt(goalTM.value) || 0,
+            target_sessions: parseInt(goalTS.value) || 0,
+            note: goalNote.value || '',
+        };
+        goalSaveBtn.disabled = true;
+        goalSaveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+        try {
+            const r = await fetch('/training/writing/admin/api/students/goal/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error('save failed');
+            // 표 셀 갱신은 오늘 날짜로 저장한 경우만
+            if (body.date === todayStr) {
+                goalTargetIds.forEach(sid => {
+                    renderGoalCell(sid, body.target_problems, body.target_minutes, body.target_sessions, body.note);
+                });
+            }
+            const verb = d.action === 'delete' ? '삭제' : '저장';
+            const noun = goalMode === 'bulk' ? `${d.affected}명` : '';
+            // 잠깐 토스트 대신 모달만 닫고 마무리
+            goalModal.hide();
+            if (goalMode === 'bulk') {
+                alert(`✅ ${verb} 완료 — ${noun}`);
+            }
+        } catch (e) {
+            alert('에러: ' + e.message);
+        } finally {
+            goalSaveBtn.disabled = false;
+            goalSaveBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+        }
     });
 });
 </script>
