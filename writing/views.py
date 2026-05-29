@@ -1134,22 +1134,13 @@ def _category_key(title: str) -> str:
     return t
 
 
-@teacher_required
-def unit_list(request):
-    units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
-    with _hint_progress_lock:
-        running_ids = {uid for uid, s in _hint_progress.items() if s.get('running')}
-    for u in units:
-        u.has_hints_count = u.problems.exclude(word_hints=[]).count()
-        u.total_count = u.problems.count()
-        u.hints_running = u.id in running_ids
+def _build_unit_tree(units):
+    """units 리스트 → (naesin_groups, buggyojae_groups) 트리 구조.
 
-    # 내신 그룹핑 — 두 줄기:
-    #   (a) 시험기형: 학년 → 시험기(2026년 1학기 기말고사) → 학교(동백중3) → 단원
-    #   (b) 일반 출판사형: 학년 → 출판사(NE능률 김성곤) → 과 → 단원
-    # 부교재: 출판사 → 단원
-    naesin_by_grade = {}   # grade → {'exam_periods': {period: {school: [units]}}, 'publishers': {pub: {lesson: [units]}}}
-    buggyojae_by_pub = {}  # publisher → [units]
+    unit_list / match_create 등에서 동일한 폴더 트리를 렌더링하기 위한 공용 헬퍼.
+    """
+    naesin_by_grade = {}
+    buggyojae_by_pub = {}
     for u in units:
         if u.grade in _GRADES_ORDER:
             bucket = naesin_by_grade.setdefault(
@@ -1174,8 +1165,6 @@ def unit_list(request):
             continue
         data = naesin_by_grade[g]
         pubs = []
-
-        # 시험기 폴더 (최신 연도부터)
         for period in sorted(data['exam_periods'].keys(), reverse=True):
             schools_map = data['exam_periods'][period]
             schools = []
@@ -1184,24 +1173,15 @@ def unit_list(request):
                 categories = []
                 for cat_name in sorted(cat_map.keys()):
                     us = sorted(cat_map[cat_name], key=_unit_natural_key)
-                    categories.append({
-                        'name': cat_name,
-                        'units': us,
-                        'count': len(us),
-                    })
+                    categories.append({'name': cat_name, 'units': us, 'count': len(us)})
                 schools.append({
-                    'name': school_name,
-                    'categories': categories,
+                    'name': school_name, 'categories': categories,
                     'count': sum(c['count'] for c in categories),
                 })
             pubs.append({
-                'name': period,
-                'is_exam_period': True,
-                'schools': schools,
+                'name': period, 'is_exam_period': True, 'schools': schools,
                 'count': sum(s['count'] for s in schools),
             })
-
-        # 일반 출판사 폴더 (이름 오름차순)
         for pub_name in sorted(data['publishers'].keys()):
             lesson_map = data['publishers'][pub_name]
             lessons = [
@@ -1209,15 +1189,11 @@ def unit_list(request):
                 for lk in sorted(lesson_map.keys(), key=_lesson_sort_key)
             ]
             pubs.append({
-                'name': pub_name,
-                'is_exam_period': False,
-                'lessons': lessons,
+                'name': pub_name, 'is_exam_period': False, 'lessons': lessons,
                 'count': sum(len(l['units']) for l in lessons),
             })
-
         naesin_groups.append({
-            'grade': g,
-            'publishers': pubs,
+            'grade': g, 'publishers': pubs,
             'count': sum(p['count'] for p in pubs),
         })
 
@@ -1225,6 +1201,21 @@ def unit_list(request):
         {'name': name, 'units': us}
         for name, us in sorted(buggyojae_by_pub.items())
     ]
+    return naesin_groups, buggyojae_groups
+
+
+@teacher_required
+def unit_list(request):
+    units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
+    with _hint_progress_lock:
+        running_ids = {uid for uid, s in _hint_progress.items() if s.get('running')}
+    for u in units:
+        u.has_hints_count = u.problems.exclude(word_hints=[]).count()
+        u.total_count = u.problems.count()
+        u.hints_running = u.id in running_ids
+
+    # 내신/부교재 트리 그룹핑 (공용 헬퍼)
+    naesin_groups, buggyojae_groups = _build_unit_tree(units)
 
     return render(request, 'writing/unit_list.html', {
         'units': units,
@@ -2602,14 +2593,17 @@ def match_quick_ai(request):
 def match_create(request):
     """대전 방 생성 — GET 폼 / POST 생성."""
     if request.method == 'GET':
-        # 활성 단원만 노출. 학년/출판사 정렬
-        units = WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title')
-        # 현재 활성 방 (선생님이 만든)
+        units = list(WritingUnit.objects.filter(is_active=True).order_by('publisher', 'title'))
+        naesin_groups, buggyojae_groups = _build_unit_tree(units)
         my_rooms = MatchRoom.objects.filter(
             created_by=request.user, status__in=['waiting', 'active'],
         ).select_related('unit').order_by('-created_at')[:10]
         return render(request, 'writing/match_create.html', {
-            'units': units, 'my_rooms': my_rooms,
+            'naesin_groups': naesin_groups,
+            'buggyojae_groups': buggyojae_groups,
+            'naesin_total': sum(g['count'] for g in naesin_groups),
+            'buggyojae_total': sum(len(g['units']) for g in buggyojae_groups),
+            'my_rooms': my_rooms,
         })
 
     try:
@@ -2805,6 +2799,24 @@ def match_start_api(request, code):
     room.save(update_fields=['status', 'started_at'])
 
     return JsonResponse({'success': True, 'status': 'active'})
+
+
+@login_required
+@require_POST
+def match_delete_api(request, code):
+    """대전 방 삭제 — 방장/선생님만. 참가자/세션/시도 cascade.
+    finished 방도 삭제 가능 (잘못 만든 방 정리용)."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    if not (is_teacher(request.user) or room.created_by_id == request.user.id):
+        return JsonResponse({'error': 'forbidden'}, status=403)
+    # 참가자들의 세션도 같이 삭제 (혹시 학습 기록을 망치지 않게 안 끝난 세션만)
+    session_ids = list(
+        room.participants.filter(session__isnull=False, session__finished_at__isnull=True)
+        .values_list('session_id', flat=True)
+    )
+    WritingSession.objects.filter(id__in=session_ids).delete()
+    room.delete()  # MatchParticipant도 CASCADE
+    return JsonResponse({'success': True})
 
 
 @login_required

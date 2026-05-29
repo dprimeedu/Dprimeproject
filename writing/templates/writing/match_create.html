@@ -3,21 +3,76 @@
 
 {% block extra_css %}
 <style>
-.match-wrap { max-width: 900px; margin: 0 auto; padding-bottom: 3rem; }
+.match-wrap { max-width: 1000px; margin: 0 auto; padding-bottom: 3rem; }
 .match-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
 .match-card h4 { margin: 0 0 1rem; color: var(--primary-color); font-weight: 700; }
-.room-chip {
+
+/* 활성 방 칩 + 삭제 */
+.room-chip-wrap {
+    display: inline-flex; align-items: stretch;
+    border: 1px solid #e9d5ff; border-radius: 8px; overflow: hidden;
+    background: #faf5ff;
+}
+.room-chip-link {
     display: inline-flex; align-items: center; gap: .5rem;
-    padding: .5rem .85rem; background: #faf5ff; border: 1px solid #e9d5ff;
-    border-radius: 8px; text-decoration: none; color: #5b21b6; font-weight: 500;
+    padding: .5rem .85rem; text-decoration: none; color: #5b21b6; font-weight: 500;
 }
-.room-chip:hover { background: #ede9fe; color: #5b21b6; }
-.room-chip .code { font-family: ui-monospace, monospace; font-weight: 700; font-size: 1.05rem; letter-spacing: 1px; }
-.room-chip .status {
-    font-size: .7rem; padding: .1rem .4rem; border-radius: 4px;
-    background: #fef3c7; color: #92400e;
+.room-chip-link:hover { background: #ede9fe; color: #5b21b6; }
+.room-chip-link .code { font-family: ui-monospace, monospace; font-weight: 700; font-size: 1.05rem; letter-spacing: 1px; }
+.room-chip-link .status { font-size: .7rem; padding: .1rem .4rem; border-radius: 4px; background: #fef3c7; color: #92400e; }
+.room-chip-link .status.active { background: #d1fae5; color: #065f46; }
+.room-del-btn {
+    background: none; border: none; border-left: 1px solid #e9d5ff;
+    padding: 0 .55rem; color: #9ca3af; cursor: pointer; transition: all .15s;
 }
-.room-chip .status.active { background: #d1fae5; color: #065f46; }
+.room-del-btn:hover { background: #fee2e2; color: #b91c1c; }
+
+/* 단원 picker — 트리 */
+.unit-picker { border: 1px solid #e5e7eb; border-radius: 8px; padding: .5rem; background: #fafafa; max-height: 480px; overflow-y: auto; }
+.picker-search-row { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.picker-search-row input { flex: 1; }
+.picker-selected {
+    background: #ede9fe; border: 1px solid #c4b5fd; border-radius: 8px;
+    padding: .55rem .85rem; margin-bottom: .75rem;
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+}
+.picker-selected .label { font-weight: 600; color: #5b21b6; flex: 1; min-width: 0; }
+.picker-selected .empty { color: #9ca3af; font-style: italic; font-weight: 400; }
+.picker-selected .clear-btn { background: none; border: 1px solid #c4b5fd; border-radius: 4px; padding: .15rem .55rem; color: #5b21b6; cursor: pointer; font-size: .75rem; }
+.picker-selected .clear-btn:hover { background: #ddd6fe; }
+
+/* 트리 스타일 (unit_list와 유사) */
+.folder { margin: 0; }
+.folder > summary {
+    list-style: none; cursor: pointer; padding: .35rem .5rem;
+    display: flex; align-items: center; gap: .35rem;
+    border-radius: .375rem; user-select: none; font-size: .9rem;
+}
+.folder > summary::-webkit-details-marker { display: none; }
+.folder > summary:hover { filter: brightness(.97); }
+.folder > summary .caret { display: inline-block; transition: transform .15s; color: #6b7280; width: .65rem; }
+.folder[open] > summary .caret { transform: rotate(90deg); }
+.folder > summary .folder-icon { color: #f59e0b; }
+.folder > summary .folder-count { margin-left: auto; color: #9ca3af; font-size: .8rem; font-weight: 400; }
+.folder-l1 > summary { background: #ede9fe; font-weight: 600; }
+.folder-l2 > summary { background: #f5f3ff; font-weight: 500; }
+.folder-l3 > summary { background: #faf5ff; }
+.folder-l4 > summary { background: #fdfbff; font-size: .85rem; }
+.folder-l5 > summary { background: #fefcff; font-size: .82rem; }
+.folder-children { padding: .1rem 0 .15rem 1rem; margin-left: .35rem; border-left: 2px solid #e9d5ff; }
+.picker-row {
+    display: flex; align-items: center; gap: .4rem;
+    padding: .3rem .5rem; border-radius: 4px; cursor: pointer;
+    font-size: .85rem;
+}
+.picker-row:hover { background: #f3f4f6; }
+.picker-row.selected { background: #ddd6fe; color: #4c1d95; font-weight: 600; }
+.picker-row .meta { margin-left: auto; color: #9ca3af; font-size: .75rem; }
+.picker-row .file-icon { color: #9ca3af; }
+.picker-row.selected .file-icon { color: #5b21b6; }
+.folder.no-match { display: none; }
+.picker-row.no-match { display: none; }
+.empty-result { color: #9ca3af; text-align: center; padding: 1rem; }
 </style>
 {% endblock %}
 
@@ -33,35 +88,172 @@
     {% if my_rooms %}
     <div class="match-card">
         <h4 style="font-size: 1rem;"><i class="fas fa-door-open me-2"></i>내 활성 방</h4>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2" id="myRoomsWrap">
             {% for r in my_rooms %}
-            <a href="{% url 'writing:match_room' r.code %}" class="room-chip">
-                <span class="code">{{ r.code }}</span>
-                <span>{{ r.unit.title }}</span>
-                <span class="status {% if r.status == 'active' %}active{% endif %}">{{ r.get_status_display }}</span>
-            </a>
+            <div class="room-chip-wrap" data-code="{{ r.code }}" data-unit="{{ r.unit.title }}">
+                <a href="{% url 'writing:match_room' r.code %}" class="room-chip-link">
+                    <span class="code">{{ r.code }}</span>
+                    <span>{{ r.unit.title }}</span>
+                    <span class="status {% if r.status == 'active' %}active{% endif %}">{{ r.get_status_display }}</span>
+                </a>
+                <button type="button" class="room-del-btn" title="이 방 삭제">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
             {% endfor %}
         </div>
     </div>
     {% endif %}
 
-    <form method="post" class="match-card">
+    <form method="post" class="match-card" id="createForm">
         {% csrf_token %}
         <h4><i class="fas fa-plus-circle me-2"></i>새 대전 방</h4>
+
         <div class="mb-3">
-            <label class="form-label">단원 선택</label>
-            <select name="unit_id" class="form-select" required>
-                <option value="">— 단원 선택 —</option>
-                {% for u in units %}
-                <option value="{{ u.id }}">
-                    [{{ u.grade }}] {{ u.title }}{% if u.publisher %} · {{ u.publisher }}{% endif %} ({{ u.problem_count }}문제)
-                </option>
-                {% endfor %}
-            </select>
+            <label class="form-label fw-bold">단원 선택</label>
+            <div class="picker-selected" id="selectedDisplay">
+                <i class="fas fa-file-alt"></i>
+                <span class="label"><span class="empty">단원을 선택해주세요</span></span>
+                <button type="button" class="clear-btn" id="clearSelectedBtn" style="display:none;">해제</button>
+            </div>
+            <input type="hidden" name="unit_id" id="unitIdInput" required>
+
+            <div class="picker-search-row">
+                <input type="text" id="unitPickerSearch" class="form-control form-control-sm"
+                       placeholder="🔍 단원명 / 학년 / 출판사 검색">
+                <button type="button" id="unitPickerClear" class="btn btn-sm btn-outline-secondary" title="검색 지우기">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="unit-picker" id="unitTree">
+                {% if naesin_groups %}
+                <details class="folder folder-l1" open>
+                    <summary>
+                        <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                        <i class="fas fa-folder folder-icon"></i>
+                        <strong>내신</strong>
+                        <span class="folder-count">{{ naesin_total }}개</span>
+                    </summary>
+                    <div class="folder-children">
+                        {% for grade_group in naesin_groups %}
+                        <details class="folder folder-l2">
+                            <summary>
+                                <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                <i class="fas fa-folder folder-icon"></i>
+                                <strong>{{ grade_group.grade }}</strong>
+                                <span class="folder-count">{{ grade_group.count }}개</span>
+                            </summary>
+                            <div class="folder-children">
+                                {% for pub in grade_group.publishers %}
+                                <details class="folder folder-l3">
+                                    <summary>
+                                        <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                        <i class="fas fa-folder folder-icon"></i>
+                                        <span>{{ pub.name }}</span>
+                                        <span class="folder-count">{{ pub.count }}개</span>
+                                    </summary>
+                                    <div class="folder-children">
+                                        {% if pub.is_exam_period %}
+                                            {% for school in pub.schools %}
+                                            <details class="folder folder-l4">
+                                                <summary>
+                                                    <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                    <i class="fas fa-folder folder-icon"></i>
+                                                    <span>{{ school.name }}</span>
+                                                    <span class="folder-count">{{ school.count }}개</span>
+                                                </summary>
+                                                <div class="folder-children">
+                                                    {% for cat in school.categories %}
+                                                    <details class="folder folder-l5">
+                                                        <summary>
+                                                            <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                            <i class="fas fa-folder folder-icon"></i>
+                                                            <span>{{ cat.name }}</span>
+                                                            <span class="folder-count">{{ cat.count }}개</span>
+                                                        </summary>
+                                                        <div class="folder-children">
+                                                            {% for u in cat.units %}
+                                                            <div class="picker-row" data-unit-id="{{ u.id }}" data-search-text="{{ u.title|lower }} {{ u.grade|lower }} {{ u.publisher|lower }}">
+                                                                <i class="fas fa-file-alt file-icon"></i>
+                                                                <span>{{ u.title }}</span>
+                                                                <span class="meta">{{ u.problem_count }}문제</span>
+                                                            </div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </details>
+                                                    {% endfor %}
+                                                </div>
+                                            </details>
+                                            {% endfor %}
+                                        {% else %}
+                                            {% for lesson in pub.lessons %}
+                                            <details class="folder folder-l4">
+                                                <summary>
+                                                    <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                    <i class="fas fa-folder folder-icon"></i>
+                                                    <span>{{ lesson.name }}</span>
+                                                    <span class="folder-count">{{ lesson.units|length }}개</span>
+                                                </summary>
+                                                <div class="folder-children">
+                                                    {% for u in lesson.units %}
+                                                    <div class="picker-row" data-unit-id="{{ u.id }}" data-search-text="{{ u.title|lower }} {{ u.grade|lower }} {{ u.publisher|lower }}">
+                                                        <i class="fas fa-file-alt file-icon"></i>
+                                                        <span>{{ u.title }}</span>
+                                                        <span class="meta">{{ u.problem_count }}문제</span>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </details>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </div>
+                                </details>
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if buggyojae_groups %}
+                <details class="folder folder-l1" open>
+                    <summary>
+                        <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                        <i class="fas fa-folder folder-icon"></i>
+                        <strong>부교재</strong>
+                        <span class="folder-count">{{ buggyojae_total }}개</span>
+                    </summary>
+                    <div class="folder-children">
+                        {% for pub in buggyojae_groups %}
+                        <details class="folder folder-l2">
+                            <summary>
+                                <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                <i class="fas fa-folder folder-icon"></i>
+                                <span>{{ pub.name }}</span>
+                                <span class="folder-count">{{ pub.units|length }}개</span>
+                            </summary>
+                            <div class="folder-children">
+                                {% for u in pub.units %}
+                                <div class="picker-row" data-unit-id="{{ u.id }}" data-search-text="{{ u.title|lower }} {{ u.grade|lower }} {{ u.publisher|lower }}">
+                                    <i class="fas fa-file-alt file-icon"></i>
+                                    <span>{{ u.title }}</span>
+                                    <span class="meta">{{ u.problem_count }}문제</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endif %}
+                <div class="empty-result" id="emptyResult" style="display:none;">검색 결과가 없습니다.</div>
+            </div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">AI 같이 추가 <span class="text-muted small">(선택 — 안 추가하면 학생끼리만 대전)</span></label>
+            <label class="form-label">AI 같이 추가 <span class="text-muted small">(선택 — 학생에게는 일반 참가자로 보임)</span></label>
             <div class="row g-2">
                 <div class="col-4">
                     <label class="form-label small text-muted">🐢 쉬움</label>
@@ -91,21 +283,147 @@
                     </select>
                 </div>
             </div>
-            <div class="text-muted small mt-1">
-                💡 대기실에서도 [🤖 쉬움/중간/어려움] 버튼으로 추가/제거 가능합니다.
-            </div>
+            <div class="text-muted small mt-1">💡 대기실에서도 추가/제거 가능합니다.</div>
         </div>
 
         <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" id="createBtn" disabled>
                 <i class="fas fa-rocket me-1"></i>대전 방 만들기
             </button>
             <a href="{% url 'writing:unit_list' %}" class="btn btn-outline-secondary">취소</a>
         </div>
         <div class="text-muted small mt-2">
-            방 만들면 5자리 입장 코드가 생성됩니다. 학생들이 그 코드로 입장하면 대기실에서 만날 수 있어요.<br>
-            <strong>학생 없이 AI만 있는 방은 시작할 수 없습니다</strong> — 시작하려면 최소 1명의 학생이 입장해야 해요.
+            방 만들면 5자리 입장 코드가 생성됩니다.
+            <strong>학생 없이 AI만 있는 방은 시작할 수 없습니다</strong>.
         </div>
     </form>
 </div>
+
+<script>
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+
+// ── 단원 picker ──
+const unitIdInput = document.getElementById('unitIdInput');
+const selectedLabel = document.querySelector('#selectedDisplay .label');
+const clearBtn = document.getElementById('clearSelectedBtn');
+const createBtn = document.getElementById('createBtn');
+
+function selectUnit(row) {
+    document.querySelectorAll('.picker-row.selected').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+    unitIdInput.value = row.dataset.unitId;
+    // 폴더 경로 + 단원명을 합쳐 라벨
+    const ancestors = [];
+    let el = row.parentElement;
+    while (el) {
+        if (el.tagName === 'DETAILS' && el.classList.contains('folder')) {
+            const sum = el.querySelector(':scope > summary');
+            if (sum) {
+                const text = (sum.textContent || '').replace(/\d+개/g, '').trim();
+                if (text) ancestors.unshift(text);
+            }
+        }
+        el = el.parentElement;
+    }
+    const unitName = row.querySelector('span').textContent;
+    const path = ancestors.length ? ancestors.join(' / ') + ' / ' + unitName : unitName;
+    selectedLabel.innerHTML = path;
+    clearBtn.style.display = '';
+    createBtn.disabled = false;
+}
+
+document.querySelectorAll('.picker-row').forEach(row => {
+    row.addEventListener('click', () => selectUnit(row));
+});
+
+clearBtn.addEventListener('click', () => {
+    document.querySelectorAll('.picker-row.selected').forEach(r => r.classList.remove('selected'));
+    unitIdInput.value = '';
+    selectedLabel.innerHTML = '<span class="empty">단원을 선택해주세요</span>';
+    clearBtn.style.display = 'none';
+    createBtn.disabled = true;
+});
+
+// ── 검색 ──
+const searchEl = document.getElementById('unitPickerSearch');
+const searchClear = document.getElementById('unitPickerClear');
+const emptyResult = document.getElementById('emptyResult');
+
+function buildRowText(row) {
+    const own = (row.dataset.searchText || '').toLowerCase();
+    const ancestors = [];
+    let el = row.parentElement;
+    while (el) {
+        if (el.tagName === 'DETAILS') {
+            const sum = el.querySelector(':scope > summary');
+            if (sum) ancestors.push(sum.textContent.toLowerCase());
+        }
+        el = el.parentElement;
+    }
+    return own + ' ' + ancestors.join(' ');
+}
+
+function runSearch() {
+    const q = searchEl.value.trim().toLowerCase();
+    const tokens = q.split(/\s+/).filter(t => t);
+    const rows = document.querySelectorAll('.picker-row');
+
+    rows.forEach(row => {
+        const text = buildRowText(row);
+        const match = !tokens.length || tokens.every(t => text.includes(t));
+        row.classList.toggle('no-match', !match);
+    });
+
+    // 폴더 자체 매치
+    document.querySelectorAll('details.folder').forEach(d => {
+        const sum = d.querySelector(':scope > summary');
+        const sumText = sum ? sum.textContent.toLowerCase() : '';
+        const folderMatch = tokens.length && tokens.every(t => sumText.includes(t));
+        if (folderMatch) {
+            d.querySelectorAll('.picker-row').forEach(r => r.classList.remove('no-match'));
+        }
+    });
+
+    // 비어있는 폴더 숨김 + 매치된 곳 자동 열기
+    const folders = Array.from(document.querySelectorAll('details.folder'));
+    folders.reverse().forEach(d => {
+        const visibleRows = d.querySelectorAll('.picker-row:not(.no-match)').length;
+        if (!tokens.length) { d.classList.remove('no-match'); return; }
+        if (visibleRows > 0) { d.classList.remove('no-match'); d.open = true; }
+        else { d.classList.add('no-match'); }
+    });
+
+    const total = document.querySelectorAll('.picker-row:not(.no-match)').length;
+    emptyResult.style.display = (tokens.length && total === 0) ? '' : 'none';
+}
+
+searchEl.addEventListener('input', runSearch);
+searchClear.addEventListener('click', () => { searchEl.value = ''; runSearch(); searchEl.focus(); });
+
+// ── 활성 방 삭제 ──
+document.querySelectorAll('.room-del-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const wrap = btn.closest('.room-chip-wrap');
+        const code = wrap.dataset.code;
+        const unitName = wrap.dataset.unit;
+        if (!confirm(`방 [${code}] (${unitName}) 을(를) 삭제합니다.\n참가자/끝나지 않은 세션이 함께 삭제됩니다. 진행할까요?`)) return;
+        btn.disabled = true;
+        try {
+            const fd = new FormData(); fd.append('csrfmiddlewaretoken', CSRF);
+            const r = await fetch(`/training/writing/api/match/${code}/delete/`, {
+                method: 'POST', credentials: 'same-origin', body: fd,
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'delete failed');
+            wrap.remove();
+            // 더 이상 활성 방이 없으면 섹션 자체 제거
+            const remaining = document.querySelectorAll('#myRoomsWrap .room-chip-wrap').length;
+            if (remaining === 0) document.getElementById('myRoomsWrap').closest('.match-card')?.remove();
+        } catch (e) {
+            alert('삭제 실패: ' + e.message);
+            btn.disabled = false;
+        }
+    });
+});
+</script>
 {% endblock %}
