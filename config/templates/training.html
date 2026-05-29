@@ -16,6 +16,23 @@
             <h4>영작훈련</h4>
             <p>단어별 빈칸 채우기 학습</p>
         </a>
+
+        <div class="menu-card" style="cursor: default;">
+            <div class="menu-card-icon"><i class="fas fa-gamepad" style="color:#d97706;"></i></div>
+            <h4>대전 입장</h4>
+            <p class="mb-2">선생님이 알려준 코드로 친구들과 함께 풀기</p>
+            <form id="matchEnterForm"
+                  onsubmit="event.preventDefault(); const c=this.code.value.trim().toUpperCase(); if(c) window.location.href='/training/writing/match/'+c+'/';"
+                  class="d-flex gap-1">
+                <input name="code" maxlength="8" placeholder="ABC42" required
+                       autocomplete="off"
+                       class="form-control form-control-sm"
+                       style="font-family: ui-monospace, monospace; letter-spacing: 3px; text-transform: uppercase; text-align: center; font-weight: 700;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                    <i class="fas fa-sign-in-alt"></i>
+                </button>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
