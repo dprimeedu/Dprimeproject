@@ -23,9 +23,36 @@ class ProfileForm(forms.ModelForm):
 class MemberProfileEditForm(forms.ModelForm):
     class Meta:
         model = Member
-        fields = ['phone']  # 기본 필드 설정
+        fields = ['nickname', 'phone']  # 기본 필드 설정
 
-    phone = forms.CharField(widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '전화번호'}))
+    nickname = forms.CharField(
+        required=False,
+        max_length=30,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': '대전/리더보드에 표시될 별명 (한글/영문/숫자 1~30자, 비우면 ID로 표시)',
+        }),
+        label='별명',
+    )
+    phone = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '전화번호'}),
+    )
+
+    def clean_nickname(self):
+        import re as _re
+        v = (self.cleaned_data.get('nickname') or '').strip()
+        if not v:
+            return ''
+        if len(v) > 30:
+            raise forms.ValidationError('별명은 30자 이하여야 합니다.')
+        if not _re.match(r'^[가-힣A-Za-z0-9 _\-.]+$', v):
+            raise forms.ValidationError('한글/영문/숫자/공백만 사용 가능합니다.')
+        # 중복 체크
+        qs = Member.objects.exclude(pk=self.instance.pk).filter(nickname=v)
+        if qs.exists():
+            raise forms.ValidationError('이미 사용 중인 별명입니다.')
+        return v
 
     # __init__ 메서드 오버라이드: is_academy에 따라 business_registration 필드를 동적으로 추가
     def __init__(self, *args, **kwargs):

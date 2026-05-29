@@ -141,15 +141,31 @@ def student_home(request):
     else:
         level_map = {}
 
-    # 각 단원마다 학생의 진행 상태
+    # ── 단원별 진행 상태 일괄 prefetch (N+1 방지) ──
+    unit_ids = [u.id for u in units]
+    # 시도 횟수 (1쿼리)
+    count_map = {
+        row['unit_id']: row['c']
+        for row in WritingSession.objects.filter(
+            student=request.user, unit_id__in=unit_ids,
+        ).values('unit_id').annotate(c=Count('id'))
+    }
+    # 단원별 최신 세션 (1쿼리, 파이썬으로 그룹)
+    last_map = {}
+    for s in (WritingSession.objects.filter(
+                student=request.user, unit_id__in=unit_ids,
+              ).order_by('unit_id', '-started_at')
+              .only('unit_id', 'total_score', 'started_at')):
+        if s.unit_id not in last_map:
+            last_map[s.unit_id] = s
+
     unit_info = []
     for unit in units:
-        sessions = WritingSession.objects.filter(student=request.user, unit=unit)
-        last = sessions.order_by('-started_at').first()
+        last = last_map.get(unit.id)
         u_level = level_map.get(unit.id, 1)
         unit_info.append({
             'unit': unit,
-            'attempts_count': sessions.count(),
+            'attempts_count': count_map.get(unit.id, 0),
             'last_score': last.total_score if last else None,
             'last_started': last.started_at if last else None,
             'unit_level': u_level,

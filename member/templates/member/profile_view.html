@@ -25,11 +25,22 @@
                         <h5 class="text-primary">기본 정보</h5>
                         <div class="row mb-3">
                             <div class="col-sm-4"><strong>아이디:</strong></div>
-                            <div class="col-sm-8">{{ member.email }}</div>
+                            <div class="col-sm-8">{{ member.login_id|default:member.email }}</div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-sm-4"><strong>회원 타입:</strong></div>
                             <div class="col-sm-8">{{ member.get_member_type_display }}</div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-sm-4"><strong>별명:</strong></div>
+                            <div class="col-sm-8">
+                                {% if member.nickname %}
+                                    <span class="badge bg-info text-dark">{{ member.nickname }}</span>
+                                    <small class="text-muted ms-2">대전/리더보드에서 이 별명으로 표시됩니다.</small>
+                                {% else %}
+                                    <span class="text-muted">미설정 — 대전/리더보드에서 아이디로 표시됩니다.</span>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                     <div class="profile-section mb-4 p-3 border rounded bg-light">
