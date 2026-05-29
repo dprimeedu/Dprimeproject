@@ -245,6 +245,9 @@
         <div class="text-center text-muted py-4">불러오는 중...</div>
       </div>
       <div class="modal-footer">
+        <a href="#" id="openReportFromInfo" class="btn btn-primary">
+          <i class="fas fa-chart-line me-1"></i>오늘 리포트
+        </a>
         <button type="button" class="btn btn-outline-primary" id="openAssignFromInfo">
           <i class="fas fa-book-open me-1"></i>배정 단원 편집
         </button>
@@ -635,6 +638,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const infoTitleEl = document.getElementById('studentInfoTitle');
     const infoBodyEl = document.getElementById('studentInfoBody');
     const openAssignFromInfoBtn = document.getElementById('openAssignFromInfo');
+    const openReportFromInfoBtn = document.getElementById('openReportFromInfo');
     let infoCurrentSid = null;
     let infoCurrentLabel = '';
 
@@ -647,6 +651,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const label = row.dataset.studentLabel || '학생';
             infoCurrentSid = sid;
             infoCurrentLabel = label;
+            if (openReportFromInfoBtn) {
+                openReportFromInfoBtn.href = `/training/writing/admin/students/${sid}/report/`;
+            }
             infoTitleEl.textContent = `학생 정보 — ${label}`;
             infoBodyEl.innerHTML = '<div class="text-center text-muted py-4">불러오는 중...</div>';
             infoModal.show();

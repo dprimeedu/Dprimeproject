@@ -1,0 +1,275 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+.report-wrap { max-width: 1100px; margin: 0 auto; padding-bottom: 4rem; }
+.report-back { color: #6b7280; text-decoration: none; font-size: .9rem; }
+.report-back:hover { color: var(--primary-color); }
+
+.report-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 1rem; flex-wrap: wrap;
+    padding: 1.5rem 0 1rem;
+    border-bottom: 2px solid #ede9fe;
+    margin-bottom: 1.5rem;
+}
+.report-header h2 { margin: 0 0 .35rem; color: var(--primary-color); font-weight: 700; }
+.report-meta { color: #6b7280; font-size: .95rem; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.report-meta .lv-badge { background: #ede9fe; color: #5b21b6; padding: .1rem .55rem; border-radius: 4px; font-weight: 600; font-size: .85rem; }
+.report-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.date-nav { display: flex; gap: .25rem; align-items: center; }
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: .75rem;
+    margin-bottom: 2rem;
+}
+.stat-card {
+    background: linear-gradient(135deg, #faf5ff, #f5f3ff);
+    border: 1px solid #ede9fe;
+    border-radius: 10px;
+    padding: 1rem;
+}
+.stat-card .lbl { font-size: .75rem; color: #6b7280; margin-bottom: .35rem; }
+.stat-card .val { font-size: 1.6rem; font-weight: 700; color: var(--primary-color); line-height: 1; }
+.stat-card .val small { font-size: .9rem; color: #6b7280; font-weight: 500; margin-left: .15rem; }
+.stat-card .sub { font-size: .75rem; color: #6b7280; margin-top: .25rem; }
+
+.section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #374151;
+    margin: 1.5rem 0 .75rem;
+    padding-bottom: .35rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+.section-title .icon { color: var(--primary-color); margin-right: .35rem; }
+
+.unit-stats-table { font-size: .9rem; }
+.unit-stats-table th { background: #faf5ff; font-weight: 600; }
+.acc-bar { height: 5px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-top: .15rem; }
+.acc-bar > div { height: 100%; transition: width .3s; }
+.acc-bar > .good { background: #10b981; }
+.acc-bar > .mid { background: #f59e0b; }
+.acc-bar > .bad { background: #ef4444; }
+
+.sentence-list { list-style: none; padding: 0; margin: 0; }
+.sentence-list li {
+    padding: .65rem .85rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: .5rem;
+    background: #fff;
+}
+.sentence-list .src-unit { font-size: .75rem; color: #9333ea; font-weight: 500; }
+.sentence-list .kor { color: #111827; margin: .15rem 0; font-size: .9rem; }
+.sentence-list .eng { color: #374151; font-family: ui-monospace, SFMono-Regular, monospace; font-size: .85rem; }
+.sentence-list .meta { font-size: .7rem; color: #9ca3af; margin-top: .15rem; }
+.sentence-list.good li { border-left: 3px solid #10b981; }
+.sentence-list.hard li { border-left: 3px solid #ef4444; }
+.list-empty { color: #9ca3af; font-size: .9rem; padding: 1rem 0; text-align: center; }
+
+@media print {
+    .no-print { display: none !important; }
+    .report-wrap { max-width: none; padding: 0; }
+    .stat-card { background: #fff !important; border: 1px solid #ccc !important; }
+    .section-title { page-break-after: avoid; }
+    .sentence-list li { page-break-inside: avoid; }
+    body { background: #fff !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="report-wrap">
+    <a href="{% url 'writing:student_admin' %}" class="report-back no-print">
+        <i class="fas fa-arrow-left me-1"></i>학생 관리로
+    </a>
+
+    <div class="report-header">
+        <div>
+            <h2><i class="fas fa-chart-line me-2"></i>{{ student_name }} 학습 리포트</h2>
+            <div class="report-meta">
+                <span><i class="fas fa-calendar me-1"></i>{{ target_date|date:'Y년 n월 j일 (D)' }}</span>
+                {% if is_today %}<span class="badge bg-primary">오늘</span>{% endif %}
+                <span class="lv-badge">Lv {{ level }} · {{ total_xp }} XP</span>
+            </div>
+        </div>
+        <div class="report-actions no-print">
+            <div class="date-nav">
+                <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary" title="전날">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+                <form method="get" class="d-flex gap-1">
+                    <input type="date" name="date" value="{{ target_date|date:'Y-m-d' }}"
+                           class="form-control form-control-sm" style="width: 9.5rem;">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">조회</button>
+                </form>
+                <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary" title="다음날">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+                {% if not is_today %}
+                <a href="{% url 'writing:student_report' student.id %}" class="btn btn-sm btn-outline-primary">오늘</a>
+                {% endif %}
+            </div>
+            <button type="button" onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-print me-1"></i>인쇄
+            </button>
+        </div>
+    </div>
+
+    {% if session_count == 0 %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>이 날 학습 기록이 없습니다.</strong>
+        {% if week_summary and week_summary.sessions > 0 %}
+        <hr class="my-2">
+        <div class="small">
+            <strong>최근 7일:</strong>
+            세션 {{ week_summary.sessions }}개 (완료 {{ week_summary.finished }}) ·
+            점수 합계 <strong>{{ week_summary.score }}</strong>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+
+    <!-- 한눈에 요약 -->
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="lbl">학습 시간</div>
+            <div class="val">{{ study_duration }}</div>
+            {% if first_started %}
+            <div class="sub">{{ first_started|date:'H:i' }}{% if last_ended %} ~ {{ last_ended|date:'H:i' }}{% endif %}</div>
+            {% endif %}
+        </div>
+        <div class="stat-card">
+            <div class="lbl">세션</div>
+            <div class="val">{{ session_count }}<small>개</small></div>
+            <div class="sub">{{ finished_count }}개 완료</div>
+        </div>
+        <div class="stat-card">
+            <div class="lbl">단어 정답률</div>
+            <div class="val">{{ word_accuracy }}<small>%</small></div>
+            <div class="sub">{{ correct_attempts }} / {{ total_attempts }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="lbl">획득 점수</div>
+            <div class="val">{{ total_score_today }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="lbl">Perfect 문장</div>
+            <div class="val">{{ perfect_sentences_today }}<small>개</small></div>
+        </div>
+    </div>
+
+    <!-- 단원별 -->
+    <h4 class="section-title"><i class="fas fa-book icon"></i>단원별 성취</h4>
+    {% if unit_stats %}
+    <div class="table-responsive">
+        <table class="table unit-stats-table align-middle">
+            <thead>
+                <tr>
+                    <th>단원</th>
+                    <th class="text-center" style="width: 4rem;">세션</th>
+                    <th style="width: 13rem;">단어 정답률</th>
+                    <th class="text-center" style="width: 6rem;">Perfect</th>
+                    <th class="text-end" style="width: 5rem;">점수</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for st in unit_stats %}
+                <tr>
+                    <td>
+                        <a href="{% url 'writing:unit_detail' st.unit.id %}" class="text-decoration-none">
+                            <strong>{{ st.unit.title }}</strong>
+                        </a>
+                        <div class="small text-muted">
+                            {{ st.unit.grade }}{% if st.unit.publisher %} · {{ st.unit.publisher }}{% endif %}
+                        </div>
+                    </td>
+                    <td class="text-center">{{ st.sessions }}</td>
+                    <td>
+                        <div class="d-flex justify-content-between small">
+                            <span>{{ st.correct }} / {{ st.attempts }}</span>
+                            <strong>{{ st.accuracy }}%</strong>
+                        </div>
+                        <div class="acc-bar">
+                            {% if st.accuracy >= 80 %}
+                                <div class="good" style="width: {{ st.accuracy }}%"></div>
+                            {% elif st.accuracy >= 60 %}
+                                <div class="mid" style="width: {{ st.accuracy }}%"></div>
+                            {% else %}
+                                <div class="bad" style="width: {{ st.accuracy }}%"></div>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="text-center">{{ st.perfect }}</td>
+                    <td class="text-end"><strong>{{ st.score }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="list-empty">단원별 데이터가 없습니다.</div>
+    {% endif %}
+
+    <!-- 잘한 문장 / 어려워한 문장 -->
+    <div class="row g-3">
+        <div class="col-md-6">
+            <h4 class="section-title">
+                <i class="fas fa-check-circle icon" style="color:#10b981;"></i>
+                잘 해낸 문장
+                <span class="text-muted small fw-normal">({{ good_count_total }})</span>
+            </h4>
+            {% if good_sentences %}
+            <ul class="sentence-list good">
+                {% for g in good_sentences %}
+                <li>
+                    <div class="src-unit">{{ g.unit_title }}</div>
+                    <div class="kor">{{ g.problem.korean }}</div>
+                    <div class="eng">{{ g.problem.english }}</div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% if good_more > 0 %}
+            <div class="small text-muted text-center">… 외 {{ good_more }}개</div>
+            {% endif %}
+            {% else %}
+            <div class="list-empty">힌트 없이 첫시도 정답한 문장이 없습니다.</div>
+            {% endif %}
+        </div>
+        <div class="col-md-6">
+            <h4 class="section-title">
+                <i class="fas fa-exclamation-circle icon" style="color:#ef4444;"></i>
+                어려워한 문장
+                <span class="text-muted small fw-normal">({{ hard_count_total }})</span>
+            </h4>
+            {% if hard_sentences %}
+            <ul class="sentence-list hard">
+                {% for h in hard_sentences %}
+                <li>
+                    <div class="src-unit">{{ h.unit_title }}</div>
+                    <div class="kor">{{ h.problem.korean }}</div>
+                    <div class="eng">{{ h.problem.english }}</div>
+                    <div class="meta">
+                        {% if h.max_hint >= 3 %}정답 공개까지{% elif h.max_hint >= 2 %}첫글자 힌트{% elif h.max_hint >= 1 %}한글뜻 힌트{% endif %}
+                        {% if h.max_try >= 3 %} · 시도 {{ h.max_try }}회{% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% if hard_more > 0 %}
+            <div class="small text-muted text-center">… 외 {{ hard_more }}개</div>
+            {% endif %}
+            {% else %}
+            <div class="list-empty">힌트나 재시도가 많았던 문장이 없습니다.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}

@@ -1977,6 +1977,186 @@ def student_assignments_update(request, student_id):
     })
 
 
+def _fmt_duration(secs: int) -> str:
+    if not secs or secs < 60:
+        return f'{secs or 0}초'
+    h, rem = divmod(int(secs), 3600)
+    m, _ = divmod(rem, 60)
+    return f'{h}시간 {m}분' if h else f'{m}분'
+
+
+@teacher_required
+@require_GET
+def student_report(request, student_id):
+    """학생별 일일 학습 리포트 — 오늘(또는 ?date=YYYY-MM-DD) 기준."""
+    from django.contrib.auth import get_user_model
+    from datetime import timedelta as _td
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+
+    today = timezone.now().date()
+    raw_date = (request.GET.get('date') or '').strip()
+    try:
+        target_date = datetime.strptime(raw_date, '%Y-%m-%d').date() if raw_date else today
+    except ValueError:
+        target_date = today
+
+    # USE_TZ=False 라서 DB 저장값도 naive — 같은 naive 로 비교
+    day_start = datetime.combine(target_date, datetime.min.time())
+    day_end = day_start + _td(days=1)
+
+    # 오늘 세션
+    sessions_today = list(
+        WritingSession.objects.filter(
+            student=student,
+            started_at__gte=day_start,
+            started_at__lt=day_end,
+        ).select_related('unit').order_by('started_at')
+    )
+    session_ids = [s.id for s in sessions_today]
+    finished_today = [s for s in sessions_today if s.finished_at]
+
+    total_study_seconds = sum(
+        int((s.finished_at - s.started_at).total_seconds())
+        for s in finished_today if s.started_at and s.finished_at
+    )
+
+    first_started = sessions_today[0].started_at if sessions_today else None
+    last_ended = max((s.finished_at for s in finished_today), default=None)
+
+    # 오늘 단어 시도
+    attempts_today = list(
+        WritingAttempt.objects.filter(session_id__in=session_ids)
+        .select_related('problem__unit', 'session__unit')
+    )
+
+    total_attempts = len(attempts_today)
+    correct_attempts = sum(1 for a in attempts_today if a.is_correct)
+    word_accuracy = round(correct_attempts / total_attempts * 100, 1) if total_attempts else 0
+
+    total_score_today = sum(s.total_score for s in sessions_today)
+    perfect_sentences_today = sum(s.perfect_sentences for s in sessions_today)
+
+    # 단원별 집계
+    unit_stats_map = {}
+    for s in sessions_today:
+        st = unit_stats_map.setdefault(s.unit_id, {
+            'unit': s.unit, 'sessions': 0, 'score': 0,
+            'perfect': 0, 'attempts': 0, 'correct': 0,
+        })
+        st['sessions'] += 1
+        st['score'] += s.total_score
+        st['perfect'] += s.perfect_sentences
+    for a in attempts_today:
+        st = unit_stats_map.get(a.session.unit_id)
+        if not st:
+            continue
+        st['attempts'] += 1
+        if a.is_correct:
+            st['correct'] += 1
+
+    unit_stats = []
+    for st in unit_stats_map.values():
+        acc = round(st['correct'] / st['attempts'] * 100, 1) if st['attempts'] else 0
+        unit_stats.append({**st, 'accuracy': acc})
+    unit_stats.sort(key=lambda x: -x['score'])
+
+    # 문장(problem) 단위 — 잘한/어려운
+    by_problem = {}  # pid → list[attempts]
+    for a in attempts_today:
+        by_problem.setdefault(a.problem_id, []).append(a)
+
+    good_sentences = []
+    hard_sentences = []
+    for pid, atts in by_problem.items():
+        problem = atts[0].problem
+        # 단어별 1차 시도 정보
+        by_word = {}
+        for a in atts:
+            by_word.setdefault(a.word_index, []).append(a)
+        all_perfect = True
+        max_hint = 0
+        max_try = 0
+        for wi, ws in by_word.items():
+            first = min(ws, key=lambda x: x.attempt_num)
+            if not (first.attempt_num == 1 and first.hint_level == 0 and first.is_correct):
+                all_perfect = False
+            for a in ws:
+                max_hint = max(max_hint, a.hint_level)
+                max_try = max(max_try, a.attempt_num)
+        entry = {
+            'problem': problem,
+            'unit_title': problem.unit.title,
+            'max_hint': max_hint,
+            'max_try': max_try,
+        }
+        if all_perfect:
+            good_sentences.append(entry)
+        elif max_hint >= 2 or max_try >= 3:
+            hard_sentences.append(entry)
+
+    # 어려운 문장은 시도/힌트 많은 순
+    hard_sentences.sort(key=lambda x: (-x['max_hint'], -x['max_try']))
+
+    # 학습 기록 없을 때 7일 fallback
+    week_summary = None
+    if not sessions_today:
+        week_start = day_start - _td(days=7)
+        recent = WritingSession.objects.filter(
+            student=student,
+            started_at__gte=week_start,
+            started_at__lt=day_end,
+        )
+        week_summary = {
+            'sessions': recent.count(),
+            'finished': recent.filter(finished_at__isnull=False).count(),
+            'score': sum(s.total_score for s in recent),
+        }
+
+    profile = StudentProfile.objects.filter(student=student).first()
+    total_xp = profile.total_xp if profile else 0
+    level = scoring.compute_level(total_xp)
+
+    name = student.username or getattr(student, 'login_id', '') or '학생'
+
+    GOOD_LIMIT = 10
+    HARD_LIMIT = 10
+    return render(request, 'writing/student_report.html', {
+        'student': student,
+        'student_name': name,
+        'target_date': target_date,
+        'today': today,
+        'is_today': target_date == today,
+        'prev_date': target_date - _td(days=1),
+        'next_date': target_date + _td(days=1),
+        'sessions_today': sessions_today,
+        'session_count': len(sessions_today),
+        'finished_count': len(finished_today),
+        'study_duration': _fmt_duration(total_study_seconds),
+        'study_seconds': total_study_seconds,
+        'first_started': first_started,
+        'last_ended': last_ended,
+        'total_attempts': total_attempts,
+        'correct_attempts': correct_attempts,
+        'word_accuracy': word_accuracy,
+        'total_score_today': total_score_today,
+        'perfect_sentences_today': perfect_sentences_today,
+        'unit_stats': unit_stats,
+        'good_sentences': good_sentences[:GOOD_LIMIT],
+        'good_count_total': len(good_sentences),
+        'good_more': max(0, len(good_sentences) - GOOD_LIMIT),
+        'hard_sentences': hard_sentences[:HARD_LIMIT],
+        'hard_count_total': len(hard_sentences),
+        'hard_more': max(0, len(hard_sentences) - HARD_LIMIT),
+        'week_summary': week_summary,
+        'total_xp': total_xp,
+        'level': level,
+    })
+
+
 @teacher_required
 @require_GET
 def student_list_api(request):
