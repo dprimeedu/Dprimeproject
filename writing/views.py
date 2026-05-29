@@ -2462,6 +2462,31 @@ def live_sessions_api(request):
 
 _AI_WPM = {'easy': 20, 'medium': 45, 'hard': 75}
 
+# 학생에게 AI 정체를 숨기기 위한 위장 이름 풀 (일반적인 한국 이름)
+_AI_NAME_POOL = [
+    '민지', '준호', '서연', '지우', '예린', '하은', '도윤', '시우', '서준', '이안',
+    '나윤', '유나', '채원', '주원', '건우', '지호', '연우', '하준', '시아', '예나',
+    '소율', '지안', '윤서', '서아', '지유', '리아', '하린', '서윤', '시현', '윤후',
+    '도현', '민준', '예성', '지원', '아인', '하율', '서영', '민서', '도경', '재인',
+]
+
+
+def _pick_ai_name(room):
+    """방 안에서 중복 안 되는 위장 이름 골라 반환."""
+    import random
+    used = set(
+        MatchParticipant.objects.filter(room=room).values_list('ai_name', flat=True)
+    )
+    # 실 학생 username도 중복 방지
+    used |= set(
+        room.participants.filter(student__isnull=False)
+        .values_list('student__username', flat=True)
+    )
+    available = [n for n in _AI_NAME_POOL if n not in used]
+    if not available:
+        return f'학생{random.randint(100, 9999)}'
+    return random.choice(available)
+
 
 def _compute_ai_state(p, room, problems_words, now):
     """AI 참가자의 현재 상태 계산 — 경과시간 × WPM 기반.
@@ -2529,19 +2554,11 @@ def _gen_match_code() -> str:
     raise RuntimeError('match code 생성 실패')
 
 
-@login_required
+@teacher_required
 def match_quick_ai(request):
-    """학생용 빠른 AI 대결 — 단원/난이도 선택 후 한 번에 방+AI 생성+시작+세션 이동."""
+    """선생님용 빠른 AI 대결 (학생에겐 노출 X) — 단원/난이도 선택 후 한 번에 방+AI 생성+시작+세션 이동."""
     if request.method == 'GET':
-        if is_teacher(request.user):
-            units = WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title')
-        else:
-            assigned_ids = UnitAssignment.objects.filter(
-                student=request.user,
-            ).values_list('unit_id', flat=True)
-            units = WritingUnit.objects.filter(
-                is_active=True, pk__in=assigned_ids,
-            ).order_by('grade', 'publisher', 'title')
+        units = WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title')
         return render(request, 'writing/match_quick_ai.html', {'units': units})
 
     # POST
@@ -2555,25 +2572,19 @@ def match_quick_ai(request):
         difficulty = 'medium'
 
     unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)
-    if not is_teacher(request.user):
-        if not UnitAssignment.objects.filter(student=request.user, unit=unit).exists():
-            messages.error(request, '배정받지 않은 단원입니다.')
-            return redirect('writing:match_quick_ai')
 
-    # 방 + 학생 + AI 참가자 생성
+    # 방 + 본인 + AI 참가자 생성
     room = MatchRoom.objects.create(
         code=_gen_match_code(), unit=unit,
         created_by=request.user, status='waiting',
     )
     MatchParticipant.objects.create(room=room, student=request.user)
 
-    labels = {'easy': '쉬움', 'medium': '중간', 'hard': '어려움'}
-    for i in range(ai_count):
-        suffix = f' #{i+1}' if ai_count > 1 else ''
+    for _ in range(ai_count):
         MatchParticipant.objects.create(
             room=room, student=None,
             is_ai=True, ai_difficulty=difficulty,
-            ai_name=f'🤖 AI ({labels[difficulty]}){suffix}',
+            ai_name=_pick_ai_name(room),
         )
 
     # 학생 세션 + 즉시 시작
@@ -2617,15 +2628,13 @@ def match_create(request):
         status='waiting',
     )
 
-    # AI 즉시 추가 (선택사항)
-    labels = {'easy': '쉬움', 'medium': '중간', 'hard': '어려움'}
+    # AI 즉시 추가 (선택사항) — 학생에게 정체 숨기기 위해 일반 이름풀에서 위장
     for diff, n in (('easy', ai_easy), ('medium', ai_medium), ('hard', ai_hard)):
-        for i in range(n):
-            suffix = f' #{i+1}' if n > 1 else ''
+        for _ in range(n):
             MatchParticipant.objects.create(
                 room=room, student=None,
                 is_ai=True, ai_difficulty=diff,
-                ai_name=f'🤖 AI ({labels[diff]}){suffix}',
+                ai_name=_pick_ai_name(room),
             )
 
     return redirect('writing:match_room', code=room.code)
@@ -2685,6 +2694,9 @@ def match_state_api(request, code):
     now = timezone.now()
     total_problems = room.unit.problem_count
 
+    # 학생에게는 AI 정체 숨김 — 방장/선생님만 is_ai/ai_difficulty 노출
+    is_priv = (room.created_by_id == request.user.id) or is_teacher(request.user)
+
     # AI 상태 계산용 — 단원 문제 전체 → (problem_idx, word_idx, word) flatten
     problems_words = []
     if any(p.is_ai for p in parts):
@@ -2697,15 +2709,17 @@ def match_state_api(request, code):
         if p.is_ai:
             info = {
                 'student_id': None,
-                'name': p.ai_name or f'AI ({p.get_ai_difficulty_display()})',
-                'is_ai': True,
-                'ai_difficulty': p.ai_difficulty,
+                'name': p.ai_name or '학생',
+                # 비공개: 학생에겐 is_ai=False → 일반 참가자처럼 보임
+                'is_ai': True if is_priv else False,
                 'joined_at': p.joined_at.strftime('%H:%M:%S'),
                 'is_me': False,
                 'finished_at': p.finished_at.strftime('%H:%M:%S') if p.finished_at else None,
                 'final_score': p.final_score,
                 'final_rank': p.final_rank,
             }
+            if is_priv:
+                info['ai_difficulty'] = p.ai_difficulty
             if room.status == 'active':
                 ai_state = _compute_ai_state(p, room, problems_words, now)
                 info.update(ai_state)
@@ -2807,12 +2821,7 @@ def match_add_ai_api(request, code):
     if difficulty not in ('easy', 'medium', 'hard'):
         difficulty = 'medium'
 
-    labels = {'easy': '쉬움', 'medium': '중간', 'hard': '어려움'}
-    n_existing = room.participants.filter(is_ai=True, ai_difficulty=difficulty).count()
-    name = f'🤖 AI ({labels[difficulty]})'
-    if n_existing > 0:
-        name = f'{name} #{n_existing + 1}'
-
+    name = _pick_ai_name(room)
     MatchParticipant.objects.create(
         room=room, student=None,
         is_ai=True, ai_difficulty=difficulty, ai_name=name,
