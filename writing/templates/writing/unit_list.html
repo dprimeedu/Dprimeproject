@@ -213,19 +213,35 @@
                                             <span class="folder-count">{{ pub.count }}개</span>
                                         </summary>
                                         <div class="folder-children">
-                                            {% for lesson in pub.lessons %}
-                                            <details class="folder folder-l4">
-                                                <summary>
-                                                    <span class="caret"><i class="fas fa-chevron-right"></i></span>
-                                                    <i class="fas fa-folder folder-icon"></i>
-                                                    <span>{{ lesson.name }}</span>
-                                                    <span class="folder-count">{{ lesson.units|length }}개</span>
-                                                </summary>
-                                                <div class="folder-children">
-                                                    {% for unit in lesson.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
-                                                </div>
-                                            </details>
-                                            {% endfor %}
+                                            {% if pub.is_exam_period %}
+                                                {% for school in pub.schools %}
+                                                <details class="folder folder-l4">
+                                                    <summary>
+                                                        <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                        <i class="fas fa-folder folder-icon"></i>
+                                                        <span>{{ school.name }}</span>
+                                                        <span class="folder-count">{{ school.count }}개</span>
+                                                    </summary>
+                                                    <div class="folder-children">
+                                                        {% for unit in school.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                                    </div>
+                                                </details>
+                                                {% endfor %}
+                                            {% else %}
+                                                {% for lesson in pub.lessons %}
+                                                <details class="folder folder-l4">
+                                                    <summary>
+                                                        <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                        <i class="fas fa-folder folder-icon"></i>
+                                                        <span>{{ lesson.name }}</span>
+                                                        <span class="folder-count">{{ lesson.units|length }}개</span>
+                                                    </summary>
+                                                    <div class="folder-children">
+                                                        {% for unit in lesson.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                                    </div>
+                                                </details>
+                                                {% endfor %}
+                                            {% endif %}
                                         </div>
                                     </details>
                                     {% endfor %}

@@ -1081,6 +1081,38 @@ def _lesson_sort_key(label: str):
     return (0, primary, secondary, label)
 
 
+# 학교 내신 시험기 패턴: "(YYYY년) 학교명+학년 N학기 (중간/기말/모의)고사"
+#   예: "2026년 동백중3 1학기 기말고사" → period="2026년 1학기 기말고사", school="동백중3"
+_SCHOOL_EXAM_PUB_RE = re.compile(
+    r'^(?:(?P<year>\d{4})년\s+)?'
+    r'(?P<school>[^\s_]+?(?:초[1-6]|중[1-3]|고[1-3]))\s+'
+    r'(?P<term>\d학기)\s+'
+    r'(?P<exam>중간고사|기말고사|중간|기말|모의고사|[가-힣A-Za-z]+고사)'
+    r'(?:\s+(?P<suffix>.+))?$'
+)
+
+
+def _parse_school_exam_publisher(pub: str):
+    """publisher 문자열에서 (시험기, 학교) 추출. 매치 안 되면 None."""
+    if not pub:
+        return None
+    m = _SCHOOL_EXAM_PUB_RE.match(pub.strip())
+    if not m:
+        return None
+    parts = []
+    if m.group('year'):
+        parts.append(f"{m.group('year')}년")
+    parts.append(m.group('term'))
+    parts.append(m.group('exam'))
+    return ' '.join(parts), m.group('school')
+
+
+def _unit_natural_key(unit):
+    """단원명 안의 숫자로 자연 정렬 (외부지문 1, 외부지문 2, ..., 외부지문 10)."""
+    nums = re.findall(r'\d+', unit.title or '')
+    return (int(nums[-1]) if nums else 9999, unit.title or '')
+
+
 @teacher_required
 def unit_list(request):
     units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
@@ -1091,15 +1123,26 @@ def unit_list(request):
         u.total_count = u.problems.count()
         u.hints_running = u.id in running_ids
 
-    # 내신(학년 → 출판사 → 과 → 단원) / 부교재(출판사 → 단원) 그룹핑
-    naesin_by_grade = {}   # grade → publisher → lesson_key → [units]
+    # 내신 그룹핑 — 두 줄기:
+    #   (a) 시험기형: 학년 → 시험기(2026년 1학기 기말고사) → 학교(동백중3) → 단원
+    #   (b) 일반 출판사형: 학년 → 출판사(NE능률 김성곤) → 과 → 단원
+    # 부교재: 출판사 → 단원
+    naesin_by_grade = {}   # grade → {'exam_periods': {period: {school: [units]}}, 'publishers': {pub: {lesson: [units]}}}
     buggyojae_by_pub = {}  # publisher → [units]
     for u in units:
         if u.grade in _GRADES_ORDER:
-            lk = _lesson_key(u.title) or '(과 미분류)'
-            naesin_by_grade.setdefault(u.grade, {}) \
-                .setdefault(u.publisher or '(미지정)', {}) \
-                .setdefault(lk, []).append(u)
+            bucket = naesin_by_grade.setdefault(
+                u.grade, {'exam_periods': {}, 'publishers': {}}
+            )
+            parsed = _parse_school_exam_publisher(u.publisher)
+            if parsed:
+                period, school = parsed
+                bucket['exam_periods'].setdefault(period, {}) \
+                    .setdefault(school, []).append(u)
+            else:
+                lk = _lesson_key(u.title) or '(과 미분류)'
+                bucket['publishers'].setdefault(u.publisher or '(미지정)', {}) \
+                    .setdefault(lk, []).append(u)
         else:
             buggyojae_by_pub.setdefault(u.publisher or '(미지정)', []).append(u)
 
@@ -1107,18 +1150,41 @@ def unit_list(request):
     for g in _GRADES_ORDER:
         if g not in naesin_by_grade:
             continue
+        data = naesin_by_grade[g]
         pubs = []
-        for pub_name in sorted(naesin_by_grade[g].keys()):
-            lesson_map = naesin_by_grade[g][pub_name]
+
+        # 시험기 폴더 (최신 연도부터)
+        for period in sorted(data['exam_periods'].keys(), reverse=True):
+            schools_map = data['exam_periods'][period]
+            schools = []
+            for school_name in sorted(schools_map.keys()):
+                us = sorted(schools_map[school_name], key=_unit_natural_key)
+                schools.append({
+                    'name': school_name,
+                    'units': us,
+                    'count': len(us),
+                })
+            pubs.append({
+                'name': period,
+                'is_exam_period': True,
+                'schools': schools,
+                'count': sum(s['count'] for s in schools),
+            })
+
+        # 일반 출판사 폴더 (이름 오름차순)
+        for pub_name in sorted(data['publishers'].keys()):
+            lesson_map = data['publishers'][pub_name]
             lessons = [
                 {'name': lk, 'units': lesson_map[lk]}
                 for lk in sorted(lesson_map.keys(), key=_lesson_sort_key)
             ]
             pubs.append({
                 'name': pub_name,
+                'is_exam_period': False,
                 'lessons': lessons,
                 'count': sum(len(l['units']) for l in lessons),
             })
+
         naesin_groups.append({
             'grade': g,
             'publishers': pubs,
