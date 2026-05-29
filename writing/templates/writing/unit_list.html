@@ -84,6 +84,10 @@
     background: #fdfbff;
     font-size: .9rem;
 }
+.folder-l5 > summary {
+    background: #fefcff;
+    font-size: .88rem;
+}
 .folder-children {
     padding: .15rem 0 .25rem 1.25rem;
     margin-left: .5rem;
@@ -223,7 +227,19 @@
                                                         <span class="folder-count">{{ school.count }}개</span>
                                                     </summary>
                                                     <div class="folder-children">
-                                                        {% for unit in school.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                                        {% for cat in school.categories %}
+                                                        <details class="folder folder-l5">
+                                                            <summary>
+                                                                <span class="caret"><i class="fas fa-chevron-right"></i></span>
+                                                                <i class="fas fa-folder folder-icon"></i>
+                                                                <span>{{ cat.name }}</span>
+                                                                <span class="folder-count">{{ cat.count }}개</span>
+                                                            </summary>
+                                                            <div class="folder-children">
+                                                                {% for unit in cat.units %}{% include 'writing/_unit_row.html' %}{% endfor %}
+                                                            </div>
+                                                        </details>
+                                                        {% endfor %}
                                                     </div>
                                                 </details>
                                                 {% endfor %}

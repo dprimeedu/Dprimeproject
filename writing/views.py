@@ -1113,6 +1113,21 @@ def _unit_natural_key(unit):
     return (int(nums[-1]) if nums else 9999, unit.title or '')
 
 
+def _category_key(title: str) -> str:
+    """학교 내신 단원명에서 카테고리(prefix) 추출.
+
+    예: "외부지문 1" → "외부지문", "본문 3" → "본문", "외부지문" → "외부지문"
+    숫자 분리가 안 되면 단원명 그대로.
+    """
+    if not title:
+        return '(분류없음)'
+    t = title.strip()
+    m = re.match(r'^(.+?)\s+\d+\s*$', t)
+    if m:
+        return m.group(1).strip()
+    return t
+
+
 @teacher_required
 def unit_list(request):
     units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
@@ -1138,7 +1153,8 @@ def unit_list(request):
             if parsed:
                 period, school = parsed
                 bucket['exam_periods'].setdefault(period, {}) \
-                    .setdefault(school, []).append(u)
+                    .setdefault(school, {}) \
+                    .setdefault(_category_key(u.title), []).append(u)
             else:
                 lk = _lesson_key(u.title) or '(과 미분류)'
                 bucket['publishers'].setdefault(u.publisher or '(미지정)', {}) \
@@ -1158,11 +1174,19 @@ def unit_list(request):
             schools_map = data['exam_periods'][period]
             schools = []
             for school_name in sorted(schools_map.keys()):
-                us = sorted(schools_map[school_name], key=_unit_natural_key)
+                cat_map = schools_map[school_name]
+                categories = []
+                for cat_name in sorted(cat_map.keys()):
+                    us = sorted(cat_map[cat_name], key=_unit_natural_key)
+                    categories.append({
+                        'name': cat_name,
+                        'units': us,
+                        'count': len(us),
+                    })
                 schools.append({
                     'name': school_name,
-                    'units': us,
-                    'count': len(us),
+                    'categories': categories,
+                    'count': sum(c['count'] for c in categories),
                 })
             pubs.append({
                 'name': period,
