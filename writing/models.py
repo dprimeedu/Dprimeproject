@@ -43,6 +43,9 @@ class WritingUnit(models.Model):
 
     @property
     def problem_count(self):
+        # bulk prefetch가 self._problem_count 를 채워두면 그 값을 사용 (N+1 방지)
+        if '_problem_count' in self.__dict__:
+            return self._problem_count
         return self.problems.count()
 
     @property

@@ -1225,9 +1225,23 @@ def unit_list(request):
     units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
     with _hint_progress_lock:
         running_ids = {uid for uid, s in _hint_progress.items() if s.get('running')}
+
+    # ── 단원별 문제 수 / 힌트 있는 문제 수 일괄 집계 (N+1 방지) ──
+    unit_ids = [u.id for u in units]
+    total_counts = dict(
+        WritingProblem.objects.filter(unit_id__in=unit_ids)
+        .values('unit_id').annotate(c=Count('id'))
+        .values_list('unit_id', 'c')
+    )
+    hints_counts = dict(
+        WritingProblem.objects.filter(unit_id__in=unit_ids).exclude(word_hints=[])
+        .values('unit_id').annotate(c=Count('id'))
+        .values_list('unit_id', 'c')
+    )
     for u in units:
-        u.has_hints_count = u.problems.exclude(word_hints=[]).count()
-        u.total_count = u.problems.count()
+        u.total_count = total_counts.get(u.id, 0)
+        u._problem_count = u.total_count   # problem_count 프로퍼티 캐시 활용
+        u.has_hints_count = hints_counts.get(u.id, 0)
         u.hints_running = u.id in running_ids
 
     # 내신/부교재 트리 그룹핑 (공용 헬퍼)
@@ -2390,11 +2404,13 @@ def live_sessions_api(request):
             for a in WritingAttempt.objects.filter(id__in=latest_ids).select_related('problem')
         }
 
-    # 각 세션의 총 문제 수 (현재 문제 번호 표시용)
-    unit_problem_counts = {
-        s.unit_id: s.unit.problem_count
-        for s in sessions
-    }
+    # 각 세션의 총 문제 수 — 한 쿼리로 prefetch (N+1 방지)
+    unit_ids_in_sessions = {s.unit_id for s in sessions}
+    unit_problem_counts = dict(
+        WritingProblem.objects.filter(unit_id__in=unit_ids_in_sessions)
+        .values('unit_id').annotate(c=Count('id'))
+        .values_list('unit_id', 'c')
+    )
 
     result = []
     for s in sessions:
@@ -2598,11 +2614,24 @@ def _gen_match_code() -> str:
     raise RuntimeError('match code 생성 실패')
 
 
+def _prefetch_problem_counts(units):
+    """units 리스트에 problem_count 캐시값 일괄 주입 (N+1 방지)."""
+    unit_ids = [u.id for u in units]
+    counts = dict(
+        WritingProblem.objects.filter(unit_id__in=unit_ids)
+        .values('unit_id').annotate(c=Count('id'))
+        .values_list('unit_id', 'c')
+    )
+    for u in units:
+        u._problem_count = counts.get(u.id, 0)
+
+
 @teacher_required
 def match_quick_ai(request):
     """선생님용 빠른 AI 대결 (학생에겐 노출 X) — 단원/난이도 선택 후 한 번에 방+AI 생성+시작+세션 이동."""
     if request.method == 'GET':
-        units = WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title')
+        units = list(WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title'))
+        _prefetch_problem_counts(units)
         return render(request, 'writing/match_quick_ai.html', {'units': units})
 
     # POST
@@ -2647,6 +2676,7 @@ def match_create(request):
     """대전 방 생성 — GET 폼 / POST 생성."""
     if request.method == 'GET':
         units = list(WritingUnit.objects.filter(is_active=True).order_by('publisher', 'title'))
+        _prefetch_problem_counts(units)
         naesin_groups, buggyojae_groups = _build_unit_tree(units)
         my_rooms = MatchRoom.objects.filter(
             created_by=request.user, status__in=['waiting', 'active'],
