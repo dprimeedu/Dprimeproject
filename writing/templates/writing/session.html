@@ -25,6 +25,7 @@
     }
     .ms-card.me { background: #faf5ff; border-color: #ddd6fe; }
     .ms-card.finished { background: #ecfdf5; border-color: #a7f3d0; }
+    .ms-card.ai { background: #fffbeb; border-color: #fde68a; }
     .ms-card .ms-name { font-weight: 600; font-size: .85rem; color: #111827; display: flex; justify-content: space-between; }
     .ms-card .ms-name .ms-rank { font-size: .7rem; color: #6b7280; }
     .ms-card .ms-stats { color: #6b7280; font-size: .75rem; margin-top: .15rem; display: flex; gap: .5rem; }
@@ -1253,7 +1254,7 @@ if (MATCH_CODE) {
         const others = d.participants.filter(p => !p.is_me);
         const all = (me ? [me] : []).concat(others);
         wrap.innerHTML = all.map(p => {
-            const cls = (p.is_me ? 'me ' : '') + (p.finished_at ? 'finished' : '');
+            const cls = (p.is_me ? 'me ' : '') + (p.is_ai ? 'ai ' : '') + (p.finished_at ? 'finished' : '');
             const rank = p.final_rank ? `${p.final_rank}위` : '';
             let last = '';
             if (p.typing != null) {
@@ -1263,10 +1264,11 @@ if (MATCH_CODE) {
                 const ic = p.last_correct ? '✓' : '✗';
                 last = `<div class="ms-last ${k}">${ic} ${_esc(p.last_input)}</div>`;
             }
+            const meTag = p.is_me ? ' (나)' : '';
             return `
                 <div class="ms-card ${cls}">
                     <div class="ms-name">
-                        <span>${_esc(p.name)}${p.is_me ? ' (나)' : ''}</span>
+                        <span>${_esc(p.name)}${meTag}</span>
                         <span class="ms-rank">${rank}</span>
                     </div>
                     <div class="ms-stats">

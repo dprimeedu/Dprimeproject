@@ -414,14 +414,29 @@ class MatchRoom(models.Model):
 
 
 class MatchParticipant(models.Model):
-    """대전 방 참가자 — 학생 1명 = 행 1개. session은 시작 시 생성."""
+    """대전 방 참가자 — 학생 1명 = 행 1개. session은 시작 시 생성.
+
+    is_ai=True이면 student=None, ai_difficulty/ai_name 채움.
+    AI 참가자는 session/attempt 없이 match_state_api에서 즉석 계산.
+    """
+    AI_DIFFICULTIES = [
+        ('easy', '쉬움'),
+        ('medium', '중간'),
+        ('hard', '어려움'),
+    ]
     room = models.ForeignKey(MatchRoom, on_delete=models.CASCADE, related_name='participants')
     student = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+',
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='+',
     )
     session = models.ForeignKey(
         WritingSession, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
+    is_ai = models.BooleanField(default=False, verbose_name='AI 참가자 여부')
+    ai_difficulty = models.CharField(
+        max_length=10, choices=AI_DIFFICULTIES, blank=True, default='',
+    )
+    ai_name = models.CharField(max_length=50, blank=True, default='')
     joined_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     final_score = models.IntegerField(default=0)

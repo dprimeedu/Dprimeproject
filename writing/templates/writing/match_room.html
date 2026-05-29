@@ -46,6 +46,8 @@
     flex-shrink: 0;
 }
 .p-card.me .avatar { background: linear-gradient(135deg, #7c3aed, #a78bfa); }
+.p-card.ai { border-color: #fbbf24; background: #fffbeb; }
+.p-card.ai .avatar { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
 .p-card .name { font-weight: 600; }
 .p-card .joined { font-size: .7rem; color: #9ca3af; }
 .p-card.finished { opacity: .8; background: #ecfdf5; border-color: #a7f3d0; }
@@ -103,7 +105,20 @@
             <div class="text-muted small mt-2">학생들에게 이 코드 또는 URL을 알려주세요.</div>
         </div>
 
-        <h5>대기 중인 참가자 (<span id="p-count-waiting">0</span>명)</h5>
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <h5 class="mb-0">대기 중인 참가자 (<span id="p-count-waiting">0</span>명)</h5>
+            {% if is_creator %}
+            <div class="btn-group btn-group-sm" role="group" aria-label="AI 추가">
+                <span class="text-muted small me-2 align-self-center">사람 부족하면 AI 추가:</span>
+                <button type="button" class="btn btn-outline-secondary add-ai-btn" data-difficulty="easy">🤖 쉬움</button>
+                <button type="button" class="btn btn-outline-warning add-ai-btn" data-difficulty="medium">🤖 중간</button>
+                <button type="button" class="btn btn-outline-danger add-ai-btn" data-difficulty="hard">🤖 어려움</button>
+                <button type="button" class="btn btn-outline-dark" id="removeAiBtn" title="마지막에 추가한 AI 제거">
+                    <i class="fas fa-minus"></i>
+                </button>
+            </div>
+            {% endif %}
+        </div>
         <div id="participantsWaiting" class="participants"></div>
 
         {% if is_creator %}
@@ -171,15 +186,18 @@ function renderParticipantsWaiting(parts) {
     const wrap = document.getElementById('participantsWaiting');
     document.getElementById('p-count-waiting').textContent = parts.length;
     if (!parts.length) { wrap.innerHTML = '<div class="p-empty">아직 참가자 없음</div>'; return; }
-    wrap.innerHTML = parts.map(p => `
-        <div class="p-card${p.is_me ? ' me' : ''}">
-            <div class="avatar">${escapeHtml(avatar(p.name))}</div>
+    wrap.innerHTML = parts.map(p => {
+        const cls = (p.is_me ? 'me ' : '') + (p.is_ai ? 'ai' : '');
+        const av = p.is_ai ? '🤖' : avatar(p.name);
+        return `
+        <div class="p-card ${cls}">
+            <div class="avatar">${escapeHtml(av)}</div>
             <div>
                 <div class="name">${escapeHtml(p.name)}${p.is_me ? ' <span class="text-primary small">(나)</span>' : ''}</div>
                 <div class="joined">${p.joined_at} 입장</div>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 function renderParticipantsActive(parts) {
@@ -194,9 +212,11 @@ function renderParticipantsActive(parts) {
                 ? `<div class="small ${p.last_correct ? 'text-success' : 'text-danger'}">${p.last_correct ? '✓' : '✗'} ${escapeHtml(p.last_input)}</div>`
                 : '';
         const finishedBadge = p.finished_at ? `<span class="badge bg-success ms-1">완주</span>` : '';
+        const cls = (p.is_me ? 'me ' : '') + (p.is_ai ? 'ai ' : '') + (p.finished_at ? 'finished' : '');
+        const av = p.is_ai ? '🤖' : avatar(p.name);
         return `
-            <div class="p-card${p.is_me ? ' me' : ''}${p.finished_at ? ' finished' : ''}">
-                <div class="avatar">${escapeHtml(avatar(p.name))}</div>
+            <div class="p-card ${cls}">
+                <div class="avatar">${escapeHtml(av)}</div>
                 <div style="flex:1; min-width:0;">
                     <div class="name">${escapeHtml(p.name)}${p.is_me ? ' <span class="text-primary small">(나)</span>' : ''}${finishedBadge}</div>
                     <div class="joined">문제 ${prob} · 점수 ${score}</div>
@@ -287,6 +307,35 @@ document.getElementById('startBtn')?.addEventListener('click', async () => {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-play me-1"></i>대전 시작';
     }
+});
+
+// AI 추가/제거 (대기실)
+document.querySelectorAll('.add-ai-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const difficulty = btn.dataset.difficulty;
+        const fd = new FormData();
+        fd.append('difficulty', difficulty);
+        fd.append('csrfmiddlewaretoken', CSRF);
+        try {
+            const r = await fetch(`/training/writing/api/match/${CODE}/add_ai/`, {
+                method: 'POST', credentials: 'same-origin', body: fd,
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || 'add failed');
+            await pollState();
+        } catch (e) { alert('AI 추가 실패: ' + e.message); }
+    });
+});
+document.getElementById('removeAiBtn')?.addEventListener('click', async () => {
+    const fd = new FormData(); fd.append('csrfmiddlewaretoken', CSRF);
+    try {
+        const r = await fetch(`/training/writing/api/match/${CODE}/remove_ai/`, {
+            method: 'POST', credentials: 'same-origin', body: fd,
+        });
+        const d = await r.json();
+        if (!d.success && d.error !== 'no_ai') throw new Error(d.error || 'remove failed');
+        await pollState();
+    } catch (e) { alert('AI 제거 실패: ' + e.message); }
 });
 
 document.getElementById('forceFinishBtn')?.addEventListener('click', async () => {

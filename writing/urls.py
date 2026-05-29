@@ -58,6 +58,8 @@ urlpatterns = [
     path('api/match/<str:code>/state/', views.match_state_api, name='match_state_api'),
     path('api/match/<str:code>/start/', views.match_start_api, name='match_start_api'),
     path('api/match/<str:code>/finish/', views.match_finish_api, name='match_finish_api'),
+    path('api/match/<str:code>/add_ai/', views.match_add_ai_api, name='match_add_ai_api'),
+    path('api/match/<str:code>/remove_ai/', views.match_remove_ai_api, name='match_remove_ai_api'),
 
     # 영작 단원 업로드용 양식
     path('admin/template.xlsx', views.writing_template_xlsx, name='writing_template'),

@@ -2397,6 +2397,64 @@ def live_sessions_api(request):
     }, json_dumps_params={'ensure_ascii': False})
 
 
+_AI_WPM = {'easy': 20, 'medium': 45, 'hard': 75}
+
+
+def _compute_ai_state(p, room, problems_words, now):
+    """AI 참가자의 현재 상태 계산 — 경과시간 × WPM 기반.
+
+    problems_words: [(problem_index, word_index, word_string)] flatten 리스트
+    return dict (state) — match_state_api 에서 info에 머지.
+    """
+    if not room.started_at:
+        return {'score': 0, 'current_problem': 1, 'typing': '', 'word_index': 0}
+    elapsed = max(0.0, (now - room.started_at).total_seconds())
+    wpm = _AI_WPM.get(p.ai_difficulty, 45)
+    sec_per_word = 60.0 / wpm
+
+    total_words = len(problems_words)
+    if total_words == 0:
+        return {'score': 0, 'current_problem': 1, 'typing': '', 'word_index': 0, 'finished': True}
+
+    completed = int(elapsed / sec_per_word)
+    if completed >= total_words:
+        last_p_idx, last_w_idx, last_w = problems_words[-1]
+        return {
+            'score': total_words * 10,
+            'perfect': 0,
+            'current_problem': last_p_idx,
+            'word_index': last_w_idx,
+            'last_input': last_w,
+            'last_correct': True,
+            'finished': True,
+        }
+
+    # 현재 단어 위치 + 진행률 (0..1)
+    progress = (elapsed / sec_per_word) - completed
+    cur_p_idx, cur_w_idx, cur_word = problems_words[completed]
+
+    # 타이핑 길이 — 단어 길이 + 1 (마지막 글자까지 노출)
+    if cur_word:
+        n_chars = max(1, min(len(cur_word), int(progress * (len(cur_word) + 1))))
+        partial = cur_word[:n_chars]
+    else:
+        partial = ''
+
+    state = {
+        'score': completed * 10,
+        'perfect': 0,
+        'current_problem': cur_p_idx,
+        'word_index': cur_w_idx,
+        'typing': partial,
+        'typing_word': cur_w_idx,
+    }
+    if completed > 0:
+        _, _, last_w = problems_words[completed - 1]
+        state['last_input'] = last_w
+        state['last_correct'] = True
+    return state
+
+
 def _gen_match_code() -> str:
     """충돌 안 나는 5자리 영숫자 코드. O/0/I/1 같은 헷갈리는 글자 제외."""
     import random
@@ -2490,12 +2548,44 @@ def match_state_api(request, code):
 
     now = timezone.now()
     total_problems = room.unit.problem_count
+
+    # AI 상태 계산용 — 단원 문제 전체 → (problem_idx, word_idx, word) flatten
+    problems_words = []
+    if any(p.is_ai for p in parts):
+        for prob in room.unit.problems.order_by('index'):
+            for wi, w in enumerate((prob.english or '').strip().split()):
+                problems_words.append((prob.index, wi, w))
+
     out_parts = []
     for p in parts:
+        if p.is_ai:
+            info = {
+                'student_id': None,
+                'name': p.ai_name or f'AI ({p.get_ai_difficulty_display()})',
+                'is_ai': True,
+                'ai_difficulty': p.ai_difficulty,
+                'joined_at': p.joined_at.strftime('%H:%M:%S'),
+                'is_me': False,
+                'finished_at': p.finished_at.strftime('%H:%M:%S') if p.finished_at else None,
+                'final_score': p.final_score,
+                'final_rank': p.final_rank,
+            }
+            if room.status == 'active':
+                ai_state = _compute_ai_state(p, room, problems_words, now)
+                info.update(ai_state)
+                # 시뮬레이션 종료 시 finished_at 자동 기록
+                if ai_state.get('finished') and not p.finished_at:
+                    p.finished_at = now
+                    p.final_score = ai_state.get('score', 0)
+                    p.save(update_fields=['finished_at', 'final_score'])
+            out_parts.append(info)
+            continue
+
         name = p.student.username or getattr(p.student, 'login_id', '') or '학생'
         info = {
             'student_id': p.student_id,
             'name': name,
+            'is_ai': False,
             'joined_at': p.joined_at.strftime('%H:%M:%S'),
             'is_me': p.student_id == request.user.id,
             'finished_at': p.finished_at.strftime('%H:%M:%S') if p.finished_at else None,
@@ -2547,11 +2637,13 @@ def match_start_api(request, code):
         return JsonResponse({'error': 'already_started', 'status': room.status}, status=400)
 
     parts = list(room.participants.select_related('student'))
-    if not parts:
-        return JsonResponse({'error': 'no_participants'}, status=400)
+    # 사람 참가자 1명 이상은 있어야 시작 가능 (AI만 있으면 시작 X)
+    human_parts = [p for p in parts if not p.is_ai]
+    if not human_parts:
+        return JsonResponse({'error': 'no_human_participants'}, status=400)
 
     now = timezone.now()
-    for p in parts:
+    for p in human_parts:
         # 이미 세션 있으면 재사용 (혹시 중복 호출 대비)
         if not p.session_id:
             s = WritingSession.objects.create(student=p.student, unit=room.unit)
@@ -2563,6 +2655,50 @@ def match_start_api(request, code):
     room.save(update_fields=['status', 'started_at'])
 
     return JsonResponse({'success': True, 'status': 'active'})
+
+
+@login_required
+@require_POST
+def match_add_ai_api(request, code):
+    """대전 방에 AI 참가자 추가 — 방장/선생님만."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    if not (is_teacher(request.user) or room.created_by_id == request.user.id):
+        return JsonResponse({'error': 'forbidden'}, status=403)
+    if room.status != 'waiting':
+        return JsonResponse({'error': 'not_waiting'}, status=400)
+
+    difficulty = (request.POST.get('difficulty') or 'medium').lower()
+    if difficulty not in ('easy', 'medium', 'hard'):
+        difficulty = 'medium'
+
+    labels = {'easy': '쉬움', 'medium': '중간', 'hard': '어려움'}
+    n_existing = room.participants.filter(is_ai=True, ai_difficulty=difficulty).count()
+    name = f'🤖 AI ({labels[difficulty]})'
+    if n_existing > 0:
+        name = f'{name} #{n_existing + 1}'
+
+    MatchParticipant.objects.create(
+        room=room, student=None,
+        is_ai=True, ai_difficulty=difficulty, ai_name=name,
+    )
+    return JsonResponse({'success': True, 'name': name})
+
+
+@login_required
+@require_POST
+def match_remove_ai_api(request, code):
+    """대전 방에서 AI 참가자 제거 (대기실에서만)."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    if not (is_teacher(request.user) or room.created_by_id == request.user.id):
+        return JsonResponse({'error': 'forbidden'}, status=403)
+    if room.status != 'waiting':
+        return JsonResponse({'error': 'not_waiting'}, status=400)
+
+    deleted = room.participants.filter(is_ai=True).order_by('-id').first()
+    if deleted:
+        deleted.delete()
+        return JsonResponse({'success': True})
+    return JsonResponse({'success': False, 'error': 'no_ai'})
 
 
 @login_required
@@ -2580,12 +2716,13 @@ def match_finish_api(request, code):
 
     now = timezone.now()
     if force:
-        # 강제 종료 — 모든 참가자 종료 처리
+        # 강제 종료 — 모든 참가자 종료 처리 (AI는 final_score 그대로, 사람은 세션 점수)
         for p in room.participants.select_related('session'):
             if not p.finished_at:
                 p.finished_at = now
-                if p.session:
+                if p.session and not p.is_ai:
                     p.final_score = p.session.total_score
+                # AI는 match_state_api 폴링 중에 final_score가 이미 업데이트되었거나 0
                 p.save(update_fields=['finished_at', 'final_score'])
 
     # 자기 자신만 종료
