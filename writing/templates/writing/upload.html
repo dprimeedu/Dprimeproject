@@ -58,6 +58,9 @@
             <li>부교재 예: <code>리딩튜터 스타터 1_S1-1.Nature 나를 맞혀봐! (R).xlsx</code> → 출판사 리딩튜터 스타터 1 / 단원명 S1-1.Nature 나를 맞혀봐! (R)
                 <br><span class="text-muted small">↳ 파일명에 <code>_</code>(언더바)가 있으면 첫 <code>_</code> 앞=출판사 / 뒤=단원명으로 분리됩니다.</span>
             </li>
+            <li>학교 내신/외부지문 예: <code>2026년 동백중3 1학기 기말고사 외부지문 1.xlsx</code> → 학년 중3 / 출판사 2026년 동백중3 1학기 기말고사 / 단원명 외부지문 1
+                <br><span class="text-muted small">↳ 학교명에 박힌 학년(<code>○○중3</code>, <code>○○고2</code> 등)을 자동 인식하고, <code>외부지문 N</code>은 단원명으로 분리됩니다.</span>
+            </li>
             <li>업로드 후 각 단원 상세 페이지에서 "AI 한글뜻 생성" 버튼을 눌러주세요.</li>
             <li>한 단원당 약 1~5원의 API 비용이 발생합니다 (무료 한도 내에선 비용 없음).</li>
         </ul>
@@ -102,11 +105,16 @@
         if (gm) {
             grade = gm[1];
             name = name.slice(gm[0].length).trim();
+        } else {
+            // 시작에 학년이 없으면 학교명에 박힌 학년 검색 (예: "동백중3", "성신여중1")
+            const em = name.match(/(초[1-6]|중[1-3]|고[1-3])(?=\s|$)/);
+            if (em) grade = em[1];
         }
 
         const patterns = [
             /((?:\d+\s*-\s*\d+|\d+)\s*과)/,
             /(\d+\s*단원)/,
+            /(외부지문\s*\d*)/,
             /(Wrap\s*Up\s*\d*)/i,
             /(Lesson\s*\d+)/i,
             /(Review\s*\d*)/i,

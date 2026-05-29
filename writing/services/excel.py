@@ -127,9 +127,12 @@ def parse_writing_excel(file) -> Dict:
 # ── 파일명 → 학년/출판사/단원명 ──
 
 _GRADE_PATTERN = re.compile(r'^(초[1-6]|중[1-3]|고[1-3])(?:\s+|$)')
+# 학교명에 박힌 학년 패턴 (예: "동백중3", "성신여중1", "분당고2")
+_EMBEDDED_GRADE_PATTERN = re.compile(r'(초[1-6]|중[1-3]|고[1-3])(?=\s|$)')
 _TITLE_PATTERNS = [
     re.compile(r'((?:\d+\s*-\s*\d+|\d+)\s*과)'),
     re.compile(r'(\d+\s*단원)'),
+    re.compile(r'(외부지문\s*\d*)'),
     re.compile(r'(Wrap\s*Up\s*\d*)', re.IGNORECASE),
     re.compile(r'(Lesson\s*\d+)', re.IGNORECASE),
     re.compile(r'(Review\s*\d*)', re.IGNORECASE),
@@ -173,6 +176,13 @@ def parse_filename(raw: str) -> Dict[str, str]:
     if gm:
         grade = gm.group(1)
         name = name[gm.end():].strip()
+    else:
+        # 시작에 학년이 없으면 본문 내 임베디드 패턴 (학교명 안의 학년) 검색
+        # 예: "2026년 동백중3 1학기 기말고사 외부지문 1" → "중3"
+        em = _EMBEDDED_GRADE_PATTERN.search(name)
+        if em:
+            grade = em.group(1)
+            # 출판사 문자열은 그대로 유지 (학교명 포함된 채로)
 
     match_idx = -1
     for re_p in _TITLE_PATTERNS:
