@@ -2253,6 +2253,102 @@ def student_goal_update(request, student_id):
 
 
 @teacher_required
+def live_dashboard(request):
+    """실시간 학습 모니터 페이지."""
+    return render(request, 'writing/live_dashboard.html')
+
+
+@teacher_required
+@require_GET
+def live_sessions_api(request):
+    """현재 학습 중인 세션 + 각 세션 최신 상태."""
+    from datetime import timedelta as _td
+    from django.db.models import Max
+    now = timezone.now()
+    activity_cutoff = now - _td(minutes=5)
+    started_cutoff = now - _td(hours=2)
+
+    sessions = list(
+        WritingSession.objects.filter(
+            finished_at__isnull=True,
+            started_at__gte=started_cutoff,
+        ).select_related('student', 'unit').order_by('-started_at')
+    )
+    session_ids = [s.id for s in sessions]
+    if not session_ids:
+        return JsonResponse({'sessions': [], 'now': now.strftime('%H:%M:%S'), 'count': 0})
+
+    latest_ids = list(
+        WritingAttempt.objects.filter(session_id__in=session_ids)
+        .values('session_id').annotate(mx=Max('id')).values_list('mx', flat=True)
+    )
+    latest = {
+        a.session_id: a
+        for a in WritingAttempt.objects.filter(id__in=latest_ids).select_related('problem')
+    }
+
+    # 각 세션의 총 문제 수 (현재 문제 번호 표시용)
+    unit_problem_counts = {
+        s.unit_id: s.unit.problem_count
+        for s in sessions
+    }
+
+    result = []
+    for s in sessions:
+        a = latest.get(s.id)
+        last_at = a.created_at if a else s.started_at
+        if last_at < activity_cutoff:
+            continue  # 5분 이상 입력 없으면 "방치/이탈"로 간주, 표시 제외
+
+        elapsed_sec = int((now - s.started_at).total_seconds())
+        last_ago_sec = int((now - last_at).total_seconds())
+        name = s.student.username or getattr(s.student, 'login_id', '') or '학생'
+
+        result.append({
+            'id': s.id,
+            'student': {
+                'id': s.student.id,
+                'name': name,
+                'login_id': getattr(s.student, 'login_id', '') or '',
+            },
+            'unit': {
+                'id': s.unit.id,
+                'title': s.unit.title,
+                'grade': s.unit.grade,
+                'publisher': s.unit.publisher,
+                'total_problems': unit_problem_counts.get(s.unit_id, 0),
+            },
+            'started_at': s.started_at.strftime('%H:%M'),
+            'elapsed_min': elapsed_sec // 60,
+            'score': s.total_score,
+            'perfect': s.perfect_sentences,
+            'view_mode': s.view_mode,
+            'last_attempt': None if not a else {
+                'problem_index': a.problem.index,
+                'word_index': a.word_index,
+                'input': a.input_value,
+                'correct_answer': a.correct_answer,
+                'is_correct': a.is_correct,
+                'hint_level': a.hint_level,
+                'attempt_num': a.attempt_num,
+                'seconds_ago': last_ago_sec,
+            },
+            'current_problem': None if not a else {
+                'index': a.problem.index,
+                'korean': a.problem.korean,
+                'english': a.problem.english,
+            },
+            'status': 'active' if last_ago_sec < 30 else 'idle',
+        })
+
+    return JsonResponse({
+        'sessions': result,
+        'now': now.strftime('%H:%M:%S'),
+        'count': len(result),
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
 @require_GET
 def student_goal_api(request, student_id):
     """학생 1명의 특정 날짜 목표 조회 (모달 prefill용)."""

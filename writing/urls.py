@@ -48,6 +48,8 @@ urlpatterns = [
     path('admin/students/<int:student_id>/goal/', views.student_goal_update, name='student_goal_update'),
     path('admin/api/students/<int:student_id>/goal/', views.student_goal_api, name='student_goal_api'),
     path('admin/api/students/goal/', views.student_goal_save_api, name='student_goal_save_api'),
+    path('admin/live/', views.live_dashboard, name='live_dashboard'),
+    path('admin/api/live/sessions/', views.live_sessions_api, name='live_sessions_api'),
 
     # 영작 단원 업로드용 양식
     path('admin/template.xlsx', views.writing_template_xlsx, name='writing_template'),

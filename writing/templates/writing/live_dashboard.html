@@ -1,0 +1,309 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+.live-wrap { max-width: 1400px; margin: 0 auto; }
+.live-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1rem 0 1.25rem;
+    border-bottom: 2px solid #ede9fe;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap; gap: 1rem;
+}
+.live-header h3 { margin: 0 0 .35rem; color: var(--primary-color); font-weight: 700; }
+.live-header h3 i { color: #ef4444; margin-right: .35rem; animation: rec-blink 2s infinite; }
+@keyframes rec-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: .35; }
+}
+.live-meta { color: #6b7280; font-size: .9rem; }
+.live-meta strong { color: #111827; font-size: 1rem; }
+
+.live-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+}
+.live-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    transition: box-shadow .2s, transform .2s;
+    display: flex; flex-direction: column;
+}
+.live-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.live-card.flash { animation: flash 1s ease-out; }
+@keyframes flash {
+    0% { box-shadow: 0 0 0 3px rgba(124,58,237,.4); }
+    100% { box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+}
+.live-card .hd {
+    background: linear-gradient(135deg, #faf5ff, #f5f3ff);
+    padding: .75rem 1rem;
+    border-bottom: 1px solid #ede9fe;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: .5rem;
+}
+.live-card .hd .name { font-weight: 700; color: var(--primary-color); }
+.live-card .hd .name .login { color: #9ca3af; font-size: .8rem; font-weight: 400; margin-left: .25rem; }
+.live-card .hd .elapsed { color: #6b7280; font-size: .8rem; }
+.live-card .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .35rem; }
+.live-card .dot.green { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.2); animation: pulse 1.5s infinite; }
+.live-card .dot.yellow { background: #f59e0b; }
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(16,185,129,.4); }
+    70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+.live-card .unit-info {
+    padding: .5rem 1rem;
+    font-size: .8rem;
+    color: #6b7280;
+    background: #fafafa;
+    border-bottom: 1px solid #f3f4f6;
+}
+.live-card .unit-info strong { color: #374151; font-weight: 600; }
+.live-card .body { padding: .85rem 1rem; flex: 1; }
+.live-card .problem-num {
+    font-size: .75rem; color: #6b7280;
+    margin-bottom: .25rem;
+    display: flex; justify-content: space-between;
+}
+.live-card .kor {
+    color: #111827;
+    font-weight: 500;
+    margin-bottom: .35rem;
+    font-size: .95rem;
+    min-height: 2.5em;
+    line-height: 1.35;
+}
+.live-card .eng {
+    color: #9ca3af;
+    font-family: ui-monospace, monospace;
+    font-size: .8rem;
+    margin-bottom: .65rem;
+    border-left: 2px solid #e5e7eb;
+    padding-left: .5rem;
+}
+.live-card .last-input {
+    padding: .5rem .75rem;
+    border-radius: 6px;
+    font-size: .85rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: .5rem;
+}
+.live-card .last-input.ok { background: #ecfdf5; border-color: #a7f3d0; }
+.live-card .last-input.bad { background: #fef2f2; border-color: #fecaca; }
+.live-card .last-input .typed { font-family: ui-monospace, monospace; font-weight: 600; }
+.live-card .last-input .typed.ok { color: #047857; }
+.live-card .last-input .typed.bad { color: #b91c1c; }
+.live-card .last-input .meta { color: #6b7280; font-size: .7rem; white-space: nowrap; }
+.live-card .stats {
+    display: flex; justify-content: space-between;
+    padding: .55rem 1rem;
+    background: #fafafa;
+    border-top: 1px solid #f3f4f6;
+    font-size: .8rem;
+    color: #6b7280;
+}
+.live-card .stats strong { color: #111827; font-weight: 700; }
+.live-card .stats .view-mode {
+    color: #d97706;
+    background: #fef3c7;
+    padding: .05rem .4rem;
+    border-radius: 4px;
+    font-size: .7rem;
+    font-weight: 500;
+}
+.live-empty {
+    text-align: center; padding: 3rem 1rem;
+    background: #f9fafb; border: 2px dashed #e5e7eb;
+    border-radius: 12px; color: #9ca3af;
+}
+.live-empty i { font-size: 2.5rem; color: #d1d5db; margin-bottom: .75rem; display: block; }
+.pause-btn { font-size: .85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="live-wrap">
+    <div class="live-header">
+        <div>
+            <h3><i class="fas fa-circle"></i>실시간 학습 모니터</h3>
+            <div class="live-meta">
+                <strong id="live-count">--</strong>명 학습 중 ·
+                마지막 갱신 <span id="live-time">--:--:--</span>
+                <span class="text-muted ms-2">(3초마다 자동 갱신)</span>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" id="live-pause-btn" class="btn btn-sm btn-outline-secondary pause-btn">
+                <i class="fas fa-pause me-1"></i>일시정지
+            </button>
+            <a href="{% url 'writing:unit_list' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-book me-1"></i>단원 관리
+            </a>
+            <a href="{% url 'writing:student_admin' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-user-graduate me-1"></i>학생 관리
+            </a>
+        </div>
+    </div>
+
+    <div id="liveCards" class="live-cards"></div>
+    <div id="liveEmpty" class="live-empty" style="display:none;">
+        <i class="fas fa-coffee"></i>
+        <div>현재 학습 중인 학생이 없습니다.</div>
+        <small class="text-muted">학생이 단원을 시작하면 여기에 카드가 자동으로 나타납니다.</small>
+    </div>
+</div>
+
+<script>
+const POLL_MS = 3000;
+let pollTimer = null;
+let paused = false;
+let lastCardSig = {};  // 카드별 마지막 시그니처 — flash 애니메이션용
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function agoLabel(sec) {
+    if (sec < 5) return '방금';
+    if (sec < 60) return `${sec}초 전`;
+    return `${Math.floor(sec/60)}분 전`;
+}
+
+function hintBadge(level) {
+    if (level === 0) return '';
+    const labels = ['', '한글뜻', '첫글자', '정답공개'];
+    return `<span class="text-warning small">힌트 ${labels[level]}</span>`;
+}
+
+function buildCard(s) {
+    const a = s.last_attempt;
+    const cp = s.current_problem;
+    const dotClass = s.status === 'active' ? 'green' : 'yellow';
+
+    let lastBox = '';
+    if (a) {
+        const okClass = a.is_correct ? 'ok' : 'bad';
+        const icon = a.is_correct ? '✓' : '✗';
+        const typed = escapeHtml(a.input || '(빈 입력)');
+        const correct = a.is_correct ? '' : ` <span class="text-muted">→ ${escapeHtml(a.correct_answer)}</span>`;
+        lastBox = `
+            <div class="last-input ${okClass}">
+                <div>
+                    <span class="typed ${okClass}">${icon} ${typed}</span>${correct}
+                    <div>${hintBadge(a.hint_level)}</div>
+                </div>
+                <div class="meta">${agoLabel(a.seconds_ago)}</div>
+            </div>`;
+    }
+
+    const total = s.unit.total_problems || '?';
+    const idx = cp ? cp.index : '?';
+    const kor = cp ? escapeHtml(cp.korean) : '';
+    const eng = cp ? escapeHtml(cp.english) : '';
+
+    const viewModeBadge = s.view_mode ? '<span class="view-mode">보고 학습</span>' : '';
+
+    return `
+        <div class="live-card" data-sid="${s.id}">
+            <div class="hd">
+                <div class="name">
+                    <span class="dot ${dotClass}"></span>${escapeHtml(s.student.name)}
+                    ${s.student.login_id ? `<span class="login">${escapeHtml(s.student.login_id)}</span>` : ''}
+                </div>
+                <div class="elapsed"><i class="far fa-clock me-1"></i>${s.elapsed_min}분 · ${s.started_at} 시작</div>
+            </div>
+            <div class="unit-info">
+                <strong>${escapeHtml(s.unit.title)}</strong>
+                <span class="ms-2">${escapeHtml(s.unit.grade)}${s.unit.publisher ? ' · ' + escapeHtml(s.unit.publisher) : ''}</span>
+            </div>
+            <div class="body">
+                <div class="problem-num">
+                    <span>문제 <strong>${idx}</strong> / ${total}</span>
+                    <span>단어 ${a ? a.word_index + 1 : 1}</span>
+                </div>
+                <div class="kor">${kor}</div>
+                <div class="eng">${eng}</div>
+                ${lastBox}
+            </div>
+            <div class="stats">
+                <span>점수 <strong>${s.score}</strong></span>
+                <span>Perfect <strong>${s.perfect}</strong></span>
+                ${viewModeBadge}
+            </div>
+        </div>`;
+}
+
+function cardSig(s) {
+    const a = s.last_attempt;
+    return `${a ? a.seconds_ago + '|' + a.input + '|' + a.is_correct : '-'}|${s.score}`;
+}
+
+function render(sessions) {
+    const wrap = document.getElementById('liveCards');
+    const empty = document.getElementById('liveEmpty');
+    if (!sessions.length) {
+        wrap.innerHTML = '';
+        empty.style.display = '';
+        lastCardSig = {};
+        return;
+    }
+    empty.style.display = 'none';
+    wrap.innerHTML = sessions.map(buildCard).join('');
+    // flash 애니메이션 — 시그니처 바뀐 카드에 적용
+    sessions.forEach(s => {
+        const sig = cardSig(s);
+        if (lastCardSig[s.id] && lastCardSig[s.id] !== sig) {
+            const el = wrap.querySelector(`.live-card[data-sid="${s.id}"]`);
+            if (el) {
+                el.classList.add('flash');
+                setTimeout(() => el.classList.remove('flash'), 1000);
+            }
+        }
+        lastCardSig[s.id] = sig;
+    });
+    // 사라진 세션 정리
+    const presentIds = new Set(sessions.map(s => String(s.id)));
+    Object.keys(lastCardSig).forEach(k => { if (!presentIds.has(k)) delete lastCardSig[k]; });
+}
+
+async function poll() {
+    if (paused) return;
+    try {
+        const r = await fetch('{% url "writing:live_sessions_api" %}', { credentials: 'same-origin' });
+        const d = await r.json();
+        document.getElementById('live-count').textContent = d.count;
+        document.getElementById('live-time').textContent = d.now;
+        render(d.sessions);
+    } catch (e) {
+        console.warn('[live] poll error', e);
+    }
+}
+
+document.getElementById('live-pause-btn').addEventListener('click', e => {
+    paused = !paused;
+    e.currentTarget.innerHTML = paused
+        ? '<i class="fas fa-play me-1"></i>재개'
+        : '<i class="fas fa-pause me-1"></i>일시정지';
+    e.currentTarget.classList.toggle('btn-warning', paused);
+    e.currentTarget.classList.toggle('btn-outline-secondary', !paused);
+    if (!paused) poll();
+});
+
+document.addEventListener('visibilitychange', () => {
+    // 탭이 보일 때만 폴링 (배경에서 헛 호출 방지)
+    if (document.visibilityState === 'visible') poll();
+});
+
+poll();
+pollTimer = setInterval(poll, POLL_MS);
+</script>
+{% endblock %}
