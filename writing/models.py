@@ -333,6 +333,48 @@ class StudentUnitLevel(models.Model):
         return f'{self.student.username} - {self.unit.title} Lv{self.level}'
 
 
+class DailyStudyGoal(models.Model):
+    """선생님이 학생에게 그날 지정한 학습 목표.
+
+    측정치 3종(문제 수/학습 분/완료 단원). 0이면 그 항목 목표 없음으로 간주.
+    학생×날짜 유일.
+    """
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='daily_goals',
+        verbose_name='학생',
+    )
+    date = models.DateField(verbose_name='날짜')
+    target_problems = models.IntegerField(default=0, verbose_name='목표 문제 수')
+    target_minutes = models.IntegerField(default=0, verbose_name='목표 학습 분')
+    target_sessions = models.IntegerField(default=0, verbose_name='목표 완료 단원 수')
+    note = models.CharField(max_length=200, blank=True, default='', verbose_name='메모')
+    set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='지정 선생님',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'writing_daily_goal'
+        verbose_name = '일일 학습 목표'
+        verbose_name_plural = '일일 학습 목표'
+        unique_together = [['student', 'date']]
+        ordering = ['-date']
+
+    def __str__(self):
+        return f'{self.student.username} {self.date} 목표'
+
+    @property
+    def has_any_target(self) -> bool:
+        return bool(self.target_problems or self.target_minutes or self.target_sessions)
+
+
 class BugReport(models.Model):
     """학생이 풀이 중 누른 '버그 신고' — 관리자가 검토·수정용."""
     STATUS_CHOICES = [

@@ -19,6 +19,7 @@ from .models import (
     StudentProfile, Achievement, StudentAchievement,
     StudentUnitLevel,
     BugReport,
+    DailyStudyGoal,
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
@@ -2040,6 +2041,38 @@ def student_report(request, student_id):
     total_score_today = sum(s.total_score for s in sessions_today)
     perfect_sentences_today = sum(s.perfect_sentences for s in sessions_today)
 
+    # 푼 문제 수 = 오늘 시도 흔적이 있는 distinct problem
+    problems_touched_today = len({a.problem_id for a in attempts_today})
+
+    # 오늘의 목표 + 달성률
+    goal = DailyStudyGoal.objects.filter(student=student, date=target_date).first()
+    study_minutes = total_study_seconds // 60
+    goal_view = None
+    if goal:
+        def _pct(done, target):
+            if not target:
+                return None
+            return min(100, round(done / target * 100))
+        goal_view = {
+            'obj': goal,
+            'problems': {
+                'target': goal.target_problems,
+                'done': problems_touched_today,
+                'pct': _pct(problems_touched_today, goal.target_problems),
+            },
+            'minutes': {
+                'target': goal.target_minutes,
+                'done': study_minutes,
+                'pct': _pct(study_minutes, goal.target_minutes),
+            },
+            'sessions': {
+                'target': goal.target_sessions,
+                'done': len(finished_today),
+                'pct': _pct(len(finished_today), goal.target_sessions),
+            },
+            'note': goal.note,
+        }
+
     # 단원별 집계
     unit_stats_map = {}
     for s in sessions_today:
@@ -2154,7 +2187,57 @@ def student_report(request, student_id):
         'week_summary': week_summary,
         'total_xp': total_xp,
         'level': level,
+        'goal': goal_view,
+        'problems_touched_today': problems_touched_today,
     })
+
+
+@teacher_required
+@require_POST
+def student_goal_update(request, student_id):
+    """학생의 그날 학습 목표 저장 (POST). 모든 target=0이면 행 삭제."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+
+    raw_date = (request.POST.get('date') or '').strip()
+    try:
+        target_date = datetime.strptime(raw_date, '%Y-%m-%d').date() if raw_date else timezone.now().date()
+    except ValueError:
+        return HttpResponseBadRequest('Invalid date')
+
+    def _int(name):
+        try:
+            return max(0, int(request.POST.get(name) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    tp = _int('target_problems')
+    tm = _int('target_minutes')
+    ts = _int('target_sessions')
+    note = (request.POST.get('note') or '').strip()[:200]
+
+    if tp == 0 and tm == 0 and ts == 0 and not note:
+        DailyStudyGoal.objects.filter(student=student, date=target_date).delete()
+        messages.success(request, f'{target_date} 목표 삭제됨.')
+    else:
+        DailyStudyGoal.objects.update_or_create(
+            student=student, date=target_date,
+            defaults={
+                'target_problems': tp,
+                'target_minutes': tm,
+                'target_sessions': ts,
+                'note': note,
+                'set_by': request.user,
+            },
+        )
+        messages.success(request, f'{target_date} 목표 저장됨.')
+
+    from django.urls import reverse
+    return redirect(f"{reverse('writing:student_report', args=[student.id])}?date={target_date}")
 
 
 @teacher_required
