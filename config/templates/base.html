@@ -85,6 +85,10 @@
             {% elif user.is_approved %}
                 <div class="sidebar-section-label">재원생</div>
                 <a class="sidebar-link" href="{% url 'writing:home' %}"><i class="fas fa-pen-nib"></i>영작훈련</a>
+                <a class="sidebar-link" href="#"
+                   onclick="event.preventDefault(); const c=prompt('대전 입장 코드 5자리 입력'); if(c) window.location.href='/training/writing/match/'+c.trim().toUpperCase()+'/';">
+                    <i class="fas fa-gamepad"></i>대전 입장
+                </a>
             {% else %}
                 <div class="sidebar-section-label">계정</div>
                 <a class="sidebar-link" href="{% url 'writing:home' %}"><i class="fas fa-user-clock"></i>재원생 메뉴 (승인 대기)</a>
