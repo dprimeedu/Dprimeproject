@@ -2815,6 +2815,102 @@ def match_finish_api(request, code):
 
 
 @teacher_required
+@require_POST
+def student_plan_save_api(request):
+    """학습 계획 저장 — start/end + 요일 + 하루 단원 수 기반으로
+    DailyStudyGoal 여러 행을 일괄 생성/덮어쓰기.
+
+    Body: {
+        student_ids: [int],
+        start_date: 'YYYY-MM-DD',
+        end_date: 'YYYY-MM-DD',
+        weekdays: [0..6],   # 0=월 ~ 6=일 (Python weekday())
+        pace: 0.5 | 1 | 2 | 3,
+        note?: str,
+    }
+    pace=0.5 → 매칭 요일 격일로 1단원 (홀수 차례만 적용)
+    pace>=1 → 매칭 요일마다 N단원
+    """
+    from datetime import timedelta as _td
+    try:
+        data = json.loads(request.body)
+        student_ids = [int(x) for x in data.get('student_ids') or []]
+        start_date = datetime.strptime(data['start_date'], '%Y-%m-%d').date()
+        end_date = datetime.strptime(data['end_date'], '%Y-%m-%d').date()
+        weekdays = set(int(x) for x in data.get('weekdays') or [])
+        pace = float(data.get('pace') or 1)
+        note = (data.get('note') or '').strip()[:200]
+        replace_existing = bool(data.get('replace_existing'))
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    if not student_ids:
+        return HttpResponseBadRequest('No students')
+    if not weekdays:
+        return HttpResponseBadRequest('No weekdays')
+    if start_date > end_date:
+        return HttpResponseBadRequest('start > end')
+    if pace not in (0.5, 1, 1.0, 2, 2.0, 3, 3.0):
+        return HttpResponseBadRequest('Invalid pace')
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    valid_ids = list(
+        User.objects.filter(pk__in=student_ids)
+        .exclude(is_staff=True).exclude(is_superuser=True)
+        .values_list('id', flat=True)
+    )
+    if not valid_ids:
+        return HttpResponseBadRequest('No valid students')
+
+    saved = 0
+    replaced_existing = 0
+    first_student_dates = []
+    for sid in valid_ids:
+        # 기존 범위 내 목표 모두 삭제 옵션
+        if replace_existing:
+            replaced_existing += DailyStudyGoal.objects.filter(
+                student_id=sid, date__gte=start_date, date__lte=end_date,
+            ).delete()[0]
+
+        match_counter = 0
+        d = start_date
+        while d <= end_date:
+            if d.weekday() in weekdays:
+                if pace == 0.5:
+                    target = 1 if (match_counter % 2 == 0) else 0
+                    match_counter += 1
+                else:
+                    target = int(pace)
+                if target > 0:
+                    DailyStudyGoal.objects.update_or_create(
+                        student_id=sid, date=d,
+                        defaults={
+                            'target_sessions': target,
+                            'target_problems': 0,
+                            'target_minutes': 0,
+                            'note': note,
+                            'set_by': request.user,
+                        },
+                    )
+                    saved += 1
+                    if sid == valid_ids[0] and len(first_student_dates) < 60:
+                        first_student_dates.append({
+                            'date': d.strftime('%Y-%m-%d'),
+                            'target': target,
+                        })
+            d += _td(days=1)
+
+    return JsonResponse({
+        'success': True,
+        'students': len(valid_ids),
+        'saved': saved,
+        'replaced': replaced_existing,
+        'preview_dates': first_student_dates,
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
 @require_GET
 def student_goal_api(request, student_id):
     """학생 1명의 특정 날짜 목표 조회 (모달 prefill용)."""

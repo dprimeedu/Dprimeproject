@@ -48,6 +48,7 @@ urlpatterns = [
     path('admin/students/<int:student_id>/goal/', views.student_goal_update, name='student_goal_update'),
     path('admin/api/students/<int:student_id>/goal/', views.student_goal_api, name='student_goal_api'),
     path('admin/api/students/goal/', views.student_goal_save_api, name='student_goal_save_api'),
+    path('admin/api/students/plan/', views.student_plan_save_api, name='student_plan_save_api'),
     path('admin/live/', views.live_dashboard, name='live_dashboard'),
     path('admin/api/live/sessions/', views.live_sessions_api, name='live_sessions_api'),
     path('api/live/typing/', views.live_typing_update_api, name='live_typing_update'),

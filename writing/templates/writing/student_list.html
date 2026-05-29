@@ -61,6 +61,17 @@
     cursor: pointer;
 }
 .goal-empty-btn:hover { border-color: #d97706; color: #d97706; }
+.weekday-chip {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .25rem .65rem; border: 1px solid #e5e7eb; border-radius: 999px;
+    cursor: pointer; user-select: none; background: #fafafa;
+    margin: 0; transition: all .15s;
+}
+.weekday-chip input { display: none; }
+.weekday-chip:hover { background: #f3f4f6; }
+.weekday-chip:has(input:checked) {
+    background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; font-weight: 600;
+}
 .info-stat-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -192,7 +203,7 @@
                     <i class="fas fa-trash me-1"></i>삭제
                 </button>
                 <button type="button" id="bulk-goal-btn" class="btn btn-sm btn-warning student-act" disabled>
-                    <i class="fas fa-bullseye me-1"></i>오늘 목표 일괄 지정
+                    <i class="fas fa-bullseye me-1"></i>학습 계획 일괄 지정
                 </button>
             </div>
         </div>
@@ -365,49 +376,78 @@
   </div>
 </div>
 
-<!-- 오늘 목표 편집 모달 (단일/일괄 공용) -->
+<!-- 학습 계획 모달 (단일/일괄 공용) -->
 <div class="modal fade" id="goalEditModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">
           <i class="fas fa-bullseye me-2" style="color:#d97706;"></i>
-          <span id="goalModalTitle">오늘 목표</span>
+          <span id="goalModalTitle">학습 계획</span>
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div id="goalModalInfo" class="alert alert-warning py-2 small mb-3 d-none"></div>
         <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small">시작일</label>
+            <input type="date" id="plan_start_date" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">종료일</label>
+            <input type="date" id="plan_end_date" class="form-control form-control-sm">
+            <div class="form-check form-check-inline mt-1">
+              <input type="checkbox" id="plan_auto_end" class="form-check-input">
+              <label class="form-check-label small" for="plan_auto_end">자동 계산</label>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">총 단원 (자동 계산용)</label>
+            <input type="number" id="plan_total_units" min="1" placeholder="예: 30" class="form-control form-control-sm" disabled>
+          </div>
           <div class="col-12">
-            <label class="form-label small">날짜</label>
-            <input type="date" id="goal_date" class="form-control form-control-sm">
+            <label class="form-label small">학습 요일</label>
+            <div class="d-flex gap-1 flex-wrap" id="plan_weekdays">
+              <label class="weekday-chip"><input type="checkbox" value="0" checked><span>월</span></label>
+              <label class="weekday-chip"><input type="checkbox" value="1" checked><span>화</span></label>
+              <label class="weekday-chip"><input type="checkbox" value="2" checked><span>수</span></label>
+              <label class="weekday-chip"><input type="checkbox" value="3" checked><span>목</span></label>
+              <label class="weekday-chip"><input type="checkbox" value="4" checked><span>금</span></label>
+              <label class="weekday-chip"><input type="checkbox" value="5"><span>토</span></label>
+              <label class="weekday-chip"><input type="checkbox" value="6"><span>일</span></label>
+            </div>
           </div>
-          <div class="col-4">
-            <label class="form-label small">목표 문제 수</label>
-            <input type="number" id="goal_target_problems" min="0" value="0" class="form-control">
+          <div class="col-md-6">
+            <label class="form-label small">하루 단원 수 (수업 진도)</label>
+            <select id="plan_pace" class="form-select form-select-sm">
+              <option value="0.5">0.5 단원/일 (격일에 1단원)</option>
+              <option value="1" selected>1 단원/일</option>
+              <option value="2">2 단원/일</option>
+              <option value="3">3 단원/일</option>
+            </select>
           </div>
-          <div class="col-4">
-            <label class="form-label small">목표 학습 분</label>
-            <input type="number" id="goal_target_minutes" min="0" value="0" class="form-control">
-          </div>
-          <div class="col-4">
-            <label class="form-label small">목표 완료 단원</label>
-            <input type="number" id="goal_target_sessions" min="0" value="0" class="form-control">
-          </div>
-          <div class="col-12">
+          <div class="col-md-6">
             <label class="form-label small">메모 (선택)</label>
-            <input type="text" id="goal_note" maxlength="200" class="form-control" placeholder="예: 외부지문 위주">
+            <input type="text" id="plan_note" maxlength="200" class="form-control form-control-sm" placeholder="예: 외부지문 위주">
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input type="checkbox" id="plan_replace_existing" class="form-check-input">
+              <label class="form-check-label small" for="plan_replace_existing">
+                같은 기간 안의 기존 목표를 모두 삭제하고 새로 만들기
+              </label>
+            </div>
           </div>
         </div>
-        <div class="small text-muted mt-2">
-          모든 값이 0이고 메모가 비어있으면 해당 학생들의 그 날짜 목표가 <strong>삭제</strong>됩니다.
+        <div class="alert alert-light border mt-3 py-2 small" id="planPreview">
+          요일/기간/페이스를 설정하면 여기에 미리보기가 표시됩니다.
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
         <button type="button" id="goal-save-btn" class="btn btn-warning">
-          <i class="fas fa-save me-1"></i>저장
+          <i class="fas fa-save me-1"></i>계획 저장
         </button>
       </div>
     </div>
@@ -801,76 +841,158 @@ document.addEventListener('DOMContentLoaded', function () {
         setTimeout(() => openAssignModal(infoCurrentSid, infoCurrentLabel), 200);
     });
 
-    // ─── 오늘 목표 모달 (단일/일괄) ───
+    // ─── 학습 계획 모달 (단일/일괄) ───
     const goalModalEl = document.getElementById('goalEditModal');
     const goalModal = new bootstrap.Modal(goalModalEl);
     const goalModalTitle = document.getElementById('goalModalTitle');
     const goalModalInfo = document.getElementById('goalModalInfo');
-    const goalDate = document.getElementById('goal_date');
-    const goalTP = document.getElementById('goal_target_problems');
-    const goalTM = document.getElementById('goal_target_minutes');
-    const goalTS = document.getElementById('goal_target_sessions');
-    const goalNote = document.getElementById('goal_note');
+    const planStart = document.getElementById('plan_start_date');
+    const planEnd = document.getElementById('plan_end_date');
+    const planAutoEnd = document.getElementById('plan_auto_end');
+    const planTotalUnits = document.getElementById('plan_total_units');
+    const planPace = document.getElementById('plan_pace');
+    const planNote = document.getElementById('plan_note');
+    const planReplace = document.getElementById('plan_replace_existing');
+    const planPreview = document.getElementById('planPreview');
     const goalSaveBtn = document.getElementById('goal-save-btn');
+    const weekdayCbs = document.querySelectorAll('#plan_weekdays input[type=checkbox]');
 
-    let goalMode = 'single';
-    let goalTargetIds = [];
+    let planMode = 'single';
+    let planTargetIds = [];
     const todayStr = '{{ today|date:"Y-m-d" }}';
 
     function todayCellOf(sid) {
         return document.querySelector(`.goal-cell[data-student-id="${sid}"]`);
     }
 
-    function renderGoalCell(sid, tp, tm, ts, note) {
+    function renderGoalCell(sid, ts, note) {
         const cell = todayCellOf(sid);
         if (!cell) return;
-        const hasAny = tp || tm || ts || note;
-        if (!hasAny) {
+        if (!ts && !note) {
             cell.innerHTML = '<button type="button" class="goal-empty-btn" title="오늘 목표 설정"><i class="fas fa-plus me-1"></i>설정</button>';
         } else {
-            const parts = [];
-            if (tp) parts.push(`${tp}문제`);
-            if (tm) parts.push(`${tm}분`);
-            if (ts) parts.push(`${ts}단원`);
-            const label = parts.length ? parts.join(' ') : '<i class="fas fa-sticky-note"></i>';
-            cell.innerHTML = `<button type="button" class="goal-chip-btn" title="오늘 목표 편집">${label}</button>`;
+            const label = ts ? `${ts}단원` : '<i class="fas fa-sticky-note"></i>';
+            cell.innerHTML = `<button type="button" class="goal-chip-btn" title="학습 계획 편집">${label}</button>`;
         }
     }
 
-    function clearGoalForm() {
-        goalTP.value = '0';
-        goalTM.value = '0';
-        goalTS.value = '0';
-        goalNote.value = '';
+    function getCheckedWeekdays() {
+        return Array.from(weekdayCbs).filter(cb => cb.checked).map(cb => parseInt(cb.value));
     }
 
+    function fmtDate(d) {
+        const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+        return `${y}-${m}-${dd}`;
+    }
+
+    function computeAutoEnd() {
+        // 시작일 + 총 단원/페이스로 매칭 요일 N번째 날짜를 종료일로
+        const start = planStart.value;
+        const total = parseInt(planTotalUnits.value) || 0;
+        const pace = parseFloat(planPace.value);
+        const weekdays = new Set(getCheckedWeekdays());
+        if (!start || !total || !pace || !weekdays.size) return null;
+        // pace=0.5 → 매칭 요일 2번 중 1번만 적용 → 매칭 요일 수 = total * 2
+        // pace>=1 → total / pace = 매칭 요일 수
+        const matchDays = pace === 0.5 ? total * 2 : Math.ceil(total / pace);
+        const d = new Date(start + 'T00:00:00');
+        let count = 0;
+        for (let i = 0; i < 365; i++) {
+            const wd = (d.getDay() + 6) % 7; // JS: 0=일 → Python: 0=월 변환
+            if (weekdays.has(wd)) {
+                count++;
+                if (count >= matchDays) return fmtDate(d);
+            }
+            d.setDate(d.getDate() + 1);
+        }
+        return null;
+    }
+
+    function updatePreview() {
+        const start = planStart.value;
+        const end = planEnd.value;
+        const pace = parseFloat(planPace.value);
+        const weekdays = new Set(getCheckedWeekdays());
+        if (!start || !end || !weekdays.size) {
+            planPreview.textContent = '요일/기간을 설정해주세요.';
+            return;
+        }
+        const sd = new Date(start + 'T00:00:00'), ed = new Date(end + 'T00:00:00');
+        if (sd > ed) { planPreview.textContent = '⚠️ 종료일이 시작일보다 빠릅니다.'; return; }
+        let matched = 0, units = 0, counter = 0;
+        const d = new Date(sd);
+        for (let i = 0; i < 1000 && d <= ed; i++) {
+            const wd = (d.getDay() + 6) % 7;
+            if (weekdays.has(wd)) {
+                matched++;
+                if (pace === 0.5) {
+                    if (counter % 2 === 0) units += 1;
+                    counter++;
+                } else {
+                    units += pace;
+                }
+            }
+            d.setDate(d.getDate() + 1);
+        }
+        const dayLabel = pace === 0.5 ? '격일에 1단원' : `하루 ${pace}단원`;
+        planPreview.innerHTML = `📅 ${start} ~ ${end} · 매칭 요일 <strong>${matched}일</strong> · ${dayLabel} → <strong>${units}단원</strong> 목표 생성`;
+    }
+
+    planAutoEnd.addEventListener('change', () => {
+        planTotalUnits.disabled = !planAutoEnd.checked;
+        planEnd.disabled = planAutoEnd.checked;
+        if (planAutoEnd.checked) {
+            const auto = computeAutoEnd();
+            if (auto) { planEnd.value = auto; updatePreview(); }
+        }
+    });
+    [planStart, planEnd, planPace, planTotalUnits].forEach(el =>
+        el.addEventListener('input', () => {
+            if (planAutoEnd.checked) {
+                const auto = computeAutoEnd();
+                if (auto) planEnd.value = auto;
+            }
+            updatePreview();
+        })
+    );
+    weekdayCbs.forEach(cb => cb.addEventListener('change', () => {
+        if (planAutoEnd.checked) {
+            const auto = computeAutoEnd();
+            if (auto) planEnd.value = auto;
+        }
+        updatePreview();
+    }));
+
     function openGoalSingleModal(sid, label) {
-        goalMode = 'single';
-        goalTargetIds = [sid];
-        goalModalTitle.textContent = `오늘 목표 — ${label}`;
+        planMode = 'single';
+        planTargetIds = [sid];
+        goalModalTitle.textContent = `학습 계획 — ${label}`;
         goalModalInfo.classList.add('d-none');
-        goalDate.value = todayStr;
-        clearGoalForm();
-        // 기존 값 prefill
-        fetch(`/training/writing/admin/api/students/${sid}/goal/?date=${todayStr}`, { credentials: 'same-origin' })
-            .then(r => r.json())
-            .then(d => {
-                goalTP.value = d.target_problems || 0;
-                goalTM.value = d.target_minutes || 0;
-                goalTS.value = d.target_sessions || 0;
-                goalNote.value = d.note || '';
-            }).catch(() => {});
+        // 기본값
+        planStart.value = todayStr;
+        // 종료일 기본: 4주 뒤
+        const future = new Date(todayStr + 'T00:00:00'); future.setDate(future.getDate() + 28);
+        planEnd.value = fmtDate(future);
+        planAutoEnd.checked = false; planTotalUnits.value = '';
+        planTotalUnits.disabled = true; planEnd.disabled = false;
+        planPace.value = '1'; planNote.value = ''; planReplace.checked = false;
+        updatePreview();
         goalModal.show();
     }
 
     function openGoalBulkModal(sids) {
-        goalMode = 'bulk';
-        goalTargetIds = sids;
-        goalModalTitle.textContent = `오늘 목표 일괄 지정 — ${sids.length}명`;
-        goalModalInfo.innerHTML = `<i class="fas fa-info-circle me-1"></i>선택한 <strong>${sids.length}명</strong>의 해당 날짜 목표가 아래 값으로 <strong>덮어쓰기</strong>됩니다.`;
+        planMode = 'bulk';
+        planTargetIds = sids;
+        goalModalTitle.textContent = `학습 계획 일괄 지정 — ${sids.length}명`;
+        goalModalInfo.innerHTML = `<i class="fas fa-info-circle me-1"></i>선택한 <strong>${sids.length}명</strong>에 같은 학습 계획이 적용됩니다.`;
         goalModalInfo.classList.remove('d-none');
-        goalDate.value = todayStr;
-        clearGoalForm();
+        planStart.value = todayStr;
+        const future = new Date(todayStr + 'T00:00:00'); future.setDate(future.getDate() + 28);
+        planEnd.value = fmtDate(future);
+        planAutoEnd.checked = false; planTotalUnits.value = '';
+        planTotalUnits.disabled = true; planEnd.disabled = false;
+        planPace.value = '1'; planNote.value = ''; planReplace.checked = false;
+        updatePreview();
         goalModal.show();
     }
 
@@ -895,19 +1017,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 저장
     goalSaveBtn.addEventListener('click', async () => {
-        if (!goalTargetIds.length) return;
+        if (!planTargetIds.length) return;
+        const weekdays = getCheckedWeekdays();
+        if (!weekdays.length) { alert('학습 요일을 1개 이상 선택해주세요.'); return; }
+        if (!planStart.value || !planEnd.value) { alert('시작일/종료일을 입력해주세요.'); return; }
         const body = {
-            student_ids: goalTargetIds,
-            date: goalDate.value || todayStr,
-            target_problems: parseInt(goalTP.value) || 0,
-            target_minutes: parseInt(goalTM.value) || 0,
-            target_sessions: parseInt(goalTS.value) || 0,
-            note: goalNote.value || '',
+            student_ids: planTargetIds,
+            start_date: planStart.value,
+            end_date: planEnd.value,
+            weekdays: weekdays,
+            pace: parseFloat(planPace.value),
+            note: planNote.value || '',
+            replace_existing: planReplace.checked,
         };
         goalSaveBtn.disabled = true;
         goalSaveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
         try {
-            const r = await fetch('/training/writing/admin/api/students/goal/', {
+            const r = await fetch('/training/writing/admin/api/students/plan/', {
                 method: 'POST',
                 headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
@@ -915,24 +1041,20 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             const d = await r.json();
             if (!d.success) throw new Error('save failed');
-            // 표 셀 갱신은 오늘 날짜로 저장한 경우만
-            if (body.date === todayStr) {
-                goalTargetIds.forEach(sid => {
-                    renderGoalCell(sid, body.target_problems, body.target_minutes, body.target_sessions, body.note);
-                });
+            // 오늘 날짜가 계획 범위에 포함되면 표 셀 갱신
+            const todayInRange = planStart.value <= todayStr && todayStr <= planEnd.value;
+            if (todayInRange) {
+                // 오늘의 target_sessions 찾아서 갱신
+                const todayEntry = (d.preview_dates || []).find(x => x.date === todayStr);
+                planTargetIds.forEach(sid => renderGoalCell(sid, todayEntry?.target || 0, body.note));
             }
-            const verb = d.action === 'delete' ? '삭제' : '저장';
-            const noun = goalMode === 'bulk' ? `${d.affected}명` : '';
-            // 잠깐 토스트 대신 모달만 닫고 마무리
             goalModal.hide();
-            if (goalMode === 'bulk') {
-                alert(`✅ ${verb} 완료 — ${noun}`);
-            }
+            alert(`✅ 학습 계획 저장 완료 — 학생 ${d.students}명 × ${d.saved / d.students}일 = 총 ${d.saved}개 목표${d.replaced ? ` (기존 ${d.replaced}개 삭제 후 재생성)` : ''}`);
         } catch (e) {
             alert('에러: ' + e.message);
         } finally {
             goalSaveBtn.disabled = false;
-            goalSaveBtn.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+            goalSaveBtn.innerHTML = '<i class="fas fa-save me-1"></i>계획 저장';
         }
     });
 });
