@@ -21,6 +21,7 @@ from .models import (
     BugReport,
     DailyStudyGoal,
     MatchRoom, MatchParticipant,
+    FlashcardActivity,
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
@@ -2258,6 +2259,36 @@ def student_goal_update(request, student_id):
 
 @login_required
 @require_POST
+def flashcard_heartbeat_api(request):
+    """학습하기(플래쉬카드) 페이지 heartbeat — 실시간 모니터 노출용.
+
+    Body: { unit_id, current_index, total }
+    학생 1명당 1 row update.
+    """
+    try:
+        data = json.loads(request.body)
+        unit_id = int(data['unit_id'])
+        current_index = max(0, int(data.get('current_index', 0)))
+        total = max(0, int(data.get('total', 0)))
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    if not WritingUnit.objects.filter(pk=unit_id).exists():
+        return HttpResponseBadRequest('Unknown unit')
+
+    FlashcardActivity.objects.update_or_create(
+        student=request.user,
+        defaults={
+            'unit_id': unit_id,
+            'current_index': current_index,
+            'total': total,
+        },
+    )
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
 def live_typing_update_api(request):
     """학생이 타이핑 중인 입력을 200ms 디바운스로 push.
 
@@ -2308,17 +2339,16 @@ def live_sessions_api(request):
         ).select_related('student', 'unit', 'live_problem').order_by('-started_at')
     )
     session_ids = [s.id for s in sessions]
-    if not session_ids:
-        return JsonResponse({'sessions': [], 'now': now.strftime('%H:%M:%S'), 'count': 0})
-
-    latest_ids = list(
-        WritingAttempt.objects.filter(session_id__in=session_ids)
-        .values('session_id').annotate(mx=Max('id')).values_list('mx', flat=True)
-    )
-    latest = {
-        a.session_id: a
-        for a in WritingAttempt.objects.filter(id__in=latest_ids).select_related('problem')
-    }
+    latest = {}
+    if session_ids:
+        latest_ids = list(
+            WritingAttempt.objects.filter(session_id__in=session_ids)
+            .values('session_id').annotate(mx=Max('id')).values_list('mx', flat=True)
+        )
+        latest = {
+            a.session_id: a
+            for a in WritingAttempt.objects.filter(id__in=latest_ids).select_related('problem')
+        }
 
     # 각 세션의 총 문제 수 (현재 문제 번호 표시용)
     unit_problem_counts = {
@@ -2387,7 +2417,40 @@ def live_sessions_api(request):
                 'english': a.problem.english,
             },
             'live_typing': live_typing,
+            'mode': 'session',
             'status': 'active' if last_ago_sec < 30 else 'idle',
+        })
+
+    # 플래쉬카드(학습하기) 활동 추가 — 최근 30초 안에 heartbeat 친 학생만
+    fc_cutoff = now - _td(seconds=30)
+    shown_student_ids = {r['student']['id'] for r in result}
+    flashcards = FlashcardActivity.objects.filter(
+        updated_at__gte=fc_cutoff,
+    ).select_related('student', 'unit')
+    for fa in flashcards:
+        # 같은 학생이 풀이 세션도 동시에 가지면 풀이 우선 표시 (세션이 더 의미 큼)
+        if fa.student_id in shown_student_ids:
+            continue
+        name = fa.student.username or getattr(fa.student, 'login_id', '') or '학생'
+        last_ago = int((now - fa.updated_at).total_seconds())
+        result.append({
+            'id': None,
+            'mode': 'flashcard',
+            'student': {
+                'id': fa.student_id,
+                'name': name,
+                'login_id': getattr(fa.student, 'login_id', '') or '',
+            },
+            'unit': {
+                'id': fa.unit.id,
+                'title': fa.unit.title,
+                'grade': fa.unit.grade,
+                'publisher': fa.unit.publisher,
+                'total_problems': fa.total or fa.unit.problem_count,
+            },
+            'current_card': fa.current_index + 1,
+            'last_seconds_ago': last_ago,
+            'status': 'active' if last_ago < 10 else 'idle',
         })
 
     return JsonResponse({

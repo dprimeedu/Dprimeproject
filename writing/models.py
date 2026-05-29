@@ -385,6 +385,27 @@ class DailyStudyGoal(models.Model):
         return bool(self.target_problems or self.target_minutes or self.target_sessions)
 
 
+class FlashcardActivity(models.Model):
+    """학생의 현재 플래쉬카드(학습하기) 활동 상태 — 실시간 모니터용 heartbeat.
+
+    학생 1명 = 1행 (OneToOne). 학습하기 페이지가 주기적으로 update.
+    updated_at 이 일정 시간 이상 오래되면 '활동 종료'로 간주.
+    """
+    student = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='flashcard_activity',
+    )
+    unit = models.ForeignKey(WritingUnit, on_delete=models.CASCADE, related_name='+')
+    current_index = models.IntegerField(default=0, verbose_name='현재 카드 0-based')
+    total = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'writing_flashcard_activity'
+        verbose_name = '플래쉬카드 활동'
+        verbose_name_plural = '플래쉬카드 활동'
+
+
 class MatchRoom(models.Model):
     """학생끼리 같은 단원을 동시에 푸는 게임 모드 방."""
     STATUS_CHOICES = [

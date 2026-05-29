@@ -209,6 +209,10 @@ function hintBadge(level) {
 }
 
 function buildCard(s) {
+    // 학습하기(플래쉬카드) 모드 카드 — 풀이 세션과 다른 단순 카드
+    if (s.mode === 'flashcard') {
+        return buildFlashcardCard(s);
+    }
     const a = s.last_attempt;
     const cp = s.current_problem;
     const lt = s.live_typing;
@@ -279,11 +283,47 @@ function buildCard(s) {
 }
 
 function cardSig(s) {
+    if (s.mode === 'flashcard') {
+        return `FC|${s.current_card}|${s.last_seconds_ago < 5 ? 'fresh' : 'stale'}`;
+    }
     const a = s.last_attempt;
     const lt = s.live_typing;
     const ltKey = lt ? `LT|${lt.word_index}|${lt.input}` : '';
     const aKey = a ? `A|${a.input}|${a.is_correct}` : '';
     return `${ltKey}|${aKey}|${s.score}`;
+}
+
+function buildFlashcardCard(s) {
+    const dotClass = s.status === 'active' ? 'green' : 'yellow';
+    const cardKey = `${s.id || 'fc'}_${s.student.id}`;  // 고유 키
+    return `
+        <div class="live-card" data-sid="fc${s.student.id}">
+            <div class="hd">
+                <div class="name">
+                    <span class="dot ${dotClass}"></span>${escapeHtml(s.student.name)}
+                    ${s.student.login_id ? `<span class="login">${escapeHtml(s.student.login_id)}</span>` : ''}
+                </div>
+                <div class="elapsed">
+                    <span class="badge bg-warning text-dark"><i class="fas fa-book-open me-1"></i>학습하기</span>
+                </div>
+            </div>
+            <div class="unit-info">
+                <strong>${escapeHtml(s.unit.title)}</strong>
+                <span class="ms-2">${escapeHtml(s.unit.grade)}${s.unit.publisher ? ' · ' + escapeHtml(s.unit.publisher) : ''}</span>
+            </div>
+            <div class="body">
+                <div class="problem-num">
+                    <span>카드 <strong>${s.current_card}</strong> / ${s.unit.total_problems}</span>
+                    <span class="text-muted">${agoLabel(s.last_seconds_ago)}</span>
+                </div>
+                <div class="kor" style="color:#6b7280; font-style: italic; font-size: .85rem;">
+                    한글 ↔ 영어 플립카드로 복습 중
+                </div>
+            </div>
+            <div class="stats">
+                <span class="text-muted small">점수 없음 (학습/복습 모드)</span>
+            </div>
+        </div>`;
 }
 
 function render(sessions) {
