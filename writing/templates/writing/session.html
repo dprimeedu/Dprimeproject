@@ -3,6 +3,43 @@
 
 {% block content %}
 <style>
+    /* ─── 대전 모드 사이드바 ─── */
+    .match-sidebar {
+        position: fixed; top: 80px; right: 16px; width: 280px;
+        max-height: calc(100vh - 100px); overflow-y: auto;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0,0,0,.08);
+        padding: .75rem; z-index: 100;
+        display: none;
+    }
+    .match-sidebar.show { display: block; }
+    .match-sidebar h6 {
+        font-size: .85rem; margin: 0 0 .5rem;
+        color: var(--primary-color); font-weight: 700;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .match-sidebar .ms-code { font-family: ui-monospace, monospace; font-size: .75rem; color: #6b7280; }
+    .ms-card {
+        background: #fafafa; border: 1px solid #f3f4f6; border-radius: 8px;
+        padding: .5rem .65rem; margin-bottom: .4rem; font-size: .8rem;
+    }
+    .ms-card.me { background: #faf5ff; border-color: #ddd6fe; }
+    .ms-card.finished { background: #ecfdf5; border-color: #a7f3d0; }
+    .ms-card .ms-name { font-weight: 600; font-size: .85rem; color: #111827; display: flex; justify-content: space-between; }
+    .ms-card .ms-name .ms-rank { font-size: .7rem; color: #6b7280; }
+    .ms-card .ms-stats { color: #6b7280; font-size: .75rem; margin-top: .15rem; display: flex; gap: .5rem; }
+    .ms-card .ms-last { font-size: .75rem; margin-top: .2rem; font-family: ui-monospace, monospace; }
+    .ms-card .ms-last.typing { color: #1e40af; }
+    .ms-card .ms-last.ok { color: #047857; }
+    .ms-card .ms-last.bad { color: #b91c1c; }
+    @media (max-width: 980px) {
+        .match-sidebar { position: static; width: 100%; max-height: none; margin-bottom: 1rem; }
+    }
+    @media (min-width: 1300px) {
+        /* 와이드 화면에서 사이드바 떴을 때 본문 우측 마진 확보 */
+        body.in-match .play-wrap { margin-right: 310px; }
+    }
+
     /* ─── 풀이 화면 전용 스타일 ─── */
     .play-wrap {
         max-width: 1000px;
@@ -360,6 +397,18 @@
     .time-expired-box p { color: #4b5563; font-size: 1.05rem; margin-bottom: 1.5rem; }
 </style>
 
+<!-- 대전 모드 사이드바 (JS가 ?match=CODE 감지 시 show) -->
+<aside id="matchSidebar" class="match-sidebar">
+    <h6>
+        <span><i class="fas fa-gamepad me-1"></i>대전 모드</span>
+        <span class="ms-code" id="matchCode">--</span>
+    </h6>
+    <div id="matchOpponents"></div>
+    <div class="text-center mt-2">
+        <a href="#" id="matchExitLink" class="btn btn-sm btn-outline-secondary">방으로 돌아가기</a>
+    </div>
+</aside>
+
 <div class="play-wrap level-{{ unit_level }}{% if view_mode %} view-mode{% endif %}">
     <!-- 단원 숙련 단계 배지 + (보고 학습 모드 배지) -->
     <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center;">
@@ -453,6 +502,8 @@ const TOTAL_PROBLEMS = {{ total_problems }};
 const PROBLEMS = {{ problems_json|safe }};
 const CSRF_TOKEN = document.querySelector('[name=csrfmiddlewaretoken]').value;
 const SESSION_STARTED_AT = Date.now();
+// 대전 모드 코드 (?match=ABC42)
+const MATCH_CODE = new URLSearchParams(window.location.search).get('match');
 const TARGET_SECONDS = {{ unit.computed_target_seconds }};
 // 단원 숙련 Lv (세션 동안 frozen). PERFECT 1차 정답의 기본 점수 — penalty 계산용
 const UNIT_LEVEL = {{ unit_level }};
@@ -1042,6 +1093,16 @@ async function retryProblem() {
 
 async function finishSession() {
     try {
+        // 대전 모드면 종료 알림도 같이
+        if (MATCH_CODE) {
+            try {
+                const fd = new FormData();
+                fd.append('csrfmiddlewaretoken', CSRF_TOKEN);
+                await fetch(`/training/writing/api/match/${MATCH_CODE}/finish/`, {
+                    method: 'POST', credentials: 'same-origin', body: fd,
+                });
+            } catch (e) { /* silent */ }
+        }
         const r = await fetch('{% url "writing:api_complete_session" %}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
@@ -1170,5 +1231,67 @@ document.getElementById('bugReportBtn').addEventListener('click', async () => {
 });
 
 loadProblem(0);
+
+// ── 대전 모드: 우측 사이드바 + 폴링 ──
+if (MATCH_CODE) {
+    document.body.classList.add('in-match');
+    const sidebar = document.getElementById('matchSidebar');
+    sidebar.classList.add('show');
+    document.getElementById('matchCode').textContent = MATCH_CODE;
+    document.getElementById('matchExitLink').href = `/training/writing/match/${MATCH_CODE}/`;
+
+    let matchTimer = null;
+    let lastStatus = '';
+
+    function _esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderOpponents(d) {
+        const wrap = document.getElementById('matchOpponents');
+        const me = d.participants.find(p => p.is_me);
+        const others = d.participants.filter(p => !p.is_me);
+        const all = (me ? [me] : []).concat(others);
+        wrap.innerHTML = all.map(p => {
+            const cls = (p.is_me ? 'me ' : '') + (p.finished_at ? 'finished' : '');
+            const rank = p.final_rank ? `${p.final_rank}위` : '';
+            let last = '';
+            if (p.typing != null) {
+                last = `<div class="ms-last typing">치는 중: ${_esc(p.typing)}|</div>`;
+            } else if (p.last_input) {
+                const k = p.last_correct ? 'ok' : 'bad';
+                const ic = p.last_correct ? '✓' : '✗';
+                last = `<div class="ms-last ${k}">${ic} ${_esc(p.last_input)}</div>`;
+            }
+            return `
+                <div class="ms-card ${cls}">
+                    <div class="ms-name">
+                        <span>${_esc(p.name)}${p.is_me ? ' (나)' : ''}</span>
+                        <span class="ms-rank">${rank}</span>
+                    </div>
+                    <div class="ms-stats">
+                        <span>문제 ${p.current_problem ?? '-'}/${d.unit.total_problems}</span>
+                        <span>점수 ${p.score ?? 0}</span>
+                    </div>
+                    ${last}
+                </div>`;
+        }).join('');
+    }
+
+    async function pollMatch() {
+        try {
+            const r = await fetch(`/training/writing/api/match/${MATCH_CODE}/state/`, { credentials: 'same-origin' });
+            const d = await r.json();
+            renderOpponents(d);
+            // 방이 종료되면 자동으로 방 페이지(스코어보드)로
+            if (d.status === 'finished' && lastStatus !== 'finished') {
+                setTimeout(() => { window.location.href = `/training/writing/match/${MATCH_CODE}/`; }, 1500);
+            }
+            lastStatus = d.status;
+        } catch (e) { /* silent */ }
+    }
+    pollMatch();
+    matchTimer = setInterval(pollMatch, 1500);
+}
 </script>
 {% endblock %}

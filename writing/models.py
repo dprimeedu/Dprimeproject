@@ -385,6 +385,56 @@ class DailyStudyGoal(models.Model):
         return bool(self.target_problems or self.target_minutes or self.target_sessions)
 
 
+class MatchRoom(models.Model):
+    """학생끼리 같은 단원을 동시에 푸는 게임 모드 방."""
+    STATUS_CHOICES = [
+        ('waiting', '대기 중'),
+        ('active', '진행 중'),
+        ('finished', '종료'),
+    ]
+    code = models.CharField(max_length=8, unique=True, verbose_name='입장 코드')
+    unit = models.ForeignKey(WritingUnit, on_delete=models.CASCADE, related_name='match_rooms')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='생성자',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='waiting')
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'writing_match_room'
+        verbose_name = '대전 방'
+        verbose_name_plural = '대전 방'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.code} · {self.unit.title}'
+
+
+class MatchParticipant(models.Model):
+    """대전 방 참가자 — 학생 1명 = 행 1개. session은 시작 시 생성."""
+    room = models.ForeignKey(MatchRoom, on_delete=models.CASCADE, related_name='participants')
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+',
+    )
+    session = models.ForeignKey(
+        WritingSession, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    final_score = models.IntegerField(default=0)
+    final_rank = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'writing_match_participant'
+        verbose_name = '대전 참가자'
+        verbose_name_plural = '대전 참가자'
+        unique_together = [['room', 'student']]
+        ordering = ['joined_at']
+
+
 class BugReport(models.Model):
     """학생이 풀이 중 누른 '버그 신고' — 관리자가 검토·수정용."""
     STATUS_CHOICES = [

@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+.match-wrap { max-width: 900px; margin: 0 auto; padding-bottom: 3rem; }
+.match-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+.match-card h4 { margin: 0 0 1rem; color: var(--primary-color); font-weight: 700; }
+.room-chip {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .5rem .85rem; background: #faf5ff; border: 1px solid #e9d5ff;
+    border-radius: 8px; text-decoration: none; color: #5b21b6; font-weight: 500;
+}
+.room-chip:hover { background: #ede9fe; color: #5b21b6; }
+.room-chip .code { font-family: ui-monospace, monospace; font-weight: 700; font-size: 1.05rem; letter-spacing: 1px; }
+.room-chip .status {
+    font-size: .7rem; padding: .1rem .4rem; border-radius: 4px;
+    background: #fef3c7; color: #92400e;
+}
+.room-chip .status.active { background: #d1fae5; color: #065f46; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="match-wrap">
+    <a href="{% url 'writing:unit_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단원 관리</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-gamepad me-2"></i>대전 만들기</h3>
+        <p class="section-desc">단원을 골라 방을 만들면 학생들이 입장 코드로 들어와 함께 풀 수 있어요.</p>
+    </div>
+
+    {% if my_rooms %}
+    <div class="match-card">
+        <h4 style="font-size: 1rem;"><i class="fas fa-door-open me-2"></i>내 활성 방</h4>
+        <div class="d-flex flex-wrap gap-2">
+            {% for r in my_rooms %}
+            <a href="{% url 'writing:match_room' r.code %}" class="room-chip">
+                <span class="code">{{ r.code }}</span>
+                <span>{{ r.unit.title }}</span>
+                <span class="status {% if r.status == 'active' %}active{% endif %}">{{ r.get_status_display }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="post" class="match-card">
+        {% csrf_token %}
+        <h4><i class="fas fa-plus-circle me-2"></i>새 대전 방</h4>
+        <div class="mb-3">
+            <label class="form-label">단원 선택</label>
+            <select name="unit_id" class="form-select" required>
+                <option value="">— 단원 선택 —</option>
+                {% for u in units %}
+                <option value="{{ u.id }}">
+                    [{{ u.grade }}] {{ u.title }}{% if u.publisher %} · {{ u.publisher }}{% endif %} ({{ u.problem_count }}문제)
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-rocket me-1"></i>대전 방 만들기
+            </button>
+            <a href="{% url 'writing:unit_list' %}" class="btn btn-outline-secondary">취소</a>
+        </div>
+        <div class="text-muted small mt-2">
+            방 만들면 5자리 입장 코드가 생성됩니다. 학생들이 그 코드로 입장하면 대기실에서 만날 수 있어요.
+        </div>
+    </form>
+</div>
+{% endblock %}

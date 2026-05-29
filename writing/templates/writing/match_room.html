@@ -1,0 +1,310 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+.match-room { max-width: 1000px; margin: 0 auto; padding-bottom: 3rem; }
+.match-hd {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1.25rem 0; border-bottom: 2px solid #ede9fe; margin-bottom: 1.5rem;
+    flex-wrap: wrap; gap: 1rem;
+}
+.match-hd h2 { margin: 0; color: var(--primary-color); font-weight: 700; }
+.code-box {
+    background: linear-gradient(135deg, #ede9fe, #faf5ff);
+    border: 2px dashed #c4b5fd; border-radius: 12px;
+    padding: 1.5rem; text-align: center; margin-bottom: 2rem;
+}
+.code-box .code {
+    font-family: ui-monospace, monospace;
+    font-size: 2.5rem; font-weight: 800;
+    color: var(--primary-color); letter-spacing: 4px;
+}
+.code-box .label { font-size: .85rem; color: #6b7280; }
+.code-box .copy-btn { font-size: .85rem; }
+
+.unit-card { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+.unit-card .title { font-weight: 700; color: #111827; }
+.unit-card .meta { color: #6b7280; font-size: .85rem; margin-top: .25rem; }
+
+.participants {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: .75rem;
+    margin-bottom: 1.5rem;
+}
+.p-card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: .75rem 1rem; display: flex; align-items: center; gap: .65rem;
+    transition: all .2s;
+}
+.p-card.me { border-color: #a78bfa; background: #faf5ff; }
+.p-card .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #a78bfa, #c4b5fd);
+    color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.p-card.me .avatar { background: linear-gradient(135deg, #7c3aed, #a78bfa); }
+.p-card .name { font-weight: 600; }
+.p-card .joined { font-size: .7rem; color: #9ca3af; }
+.p-card.finished { opacity: .8; background: #ecfdf5; border-color: #a7f3d0; }
+.p-empty { text-align: center; padding: 2rem; color: #9ca3af; background: #f9fafb; border-radius: 8px; }
+
+.start-section { text-align: center; padding: 1.5rem; background: #fef3c7; border: 1px solid #fde68a; border-radius: 12px; }
+.start-section .btn-lg { font-size: 1.1rem; padding: .75rem 2rem; }
+
+/* 스코어보드 */
+.scoreboard { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+.sb-row { display: grid; grid-template-columns: 60px 1fr 100px 100px; gap: 1rem; padding: .85rem 1.25rem; border-bottom: 1px solid #f3f4f6; align-items: center; }
+.sb-row:last-child { border-bottom: none; }
+.sb-row.head { background: #faf5ff; font-weight: 600; font-size: .85rem; color: #6b7280; }
+.sb-row.me { background: #faf5ff; }
+.sb-rank { font-size: 1.5rem; font-weight: 800; text-align: center; }
+.sb-rank.r1 { color: #f59e0b; }
+.sb-rank.r2 { color: #9ca3af; }
+.sb-rank.r3 { color: #cd7f32; }
+.sb-name { font-weight: 600; }
+.sb-score { text-align: right; font-weight: 700; color: var(--primary-color); }
+.sb-time { text-align: right; color: #6b7280; font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="match-room">
+    <a href="{% url 'writing:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>홈으로</a>
+
+    <div class="match-hd">
+        <div>
+            <h2><i class="fas fa-gamepad me-2"></i><span id="room-title">대전 방</span></h2>
+            <div class="text-muted small">
+                상태: <span id="room-status" class="badge bg-secondary">{{ room.get_status_display }}</span>
+                · 시작: <span id="room-started">--</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="unit-card">
+        <div class="title">📚 {{ room.unit.title }}</div>
+        <div class="meta">
+            {{ room.unit.grade }}{% if room.unit.publisher %} · {{ room.unit.publisher }}{% endif %}
+            · 총 <strong>{{ room.unit.problem_count }}문제</strong>
+        </div>
+    </div>
+
+    <!-- 대기실: status=waiting -->
+    <div id="waitingSection" style="display:none;">
+        <div class="code-box">
+            <div class="label">입장 코드</div>
+            <div class="code">{{ room.code }}</div>
+            <button type="button" class="btn btn-sm btn-outline-primary copy-btn" id="copyCode">
+                <i class="fas fa-copy me-1"></i>코드 복사
+            </button>
+            <div class="text-muted small mt-2">학생들에게 이 코드 또는 URL을 알려주세요.</div>
+        </div>
+
+        <h5>대기 중인 참가자 (<span id="p-count-waiting">0</span>명)</h5>
+        <div id="participantsWaiting" class="participants"></div>
+
+        {% if is_creator %}
+        <div class="start-section">
+            <div class="mb-2 text-muted small">참가자 모두 모이면 시작하세요. 시작 후엔 더 입장할 수 없습니다.</div>
+            <button type="button" id="startBtn" class="btn btn-warning btn-lg">
+                <i class="fas fa-play me-1"></i>대전 시작
+            </button>
+        </div>
+        {% else %}
+        <div class="text-center text-muted">
+            <i class="fas fa-spinner fa-spin me-1"></i>방장이 시작하기를 기다리는 중...
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 진행 중: status=active (학생은 자기 세션으로 자동 이동) -->
+    <div id="activeSection" style="display:none;">
+        <div class="alert alert-warning">
+            <i class="fas fa-play-circle me-1"></i>대전 진행 중. 참가자들의 학습 상황을 실시간으로 봅니다.
+        </div>
+        <div id="participantsActive" class="participants"></div>
+        {% if is_creator %}
+        <div class="text-center mt-3">
+            <button type="button" id="forceFinishBtn" class="btn btn-sm btn-outline-danger">
+                <i class="fas fa-stop me-1"></i>대전 강제 종료
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 종료: 스코어보드 -->
+    <div id="finishedSection" style="display:none;">
+        <div class="alert alert-success">
+            <i class="fas fa-flag-checkered me-1"></i>대전 종료 — 최종 결과
+        </div>
+        <div class="scoreboard">
+            <div class="sb-row head">
+                <div>순위</div>
+                <div>이름</div>
+                <div class="text-end">점수</div>
+                <div class="text-end">종료시각</div>
+            </div>
+            <div id="scoreboardRows"></div>
+        </div>
+        <div class="text-center mt-4">
+            <a href="{% url 'writing:home' %}" class="btn btn-primary">홈으로</a>
+        </div>
+    </div>
+</div>
+
+<script>
+const CODE = '{{ room.code }}';
+const IS_CREATOR = {{ is_creator|yesno:"true,false" }};
+const CSRF = '{{ csrf_token }}';
+
+let pollTimer = null;
+let lastStatus = '';
+
+function avatar(name) {
+    return (name || '?').slice(0, 1).toUpperCase();
+}
+
+function renderParticipantsWaiting(parts) {
+    const wrap = document.getElementById('participantsWaiting');
+    document.getElementById('p-count-waiting').textContent = parts.length;
+    if (!parts.length) { wrap.innerHTML = '<div class="p-empty">아직 참가자 없음</div>'; return; }
+    wrap.innerHTML = parts.map(p => `
+        <div class="p-card${p.is_me ? ' me' : ''}">
+            <div class="avatar">${escapeHtml(avatar(p.name))}</div>
+            <div>
+                <div class="name">${escapeHtml(p.name)}${p.is_me ? ' <span class="text-primary small">(나)</span>' : ''}</div>
+                <div class="joined">${p.joined_at} 입장</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderParticipantsActive(parts) {
+    const wrap = document.getElementById('participantsActive');
+    if (!parts.length) { wrap.innerHTML = '<div class="p-empty">참가자 없음</div>'; return; }
+    wrap.innerHTML = parts.map(p => {
+        const score = p.score != null ? p.score : 0;
+        const prob = p.current_problem != null ? p.current_problem : '-';
+        const lastLine = p.typing != null
+            ? `<div class="text-primary small">치는 중: <strong>${escapeHtml(p.typing)}</strong></div>`
+            : p.last_input
+                ? `<div class="small ${p.last_correct ? 'text-success' : 'text-danger'}">${p.last_correct ? '✓' : '✗'} ${escapeHtml(p.last_input)}</div>`
+                : '';
+        const finishedBadge = p.finished_at ? `<span class="badge bg-success ms-1">완주</span>` : '';
+        return `
+            <div class="p-card${p.is_me ? ' me' : ''}${p.finished_at ? ' finished' : ''}">
+                <div class="avatar">${escapeHtml(avatar(p.name))}</div>
+                <div style="flex:1; min-width:0;">
+                    <div class="name">${escapeHtml(p.name)}${p.is_me ? ' <span class="text-primary small">(나)</span>' : ''}${finishedBadge}</div>
+                    <div class="joined">문제 ${prob} · 점수 ${score}</div>
+                    ${lastLine}
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderScoreboard(parts) {
+    const sorted = [...parts].sort((a, b) => (a.final_rank || 999) - (b.final_rank || 999));
+    const rows = sorted.map(p => {
+        const rk = p.final_rank || '-';
+        const rkCls = rk === 1 ? 'r1' : rk === 2 ? 'r2' : rk === 3 ? 'r3' : '';
+        return `
+            <div class="sb-row${p.is_me ? ' me' : ''}">
+                <div class="sb-rank ${rkCls}">${rk}</div>
+                <div class="sb-name">${escapeHtml(p.name)}${p.is_me ? ' <span class="text-primary small">(나)</span>' : ''}</div>
+                <div class="sb-score">${p.final_score}</div>
+                <div class="sb-time">${p.finished_at || '-'}</div>
+            </div>`;
+    }).join('');
+    document.getElementById('scoreboardRows').innerHTML = rows;
+}
+
+function showSection(status) {
+    document.getElementById('waitingSection').style.display = status === 'waiting' ? '' : 'none';
+    document.getElementById('activeSection').style.display = status === 'active' ? '' : 'none';
+    document.getElementById('finishedSection').style.display = status === 'finished' ? '' : 'none';
+    const badge = document.getElementById('room-status');
+    badge.textContent = ({ waiting: '대기 중', active: '진행 중', finished: '종료' })[status] || status;
+    badge.className = 'badge ' + ({ waiting: 'bg-secondary', active: 'bg-warning text-dark', finished: 'bg-success' })[status];
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function pollState() {
+    try {
+        const r = await fetch(`/training/writing/api/match/${CODE}/state/`, { credentials: 'same-origin' });
+        const d = await r.json();
+        document.getElementById('room-title').textContent = `대전 방 ${d.code}`;
+        document.getElementById('room-started').textContent = d.started_at || '--';
+        showSection(d.status);
+
+        if (d.status === 'waiting') {
+            renderParticipantsWaiting(d.participants);
+        } else if (d.status === 'active') {
+            renderParticipantsActive(d.participants);
+            // 학생인데 자기 세션 있으면 즉시 그쪽으로 이동
+            if (!IS_CREATOR && lastStatus === 'waiting') {
+                const me = d.participants.find(p => p.is_me);
+                if (me && me.session_id) {
+                    window.location.href = `/training/writing/session/${me.session_id}/?match=${d.code}`;
+                    return;
+                }
+            }
+        } else if (d.status === 'finished') {
+            renderScoreboard(d.participants);
+        }
+        lastStatus = d.status;
+    } catch (e) { console.warn('[match] poll error', e); }
+}
+
+document.getElementById('copyCode')?.addEventListener('click', () => {
+    navigator.clipboard?.writeText(CODE);
+    const btn = document.getElementById('copyCode');
+    btn.innerHTML = '<i class="fas fa-check me-1"></i>복사됨';
+    setTimeout(() => btn.innerHTML = '<i class="fas fa-copy me-1"></i>코드 복사', 1500);
+});
+
+document.getElementById('startBtn')?.addEventListener('click', async () => {
+    if (!confirm('대전을 시작합니다. 시작 후엔 더 입장할 수 없어요. 진행할까요?')) return;
+    const btn = document.getElementById('startBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>시작 중...';
+    try {
+        const r = await fetch(`/training/writing/api/match/${CODE}/start/`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.error || 'start failed');
+        await pollState();
+    } catch (e) {
+        alert('시작 실패: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play me-1"></i>대전 시작';
+    }
+});
+
+document.getElementById('forceFinishBtn')?.addEventListener('click', async () => {
+    if (!confirm('진행 중인 대전을 강제 종료할까요? 현재까지의 점수로 순위가 매겨집니다.')) return;
+    try {
+        const fd = new FormData();
+        fd.append('force', '1');
+        fd.append('csrfmiddlewaretoken', CSRF);
+        const r = await fetch(`/training/writing/api/match/${CODE}/finish/`, {
+            method: 'POST', credentials: 'same-origin', body: fd,
+        });
+        const d = await r.json();
+        if (!d.success) throw new Error('finish failed');
+        await pollState();
+    } catch (e) { alert('종료 실패: ' + e.message); }
+});
+
+pollState();
+pollTimer = setInterval(pollState, 1500);
+</script>
+{% endblock %}

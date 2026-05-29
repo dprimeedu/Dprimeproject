@@ -20,6 +20,7 @@ from .models import (
     StudentUnitLevel,
     BugReport,
     DailyStudyGoal,
+    MatchRoom, MatchParticipant,
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
@@ -2394,6 +2395,223 @@ def live_sessions_api(request):
         'now': now.strftime('%H:%M:%S'),
         'count': len(result),
     }, json_dumps_params={'ensure_ascii': False})
+
+
+def _gen_match_code() -> str:
+    """충돌 안 나는 5자리 영숫자 코드. O/0/I/1 같은 헷갈리는 글자 제외."""
+    import random
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    for _ in range(20):
+        code = ''.join(random.choices(alphabet, k=5))
+        if not MatchRoom.objects.filter(code=code).exists():
+            return code
+    raise RuntimeError('match code 생성 실패')
+
+
+@teacher_required
+def match_create(request):
+    """대전 방 생성 — GET 폼 / POST 생성."""
+    if request.method == 'GET':
+        # 활성 단원만 노출. 학년/출판사 정렬
+        units = WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title')
+        # 현재 활성 방 (선생님이 만든)
+        my_rooms = MatchRoom.objects.filter(
+            created_by=request.user, status__in=['waiting', 'active'],
+        ).select_related('unit').order_by('-created_at')[:10]
+        return render(request, 'writing/match_create.html', {
+            'units': units, 'my_rooms': my_rooms,
+        })
+
+    try:
+        unit_id = int(request.POST.get('unit_id') or 0)
+    except (TypeError, ValueError):
+        unit_id = 0
+    unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)
+
+    room = MatchRoom.objects.create(
+        code=_gen_match_code(),
+        unit=unit,
+        created_by=request.user,
+        status='waiting',
+    )
+    return redirect('writing:match_room', code=room.code)
+
+
+@login_required
+def match_room(request, code):
+    """대전 방 — 대기실/플레이/스코어보드 페이지 (상태에 따라 분기는 템플릿 JS)."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    is_creator = (room.created_by_id == request.user.id) or is_teacher(request.user)
+
+    # 학생이면 참가자로 자동 등록 (waiting 상태에서만)
+    if not is_teacher(request.user):
+        if room.status == 'waiting':
+            MatchParticipant.objects.get_or_create(room=room, student=request.user)
+        elif room.status == 'active':
+            # 이미 시작했으면 자기 세션으로 바로 이동
+            mp = MatchParticipant.objects.filter(room=room, student=request.user).first()
+            if mp and mp.session_id:
+                from django.urls import reverse
+                return redirect(f"{reverse('writing:session', args=[mp.session_id])}?match={room.code}")
+
+    return render(request, 'writing/match_room.html', {
+        'room': room,
+        'is_creator': is_creator,
+    })
+
+
+@login_required
+@require_GET
+def match_state_api(request, code):
+    """대전 방 상태 + 참가자 진행률 JSON. session.html / match_room.html 폴링용."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    parts = list(
+        room.participants.select_related('student', 'session', 'session__unit').order_by('joined_at')
+    )
+
+    # 각 세션의 최신 attempt 한 번에 가져오기
+    from django.db.models import Max
+    session_ids = [p.session_id for p in parts if p.session_id]
+    latest_map = {}
+    if session_ids:
+        latest_ids = list(
+            WritingAttempt.objects.filter(session_id__in=session_ids)
+            .values('session_id').annotate(mx=Max('id')).values_list('mx', flat=True)
+        )
+        latest_map = {
+            a.session_id: a
+            for a in WritingAttempt.objects.filter(id__in=latest_ids).select_related('problem')
+        }
+    # 세션별 라이브 타이핑 상태도 prefetch (live_problem 포함)
+    live_sessions = {}
+    if session_ids:
+        for s in WritingSession.objects.filter(pk__in=session_ids).select_related('live_problem'):
+            live_sessions[s.id] = s
+
+    now = timezone.now()
+    total_problems = room.unit.problem_count
+    out_parts = []
+    for p in parts:
+        name = p.student.username or getattr(p.student, 'login_id', '') or '학생'
+        info = {
+            'student_id': p.student_id,
+            'name': name,
+            'joined_at': p.joined_at.strftime('%H:%M:%S'),
+            'is_me': p.student_id == request.user.id,
+            'finished_at': p.finished_at.strftime('%H:%M:%S') if p.finished_at else None,
+            'final_score': p.final_score,
+            'final_rank': p.final_rank,
+        }
+        if p.session_id and p.session_id in live_sessions:
+            s = live_sessions[p.session_id]
+            a = latest_map.get(p.session_id)
+            info.update({
+                'session_id': p.session_id,
+                'score': s.total_score,
+                'perfect': s.perfect_sentences,
+                'last_input': a.input_value if a else '',
+                'last_correct': a.is_correct if a else None,
+                'last_seconds_ago': int((now - a.created_at).total_seconds()) if a else None,
+                'current_problem': a.problem.index if a else 1,
+            })
+            # 라이브 타이핑 (attempt보다 최근일 때만)
+            if s.live_updated_at and s.live_input:
+                if not a or s.live_updated_at > a.created_at:
+                    info['typing'] = s.live_input
+                    info['typing_word'] = s.live_word_index
+        out_parts.append(info)
+
+    return JsonResponse({
+        'code': room.code,
+        'status': room.status,
+        'unit': {
+            'id': room.unit.id,
+            'title': room.unit.title,
+            'total_problems': total_problems,
+        },
+        'started_at': room.started_at.strftime('%H:%M:%S') if room.started_at else None,
+        'finished_at': room.finished_at.strftime('%H:%M:%S') if room.finished_at else None,
+        'is_creator': (room.created_by_id == request.user.id) or is_teacher(request.user),
+        'participants': out_parts,
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@require_POST
+def match_start_api(request, code):
+    """대전 시작 — 선생님/방장만. 모든 참가자에게 WritingSession 생성."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    if not is_teacher(request.user) and room.created_by_id != request.user.id:
+        return JsonResponse({'error': 'forbidden'}, status=403)
+    if room.status != 'waiting':
+        return JsonResponse({'error': 'already_started', 'status': room.status}, status=400)
+
+    parts = list(room.participants.select_related('student'))
+    if not parts:
+        return JsonResponse({'error': 'no_participants'}, status=400)
+
+    now = timezone.now()
+    for p in parts:
+        # 이미 세션 있으면 재사용 (혹시 중복 호출 대비)
+        if not p.session_id:
+            s = WritingSession.objects.create(student=p.student, unit=room.unit)
+            p.session = s
+            p.save(update_fields=['session'])
+
+    room.status = 'active'
+    room.started_at = now
+    room.save(update_fields=['status', 'started_at'])
+
+    return JsonResponse({'success': True, 'status': 'active'})
+
+
+@login_required
+@require_POST
+def match_finish_api(request, code):
+    """대전 종료 처리. 시작자/선생님이 강제 종료 또는 모두 끝났을 때 자동 호출."""
+    room = get_object_or_404(MatchRoom, code=code.upper())
+    if room.status == 'finished':
+        return JsonResponse({'success': True, 'already': True})
+
+    # 권한: 선생님/방장만 강제 종료. 학생은 자기 참가자의 finished_at만 찍기
+    force = request.POST.get('force') == '1'
+    if force and not (is_teacher(request.user) or room.created_by_id == request.user.id):
+        return JsonResponse({'error': 'forbidden'}, status=403)
+
+    now = timezone.now()
+    if force:
+        # 강제 종료 — 모든 참가자 종료 처리
+        for p in room.participants.select_related('session'):
+            if not p.finished_at:
+                p.finished_at = now
+                if p.session:
+                    p.final_score = p.session.total_score
+                p.save(update_fields=['finished_at', 'final_score'])
+
+    # 자기 자신만 종료
+    me = MatchParticipant.objects.filter(room=room, student=request.user).first()
+    if me and not me.finished_at:
+        me.finished_at = now
+        if me.session:
+            me.final_score = me.session.total_score
+        me.save(update_fields=['finished_at', 'final_score'])
+
+    # 전원 종료됐는지 체크 → finish room
+    remaining = room.participants.filter(finished_at__isnull=True).count()
+    if remaining == 0 and room.status != 'finished':
+        # 순위 계산: 먼저 끝낸 사람부터, 동률은 점수 높은 순
+        sorted_parts = sorted(
+            room.participants.all(),
+            key=lambda p: (p.finished_at or now, -p.final_score),
+        )
+        for idx, p in enumerate(sorted_parts, 1):
+            p.final_rank = idx
+            p.save(update_fields=['final_rank'])
+        room.status = 'finished'
+        room.finished_at = now
+        room.save(update_fields=['status', 'finished_at'])
+
+    return JsonResponse({'success': True, 'room_status': room.status})
 
 
 @teacher_required
