@@ -2529,6 +2529,64 @@ def _gen_match_code() -> str:
     raise RuntimeError('match code 생성 실패')
 
 
+@login_required
+def match_quick_ai(request):
+    """학생용 빠른 AI 대결 — 단원/난이도 선택 후 한 번에 방+AI 생성+시작+세션 이동."""
+    if request.method == 'GET':
+        if is_teacher(request.user):
+            units = WritingUnit.objects.filter(is_active=True).order_by('grade', 'publisher', 'title')
+        else:
+            assigned_ids = UnitAssignment.objects.filter(
+                student=request.user,
+            ).values_list('unit_id', flat=True)
+            units = WritingUnit.objects.filter(
+                is_active=True, pk__in=assigned_ids,
+            ).order_by('grade', 'publisher', 'title')
+        return render(request, 'writing/match_quick_ai.html', {'units': units})
+
+    # POST
+    try:
+        unit_id = int(request.POST.get('unit_id') or 0)
+        difficulty = (request.POST.get('difficulty') or 'medium').lower()
+        ai_count = max(1, min(3, int(request.POST.get('ai_count') or 1)))
+    except (TypeError, ValueError):
+        return HttpResponseBadRequest('Invalid')
+    if difficulty not in ('easy', 'medium', 'hard'):
+        difficulty = 'medium'
+
+    unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)
+    if not is_teacher(request.user):
+        if not UnitAssignment.objects.filter(student=request.user, unit=unit).exists():
+            messages.error(request, '배정받지 않은 단원입니다.')
+            return redirect('writing:match_quick_ai')
+
+    # 방 + 학생 + AI 참가자 생성
+    room = MatchRoom.objects.create(
+        code=_gen_match_code(), unit=unit,
+        created_by=request.user, status='waiting',
+    )
+    MatchParticipant.objects.create(room=room, student=request.user)
+
+    labels = {'easy': '쉬움', 'medium': '중간', 'hard': '어려움'}
+    for i in range(ai_count):
+        suffix = f' #{i+1}' if ai_count > 1 else ''
+        MatchParticipant.objects.create(
+            room=room, student=None,
+            is_ai=True, ai_difficulty=difficulty,
+            ai_name=f'🤖 AI ({labels[difficulty]}){suffix}',
+        )
+
+    # 학생 세션 + 즉시 시작
+    session = WritingSession.objects.create(student=request.user, unit=unit)
+    MatchParticipant.objects.filter(room=room, student=request.user).update(session=session)
+    room.status = 'active'
+    room.started_at = timezone.now()
+    room.save(update_fields=['status', 'started_at'])
+
+    from django.urls import reverse
+    return redirect(f"{reverse('writing:session', args=[session.id])}?match={room.code}")
+
+
 @teacher_required
 def match_create(request):
     """대전 방 생성 — GET 폼 / POST 생성."""

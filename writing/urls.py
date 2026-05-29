@@ -56,6 +56,7 @@ urlpatterns = [
 
     # 대전 모드
     path('admin/match/create/', views.match_create, name='match_create'),
+    path('match/ai/', views.match_quick_ai, name='match_quick_ai'),
     path('match/<str:code>/', views.match_room, name='match_room'),
     path('api/match/<str:code>/state/', views.match_state_api, name='match_state_api'),
     path('api/match/<str:code>/start/', views.match_start_api, name='match_start_api'),

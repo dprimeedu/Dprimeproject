@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+.ai-wrap { max-width: 700px; margin: 0 auto; padding-bottom: 3rem; }
+.ai-hero {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 1px solid #fde68a; border-radius: 12px;
+    padding: 1.5rem; margin-bottom: 1.5rem; text-align: center;
+}
+.ai-hero h2 { margin: 0; color: #92400e; font-weight: 800; }
+.ai-hero p { color: #78350f; margin: .5rem 0 0; font-size: .95rem; }
+.diff-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem;
+}
+.diff-card {
+    background: #fff; border: 2px solid #e5e7eb; border-radius: 10px;
+    padding: 1rem; text-align: center; cursor: pointer; transition: all .15s;
+}
+.diff-card .icon { font-size: 2rem; }
+.diff-card .name { font-weight: 700; margin-top: .35rem; color: #111827; }
+.diff-card .desc { font-size: .8rem; color: #6b7280; margin-top: .25rem; }
+.diff-card:hover { border-color: #c4b5fd; transform: translateY(-1px); }
+.diff-card.selected {
+    border-color: var(--primary-color);
+    background: #faf5ff;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, .15);
+}
+.count-pill {
+    display: inline-flex; gap: .25rem; padding: .35rem; background: #f3f4f6; border-radius: 999px;
+}
+.count-pill button {
+    width: 36px; height: 36px; border: none; border-radius: 999px;
+    background: transparent; cursor: pointer; font-weight: 700;
+}
+.count-pill button.active { background: var(--primary-color); color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ai-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+
+    <div class="ai-hero">
+        <h2>🤖 AI랑 대결</h2>
+        <p>혼자서도 AI 상대로 게임처럼 연습할 수 있어요. 단원과 난이도를 골라 시작하세요.</p>
+    </div>
+
+    {% if messages %}
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} mb-3">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if not units %}
+    <div class="alert alert-warning">
+        배정받은 단원이 없습니다. 선생님께 단원 배정을 요청해주세요.
+    </div>
+    {% else %}
+    <form method="post" id="quickAiForm">
+        {% csrf_token %}
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title"><i class="fas fa-book me-2"></i>1. 단원 선택</h5>
+                <select name="unit_id" class="form-select" required>
+                    <option value="">— 단원 선택 —</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}">
+                        [{{ u.grade }}] {{ u.title }}{% if u.publisher %} · {{ u.publisher }}{% endif %} ({{ u.problem_count }}문제)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title"><i class="fas fa-bolt me-2"></i>2. AI 난이도</h5>
+                <div class="diff-grid">
+                    <label class="diff-card" data-value="easy">
+                        <input type="radio" name="difficulty" value="easy" hidden>
+                        <div class="icon">🐢</div>
+                        <div class="name">쉬움</div>
+                        <div class="desc">20 WPM<br>여유 있게 이김</div>
+                    </label>
+                    <label class="diff-card selected" data-value="medium">
+                        <input type="radio" name="difficulty" value="medium" checked hidden>
+                        <div class="icon">🦊</div>
+                        <div class="name">중간</div>
+                        <div class="desc">45 WPM<br>대등한 속도</div>
+                    </label>
+                    <label class="diff-card" data-value="hard">
+                        <input type="radio" name="difficulty" value="hard" hidden>
+                        <div class="icon">🐉</div>
+                        <div class="name">어려움</div>
+                        <div class="desc">75 WPM<br>빠르게 쳐야 함</div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title"><i class="fas fa-robot me-2"></i>3. AI 마릿수</h5>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="count-pill" id="aiCountPill">
+                        <button type="button" data-count="1" class="active">1</button>
+                        <button type="button" data-count="2">2</button>
+                        <button type="button" data-count="3">3</button>
+                    </div>
+                    <span class="text-muted small">상대할 AI 수</span>
+                    <input type="hidden" name="ai_count" id="aiCountInput" value="1">
+                </div>
+            </div>
+        </div>
+
+        <div class="d-grid">
+            <button type="submit" class="btn btn-warning btn-lg">
+                <i class="fas fa-play me-2"></i>대결 시작!
+            </button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+
+<script>
+// 난이도 카드 선택
+document.querySelectorAll('.diff-card').forEach(card => {
+    card.addEventListener('click', () => {
+        document.querySelectorAll('.diff-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        card.querySelector('input').checked = true;
+    });
+});
+// AI 마릿수
+document.querySelectorAll('#aiCountPill button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#aiCountPill button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('aiCountInput').value = btn.dataset.count;
+    });
+});
+</script>
+{% endblock %}
