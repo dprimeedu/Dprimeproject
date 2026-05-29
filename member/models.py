@@ -32,6 +32,11 @@ class Member(AbstractBaseUser, PermissionsMixin):
         help_text='학원이 등록한 재원생용 ID (영문/숫자). 일반 회원가입자는 이메일로 로그인.',
     )
     username = models.CharField(max_length=150, verbose_name='이름')
+    nickname = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='별명',
+        help_text='리더보드/대전에서 표시될 별명. 비어있으면 로그인 ID로 표시.',
+    )
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
@@ -55,6 +60,12 @@ class Member(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.login_id or self.email or f'user#{self.pk}'
+
+    @property
+    def display_name(self) -> str:
+        """리더보드/대전 표시용 — 별명 > login_id > username 순."""
+        return (self.nickname or '').strip() or (self.login_id or '').strip() or (self.username or '').strip() or f'user#{self.pk}'
+
 
 class Profile(models.Model):
     user = models.OneToOneField(Member, on_delete=models.CASCADE)

@@ -2250,6 +2250,39 @@ def student_goal_update(request, student_id):
 
 @login_required
 @require_POST
+def set_nickname_api(request):
+    """학생 별명 설정 — 한글/영어/숫자/공백 허용, 1~30자."""
+    try:
+        data = json.loads(request.body)
+        raw = (data.get('nickname') or '').strip()
+    except (json.JSONDecodeError, AttributeError):
+        return HttpResponseBadRequest('Invalid')
+
+    # 빈 값 → 별명 삭제 (login_id로 표시되도록)
+    if not raw:
+        request.user.nickname = ''
+        request.user.save(update_fields=['nickname'])
+        return JsonResponse({'success': True, 'nickname': ''})
+
+    if len(raw) > 30:
+        return JsonResponse({'success': False, 'error': '별명은 30자 이하여야 합니다.'}, status=400)
+    # 허용 문자: 한글, 영문, 숫자, 공백, 일부 특수문자
+    if not re.match(r'^[가-힣A-Za-z0-9 _\-.]+$', raw):
+        return JsonResponse({'success': False, 'error': '한글/영문/숫자/공백만 사용 가능합니다.'}, status=400)
+
+    # 중복 체크 (다른 사람 별명과 같으면 안 됨)
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    if User.objects.exclude(pk=request.user.pk).filter(nickname=raw).exists():
+        return JsonResponse({'success': False, 'error': '이미 사용 중인 별명입니다.'}, status=400)
+
+    request.user.nickname = raw
+    request.user.save(update_fields=['nickname'])
+    return JsonResponse({'success': True, 'nickname': raw})
+
+
+@login_required
+@require_POST
 def flashcard_heartbeat_api(request):
     """학습하기(플래쉬카드) 페이지 heartbeat — 실시간 모니터 노출용.
 
@@ -2453,29 +2486,33 @@ def live_sessions_api(request):
 
 _AI_WPM = {'easy': 20, 'medium': 45, 'hard': 75}
 
-# 학생에게 AI 정체를 숨기기 위한 위장 이름 풀 (일반적인 한국 이름)
+# 학생에게 AI 정체를 숨기기 위한 위장 이름 풀 — ID/별명 스타일 (실제 학생 login_id 패턴 모방)
 _AI_NAME_POOL = [
-    '민지', '준호', '서연', '지우', '예린', '하은', '도윤', '시우', '서준', '이안',
-    '나윤', '유나', '채원', '주원', '건우', '지호', '연우', '하준', '시아', '예나',
-    '소율', '지안', '윤서', '서아', '지유', '리아', '하린', '서윤', '시현', '윤후',
-    '도현', '민준', '예성', '지원', '아인', '하율', '서영', '민서', '도경', '재인',
+    'jhs21', 'ksh99', 'pyj42', 'lmh07', 'kty15', 'sjh33', 'yhm88', 'chj04',
+    'kjy66', 'phs12', 'hsy77', 'lwj55', 'jyh23', 'kbs09', 'lyk91', 'kth18',
+    'yjm44', 'phj02', 'cyh65', 'kdy37', 'shj76', 'pjs49', 'kjs83', 'jys11',
+    'eng21', 'study42', 'prime99', 'master07', 'ace12', 'rookie21', 'hero77',
+    'top42', 'wing05', 'pro22', 'study24', 'student37', 'eng07', 'study99',
+    '영작왕', '타자고수', '학습러', '에이스', '드래곤', '플라잉', '챔피언',
 ]
 
 
 def _pick_ai_name(room):
-    """방 안에서 중복 안 되는 위장 이름 골라 반환."""
+    """방 안에서 중복 안 되는 위장 이름 골라 반환.
+
+    실 학생의 login_id / nickname 과도 충돌 회피 — 학생이 게임에서 보는 표시명은
+    display_name(별명 > login_id) 이므로 그 둘과 안 겹치는 이름을 골라야 함.
+    """
     import random
-    used = set(
-        MatchParticipant.objects.filter(room=room).values_list('ai_name', flat=True)
-    )
-    # 실 학생 username도 중복 방지
-    used |= set(
-        room.participants.filter(student__isnull=False)
-        .values_list('student__username', flat=True)
-    )
+    used = set(MatchParticipant.objects.filter(room=room).values_list('ai_name', flat=True))
+    real_students = room.participants.filter(student__isnull=False).select_related('student')
+    for p in real_students:
+        for v in (p.student.login_id, p.student.nickname):
+            if v:
+                used.add(v)
     available = [n for n in _AI_NAME_POOL if n not in used]
     if not available:
-        return f'학생{random.randint(100, 9999)}'
+        return f'user{random.randint(1000, 9999)}'
     return random.choice(available)
 
 
@@ -2725,7 +2762,8 @@ def match_state_api(request, code):
             out_parts.append(info)
             continue
 
-        name = p.student.username or getattr(p.student, 'login_id', '') or '학생'
+        # 게임/리더보드는 별명 > login_id > 실명 순으로 (실명 노출 방지)
+        name = getattr(p.student, 'display_name', None) or getattr(p.student, 'login_id', '') or '학생'
         info = {
             'student_id': p.student_id,
             'name': name,

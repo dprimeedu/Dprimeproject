@@ -123,4 +123,80 @@
     </div>
     {% endif %}
 </div>
+
+<!-- 별명 등록 모달 — nickname 비어있는 학생에게만 1회 권유 -->
+{% if request.user.is_authenticated and not request.user.nickname and not request.user.is_staff %}
+<form style="display:none">{% csrf_token %}</form>
+<div class="modal fade" id="nicknameModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-id-badge me-2"></i>별명을 정해볼까요?</h5>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">대전·리더보드에서는 <strong>실명 대신 별명(또는 ID)</strong>이 표시됩니다.</p>
+        <p class="text-muted small mb-3">한글/영문/숫자 1~30자. 안 정하면 ID(<code>{{ request.user.login_id }}</code>)로 표시됩니다.</p>
+        <input type="text" id="nicknameInput" class="form-control" maxlength="30" placeholder="예: 영작왕, eng21, 프라임에이스">
+        <div id="nicknameError" class="text-danger small mt-1" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="skipNicknameBtn">나중에</button>
+        <button type="button" class="btn btn-primary" id="saveNicknameBtn">
+          <i class="fas fa-check me-1"></i>등록
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    const STORAGE_KEY = 'nicknamePromptSkipped';
+    const skipped = localStorage.getItem(STORAGE_KEY) === '1';
+    if (skipped) return;
+    const modalEl = document.getElementById('nicknameModal');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+    const input = document.getElementById('nicknameInput');
+    const err = document.getElementById('nicknameError');
+    const saveBtn = document.getElementById('saveNicknameBtn');
+    const skipBtn = document.getElementById('skipNicknameBtn');
+
+    skipBtn.addEventListener('click', () => {
+        localStorage.setItem(STORAGE_KEY, '1');
+        modal.hide();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const v = input.value.trim();
+        if (!v) { err.textContent = '별명을 입력해주세요.'; err.style.display = ''; return; }
+        saveBtn.disabled = true;
+        try {
+            const r = await fetch('{% url "writing:set_nickname" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                credentials: 'same-origin',
+                body: JSON.stringify({ nickname: v }),
+            });
+            const d = await r.json();
+            if (!d.success) {
+                err.textContent = d.error || '등록 실패';
+                err.style.display = '';
+                saveBtn.disabled = false;
+                return;
+            }
+            localStorage.removeItem(STORAGE_KEY);
+            modal.hide();
+            location.reload();
+        } catch (e) {
+            err.textContent = '에러: ' + e.message;
+            err.style.display = '';
+            saveBtn.disabled = false;
+        }
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

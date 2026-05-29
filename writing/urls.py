@@ -53,6 +53,7 @@ urlpatterns = [
     path('admin/api/live/sessions/', views.live_sessions_api, name='live_sessions_api'),
     path('api/live/typing/', views.live_typing_update_api, name='live_typing_update'),
     path('api/flashcard/heartbeat/', views.flashcard_heartbeat_api, name='flashcard_heartbeat'),
+    path('api/profile/nickname/', views.set_nickname_api, name='set_nickname'),
 
     # 대전 모드
     path('admin/match/create/', views.match_create, name='match_create'),
