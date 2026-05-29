@@ -126,6 +126,8 @@
 }
 </style>
 
+<form style="display:none">{% csrf_token %}</form>
+
 <div class="fc-wrap">
     <a href="{% url 'writing:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>영작훈련 홈</a>
 
@@ -325,10 +327,8 @@ rebuildVisible();
 
 // 실시간 모니터용 heartbeat — 3초마다, 현재 카드 위치 전송
 (function() {
-    const FC_CSRF = (function() {
-        const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-        return m ? m[1] : '';
-    })();
+    const FC_CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+    if (!FC_CSRF) { console.warn('[flashcard heartbeat] CSRF token not found'); return; }
     async function ping() {
         try {
             await fetch('{% url "writing:flashcard_heartbeat" %}', {
