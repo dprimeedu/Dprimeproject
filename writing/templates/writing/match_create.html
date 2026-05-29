@@ -59,6 +59,43 @@
                 {% endfor %}
             </select>
         </div>
+
+        <div class="mb-3">
+            <label class="form-label">AI 같이 추가 <span class="text-muted small">(선택 — 안 추가하면 학생끼리만 대전)</span></label>
+            <div class="row g-2">
+                <div class="col-4">
+                    <label class="form-label small text-muted">🐢 쉬움</label>
+                    <select name="ai_easy_count" class="form-select form-select-sm">
+                        <option value="0" selected>0마리</option>
+                        <option value="1">1마리</option>
+                        <option value="2">2마리</option>
+                        <option value="3">3마리</option>
+                    </select>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small text-muted">🦊 중간</label>
+                    <select name="ai_medium_count" class="form-select form-select-sm">
+                        <option value="0" selected>0마리</option>
+                        <option value="1">1마리</option>
+                        <option value="2">2마리</option>
+                        <option value="3">3마리</option>
+                    </select>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small text-muted">🐉 어려움</label>
+                    <select name="ai_hard_count" class="form-select form-select-sm">
+                        <option value="0" selected>0마리</option>
+                        <option value="1">1마리</option>
+                        <option value="2">2마리</option>
+                        <option value="3">3마리</option>
+                    </select>
+                </div>
+            </div>
+            <div class="text-muted small mt-1">
+                💡 대기실에서도 [🤖 쉬움/중간/어려움] 버튼으로 추가/제거 가능합니다.
+            </div>
+        </div>
+
         <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-rocket me-1"></i>대전 방 만들기
@@ -66,7 +103,8 @@
             <a href="{% url 'writing:unit_list' %}" class="btn btn-outline-secondary">취소</a>
         </div>
         <div class="text-muted small mt-2">
-            방 만들면 5자리 입장 코드가 생성됩니다. 학생들이 그 코드로 입장하면 대기실에서 만날 수 있어요.
+            방 만들면 5자리 입장 코드가 생성됩니다. 학생들이 그 코드로 입장하면 대기실에서 만날 수 있어요.<br>
+            <strong>학생 없이 AI만 있는 방은 시작할 수 없습니다</strong> — 시작하려면 최소 1명의 학생이 입장해야 해요.
         </div>
     </form>
 </div>

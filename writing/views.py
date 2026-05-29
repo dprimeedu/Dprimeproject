@@ -2603,8 +2603,11 @@ def match_create(request):
 
     try:
         unit_id = int(request.POST.get('unit_id') or 0)
+        ai_easy = max(0, min(3, int(request.POST.get('ai_easy_count') or 0)))
+        ai_medium = max(0, min(3, int(request.POST.get('ai_medium_count') or 0)))
+        ai_hard = max(0, min(3, int(request.POST.get('ai_hard_count') or 0)))
     except (TypeError, ValueError):
-        unit_id = 0
+        return HttpResponseBadRequest('Invalid')
     unit = get_object_or_404(WritingUnit, pk=unit_id, is_active=True)
 
     room = MatchRoom.objects.create(
@@ -2613,6 +2616,18 @@ def match_create(request):
         created_by=request.user,
         status='waiting',
     )
+
+    # AI 즉시 추가 (선택사항)
+    labels = {'easy': '쉬움', 'medium': '중간', 'hard': '어려움'}
+    for diff, n in (('easy', ai_easy), ('medium', ai_medium), ('hard', ai_hard)):
+        for i in range(n):
+            suffix = f' #{i+1}' if n > 1 else ''
+            MatchParticipant.objects.create(
+                room=room, student=None,
+                is_ai=True, ai_difficulty=diff,
+                ai_name=f'🤖 AI ({labels[diff]}){suffix}',
+            )
+
     return redirect('writing:match_room', code=room.code)
 
 
