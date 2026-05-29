@@ -510,7 +510,10 @@ def check_word_api(request):
     session.total_score += score_earned
     if profile.current_word_combo > session.max_word_combo:
         session.max_word_combo = profile.current_word_combo
-    session.save(update_fields=['total_score', 'max_word_combo'])
+    # 단어 제출 → 라이브 타이핑 상태 클리어 (라이브 모니터에서 stale 표시 방지)
+    session.live_input = ''
+    session.live_updated_at = timezone.now()
+    session.save(update_fields=['total_score', 'max_word_combo', 'live_input', 'live_updated_at'])
 
     old_level = scoring.compute_level(profile.total_xp)
     new_level = old_level
@@ -2252,6 +2255,35 @@ def student_goal_update(request, student_id):
     return redirect(f"{reverse('writing:student_report', args=[student.id])}?date={target_date}")
 
 
+@login_required
+@require_POST
+def live_typing_update_api(request):
+    """학생이 타이핑 중인 입력을 200ms 디바운스로 push.
+
+    Body: { session_id, problem_id, word_index, input }
+    가벼운 단일 UPDATE만 수행. 응답은 최소.
+    """
+    try:
+        data = json.loads(request.body)
+        session_id = int(data['session_id'])
+        problem_id = int(data['problem_id'])
+        word_index = int(data['word_index'])
+        student_input = str(data.get('input', ''))[:200]
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    # student=user, session not finished 만 허용 — 단일 UPDATE 1쿼리
+    updated = WritingSession.objects.filter(
+        pk=session_id, student=request.user, finished_at__isnull=True,
+    ).update(
+        live_problem_id=problem_id,
+        live_word_index=word_index,
+        live_input=student_input,
+        live_updated_at=timezone.now(),
+    )
+    return JsonResponse({'ok': bool(updated)})
+
+
 @teacher_required
 def live_dashboard(request):
     """실시간 학습 모니터 페이지."""
@@ -2272,7 +2304,7 @@ def live_sessions_api(request):
         WritingSession.objects.filter(
             finished_at__isnull=True,
             started_at__gte=started_cutoff,
-        ).select_related('student', 'unit').order_by('-started_at')
+        ).select_related('student', 'unit', 'live_problem').order_by('-started_at')
     )
     session_ids = [s.id for s in sessions]
     if not session_ids:
@@ -2297,12 +2329,27 @@ def live_sessions_api(request):
     for s in sessions:
         a = latest.get(s.id)
         last_at = a.created_at if a else s.started_at
+        # 라이브 타이핑 push도 활동으로 간주
+        if s.live_updated_at and s.live_updated_at > last_at:
+            last_at = s.live_updated_at
         if last_at < activity_cutoff:
             continue  # 5분 이상 입력 없으면 "방치/이탈"로 간주, 표시 제외
 
         elapsed_sec = int((now - s.started_at).total_seconds())
         last_ago_sec = int((now - last_at).total_seconds())
         name = s.student.username or getattr(s.student, 'login_id', '') or '학생'
+
+        # 라이브 타이핑: attempt보다 더 최근이고 입력값이 있을 때만 표시
+        live_typing = None
+        if s.live_updated_at and s.live_input:
+            attempt_at = a.created_at if a else s.started_at
+            if s.live_updated_at > attempt_at:
+                live_typing = {
+                    'input': s.live_input,
+                    'word_index': s.live_word_index,
+                    'problem_index': s.live_problem.index if s.live_problem else None,
+                    'seconds_ago': int((now - s.live_updated_at).total_seconds()),
+                }
 
         result.append({
             'id': s.id,
@@ -2338,6 +2385,7 @@ def live_sessions_api(request):
                 'korean': a.problem.korean,
                 'english': a.problem.english,
             },
+            'live_typing': live_typing,
             'status': 'active' if last_ago_sec < 30 else 'idle',
         })
 

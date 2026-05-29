@@ -740,6 +740,8 @@ function loadProblem(idx) {
                     submitWord(i);
                 }
             });
+            // 라이브 타이핑 push — 입력이 바뀔 때마다 250ms 디바운스로 서버에 전송
+            inp.addEventListener('input', () => pushLiveTyping(i, inp.value));
             wordStates[i] = { done: false, attempt: 0, hintLevel: 0 };
             if (firstFocusIdx === -1) firstFocusIdx = i;
         }
@@ -752,6 +754,31 @@ function loadProblem(idx) {
         // 모든 단어가 자동인 경우 → 바로 완료 처리
         onAllWordsDone();
     }
+}
+
+// ── 라이브 타이핑 push (선생님 실시간 모니터용. 250ms 디바운스, fire-and-forget) ──
+let _liveTimer = null;
+let _liveLastSent = '';
+function pushLiveTyping(wordIdx, value) {
+    clearTimeout(_liveTimer);
+    _liveTimer = setTimeout(() => {
+        if (value === _liveLastSent) return;
+        _liveLastSent = value;
+        const problem = PROBLEMS[currentProblemIdx];
+        if (!problem) return;
+        fetch('{% url "writing:live_typing_update" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                session_id: SESSION_ID,
+                problem_id: problem.id,
+                word_index: wordIdx,
+                input: value,
+            }),
+            keepalive: true,
+        }).catch(() => {});
+    }, 250);
 }
 
 // 자동 채우기 단어를 서버에 등록 (auto:true → 점수 0)

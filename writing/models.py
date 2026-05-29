@@ -146,6 +146,16 @@ class WritingSession(models.Model):
         help_text='켜면 점수 ×0.5, 이 세션은 단계 재계산에서 제외',
     )
 
+    # ── 실시간 타이핑 상태 (라이브 모니터용. 단어 제출 시 자동 클리어) ──
+    live_problem = models.ForeignKey(
+        'WritingProblem', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='지금 풀고 있는 문제',
+    )
+    live_word_index = models.IntegerField(default=0)
+    live_input = models.CharField(max_length=200, blank=True, default='')
+    live_updated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'writing_session'
         verbose_name = '풀이 세션'

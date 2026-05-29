@@ -103,6 +103,30 @@
 .live-card .last-input .typed.ok { color: #047857; }
 .live-card .last-input .typed.bad { color: #b91c1c; }
 .live-card .last-input .meta { color: #6b7280; font-size: .7rem; white-space: nowrap; }
+.live-card .typing-now {
+    padding: .5rem .75rem;
+    border-radius: 6px;
+    font-size: .9rem;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1e40af;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: .5rem;
+}
+.live-card .typing-now .typed-now {
+    font-family: ui-monospace, monospace;
+    font-weight: 700;
+}
+.live-card .typing-now .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: #1e40af;
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: caret 1s steps(2, end) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
 .live-card .stats {
     display: flex; justify-content: space-between;
     padding: .55rem 1rem;
@@ -138,7 +162,7 @@
             <div class="live-meta">
                 <strong id="live-count">--</strong>명 학습 중 ·
                 마지막 갱신 <span id="live-time">--:--:--</span>
-                <span class="text-muted ms-2">(3초마다 자동 갱신)</span>
+                <span class="text-muted ms-2">(1.5초마다 자동 갱신)</span>
             </div>
         </div>
         <div class="d-flex gap-2">
@@ -163,7 +187,7 @@
 </div>
 
 <script>
-const POLL_MS = 3000;
+const POLL_MS = 1500;  // 키-단위 라이브 타이핑 반응성 확보
 let pollTimer = null;
 let paused = false;
 let lastCardSig = {};  // 카드별 마지막 시그니처 — flash 애니메이션용
@@ -187,10 +211,22 @@ function hintBadge(level) {
 function buildCard(s) {
     const a = s.last_attempt;
     const cp = s.current_problem;
+    const lt = s.live_typing;
     const dotClass = s.status === 'active' ? 'green' : 'yellow';
 
     let lastBox = '';
-    if (a) {
+    if (lt) {
+        // 학생이 지금 타이핑 중 — 파란 박스 + 커서 깜빡임
+        const typed = escapeHtml(lt.input || '');
+        lastBox = `
+            <div class="typing-now">
+                <div>
+                    <span class="text-primary small">지금 치는 중 (단어 ${lt.word_index + 1})</span>
+                    <div><span class="typed-now">${typed}</span><span class="cursor"></span></div>
+                </div>
+                <div class="meta text-muted small">${agoLabel(lt.seconds_ago)}</div>
+            </div>`;
+    } else if (a) {
         const okClass = a.is_correct ? 'ok' : 'bad';
         const icon = a.is_correct ? '✓' : '✗';
         const typed = escapeHtml(a.input || '(빈 입력)');
@@ -244,7 +280,10 @@ function buildCard(s) {
 
 function cardSig(s) {
     const a = s.last_attempt;
-    return `${a ? a.seconds_ago + '|' + a.input + '|' + a.is_correct : '-'}|${s.score}`;
+    const lt = s.live_typing;
+    const ltKey = lt ? `LT|${lt.word_index}|${lt.input}` : '';
+    const aKey = a ? `A|${a.input}|${a.is_correct}` : '';
+    return `${ltKey}|${aKey}|${s.score}`;
 }
 
 function render(sessions) {
