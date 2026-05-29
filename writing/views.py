@@ -1222,7 +1222,10 @@ def _build_unit_tree(units):
 
 @teacher_required
 def unit_list(request):
-    units = list(WritingUnit.objects.all().order_by('publisher', 'title'))
+    # created_by 까지 join — 템플릿에서 unit.created_by.username 1400번 조회되던 N+1 차단
+    units = list(
+        WritingUnit.objects.select_related('created_by').order_by('publisher', 'title')
+    )
     with _hint_progress_lock:
         running_ids = {uid for uid, s in _hint_progress.items() if s.get('running')}
 
