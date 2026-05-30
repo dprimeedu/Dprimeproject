@@ -75,20 +75,6 @@ def academy_list(request):
     return render(request, "academy_list.html", context)
 
 def academy_list_result(request):
-    """
-    여기서 이제 DB에 있는 해당하는 모든 값들을
-    가져와야 함
-    -> 데이터를 전부 긁어서 보내면 너무 무거우니까
-    실제 데이터 가져오는건 "보기" 눌렀을 때만이고
-    여기서는 쿼리를 가져오지 않음
-    문제수를 가져오고 싶으면 미리 계산을 따로 해서
-    저장을 해놔야 할 듯함
-    로드할때마다 연산하는건 너무 비효율적임
-
-    DB에 따로 테이블을 만들기
-    색인 / 카테고리 / PK / 개수
-    얘는 주기적으로 업데이트 해주면 될듯
-    """
     TABLE_NAMES_DICT = {"Additional_text":"원문추가", "Descriptive_Question":"직보서술형",
                        "DetailedExplanation":"상세해설", "FillinBlank":"객관식빈칸",
                        "Grammarlv1":"어법1단계", "Grammarlv2":"어법2단계", "Grammarlv3":"어법3단계",
@@ -96,13 +82,11 @@ def academy_list_result(request):
                        "Original_text":"원문", "RedBlue":"내신빨파",
                        "SchoolExamtest":"내신TEST", "Summary":"요약문완성",
                        "Translation":"중요영작", "WordTest":"내신단어"}
-    
-    # 선택된 값 가져오기
+
     selected_year = request.GET.getlist("year", [])
     selected_grade = request.GET.getlist("grade", [])
     selected_month = request.GET.getlist('month', [])
-    
-    # KEY_TABLE에서 PK number 가져오기 및 필터링
+
     keys = KeyTable.objects.all()
     if selected_year or selected_grade or selected_month:
         if selected_year:
@@ -114,28 +98,33 @@ def academy_list_result(request):
     else:
         keys = KeyTable.objects.none()
 
-    pk_key_numbers = keys.values_list('pk_number', flat=True)
+    pk_key_numbers = list(keys.values_list('pk_number', flat=True))
     keytable_map = dict(keys.values_list('pk_number', 'total_number'))
+
+    # 쿼리 1회로 전체 CountTable 조회 후 Python에서 table_name별 그룹핑
+    from collections import defaultdict
+    all_counts = CountTable.objects.filter(
+        pk_number__in=pk_key_numbers
+    ).values('table_name', 'pk_number', 'count')
+
+    counts_by_table = defaultdict(list)
+    for c in all_counts:
+        counts_by_table[c['table_name']].append({
+            'pk_number': c['pk_number'],
+            'count': int(c['count']),
+            'total_number': keytable_map.get(c['pk_number']),
+        })
 
     exams = []
     for table, korname in TABLE_NAMES_DICT.items():
-        counts = CountTable.objects.filter(pk_number__in=pk_key_numbers, table_name=table).values('pk_number', 'count')
-        for val in counts:
-            val['total_number'] = keytable_map.get(val['pk_number'])
-        # 📌 (번호(개수)) 문자열 리스트 생성
-        # question_list = ', '.join(f"{num['번호']}({num['count']})" for num in number_counts)
-        question_list = [
-        {"num": c["total_number"], "count": c["count"]}
-        for c in counts] 
-
-
-        total_count = sum(c['count'] for c in counts) if counts else 0  # 총 문제 수 계산
-        exams.append( {
+        counts = counts_by_table.get(table, [])
+        question_list = [{"num": c["total_number"], "count": c["count"]} for c in counts]
+        total_count = sum(c['count'] for c in counts)
+        exams.append({
             'question_list': question_list,
-            'question_counter': total_count,  # 총 문제 수
-            #'link': ['색인']  # 필요에 따라 링크 설정
+            'question_counter': total_count,
             'link': None,
-            'category': korname
+            'category': korname,
         })
 
     context = {
