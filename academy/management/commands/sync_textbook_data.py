@@ -284,6 +284,12 @@ class Command(BaseCommand):
         sync_log.save()
         self.stdout.write(f'   📋 SyncLog #{sync_log.id} 기록됨')
 
+        # Count_Table 재구축 (dry-run이 아닐 때만)
+        if not self.dry_run:
+            self.stdout.write('\n📊 Count_Table 재구축 중...')
+            from academy.management.commands.rebuild_count_table import rebuild
+            rebuild(stdout=self.stdout, stderr=self.stderr)
+
     # ───────────────────────────────────────────────────────────
 
     def _get_or_create_key(self, cursor, category, book, grade, total_number, qtype=''):

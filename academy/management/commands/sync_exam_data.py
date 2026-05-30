@@ -361,6 +361,12 @@ class Command(BaseCommand):
                 f"   📋 SyncLog #{sync_log.id} 기록됨 — /admin/academy/synclog/{sync_log.id}/"
             )
 
+        # Count_Table 재구축 (dry-run이 아닐 때만)
+        if not self.dry_run:
+            self.stdout.write("\n📊 Count_Table 재구축 중...")
+            from academy.management.commands.rebuild_count_table import rebuild
+            rebuild(stdout=self.stdout, stderr=self.stderr)
+
     # ───────────────────────────────────────────────────────────
     # 헬퍼
     # ───────────────────────────────────────────────────────────
