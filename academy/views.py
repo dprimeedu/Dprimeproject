@@ -127,12 +127,20 @@ def academy_list_result(request):
             'category': korname,
         })
 
+    all_grades = list(KeyTable.objects.values_list('grade', flat=True).distinct().order_by('grade'))
+    all_years  = sorted(KeyTable.objects.values_list('year',  flat=True).distinct())
+    all_months = sorted(KeyTable.objects.values_list('month', flat=True).distinct(),
+                        key=lambda m: int(m))
+
     context = {
         "exams": exams,
         "categories": TABLE_NAMES_DICT,
         "selected_year": selected_year,
         "selected_grade": selected_grade,
-        "selected_month" : selected_month,
+        "selected_month": selected_month,
+        "all_grades": all_grades,
+        "all_years": all_years,
+        "all_months": all_months,
     }
 
     return render(request, "academy_list_result.html", context)
@@ -412,5 +420,85 @@ def download_pdf(request):
 
     pdf.showPage()
     pdf.save()
-    
+
+    return response
+
+
+# ---------------------------------------------------------------------------
+# HWPX 공통 전처리 유틸
+# ---------------------------------------------------------------------------
+def _hwpx_clean(text):
+    """DB 저장 텍스트를 HWPX용으로 변환: \\r\\n → 줄바꿈, uFFF0 밑줄 마커 제거.
+        \t -> 한/글에서 제어 문자로 사용되나 이게 직접적으로 들어가면 렌더링 오류. 제거
+    """
+    if not text:
+        return ""
+    text = str(text).replace('\\r\\n', '\n').replace('\t', ' ')
+    text = re.sub(r'￰(.*?)￰', r'\1', text)
+    return text
+
+
+def _hwpx_choices(option_str):
+    """선택지 문자열(\\r\\n 구분)을 리스트로 분리."""
+    if not option_str:
+        return []
+    return [c for c in _hwpx_clean(option_str).replace('\t', ' ').split('\n') if c.strip()]
+
+
+# ---------------------------------------------------------------------------
+# 변형문제 HWPX 다운로드
+# ---------------------------------------------------------------------------
+@login_required(login_url='/accounts/login/')
+def download_modified_hwpx(request):
+    from common.hwpx import TEMPLATE_PATH, REF_PATH
+    from common.hwpx.hwpx_builder import build_hwpx_bytes
+
+    selected_year = request.GET.getlist('year', [])
+    selected_grade = request.GET.getlist('grade', [])
+    selected_month = [m for m in request.GET.getlist('month', []) if m]
+
+    pknum = KeyTable.objects.all()
+    if selected_year and selected_grade and selected_month:
+        pknum = pknum.filter(
+            Q(year__in=selected_year) &
+            Q(grade__in=selected_grade) &
+            Q(month__in=selected_month)
+        )
+    else:
+        pknum = KeyTable.objects.none()
+
+    pk_numbers = list(pknum.values_list('pk_number', flat=True))
+    keytable_map = dict(pknum.values_list('pk_number', 'total_number'))
+
+    rows = (ModifiedQuestions_Data.objects
+            .filter(pk_number__in=pk_numbers)
+            .values('index', 'question', 'sentence', 'option', 'answer', 'pk_number')
+            .order_by('pk_number', 'index'))
+
+    questions = []
+    for r in rows:
+        total_number = keytable_map.get(r['pk_number'], '')
+        questions.append({
+            "date":    f"[{total_number}]" if total_number else "",
+            "prompt":  _hwpx_clean(r.get('question', '')),
+            "passage": _hwpx_clean(r.get('sentence', '')),
+            "choices": _hwpx_choices(r.get('option', '')),
+            "answer":  r.get('answer', '').replace('\t', ' '),
+        })
+
+    year_str = ', '.join(selected_year)
+    grade_str = ', '.join(selected_grade)
+    month_str = ', '.join(selected_month)
+    header_text = f"{year_str}년도 {grade_str} {month_str}월 변형문제"
+
+    data = build_hwpx_bytes(TEMPLATE_PATH, header_text, questions)
+
+    import urllib.parse
+    filename = f"변형문제_{year_str}_{grade_str}_{month_str}.hwpx"
+    encoded_filename = urllib.parse.quote(filename, safe='')
+    response = HttpResponse(data, content_type='application/hwp+zip')
+    response['Content-Disposition'] = (
+        f"attachment; filename=\"exam.hwpx\"; filename*=UTF-8''{encoded_filename}"
+    )
+    print(questions)
     return response
