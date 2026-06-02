@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+    <div class="alert alert-warning text-center py-5 mt-3">
+        <div style="font-size: 3rem;">⏳</div>
+        <h4 class="mt-2">재원생 승인 대기 중</h4>
+        <p class="mb-0">학원에서 재원생으로 승인하면 단어훈련을 이용할 수 있습니다.</p>
+    </div>
+</div>
+{% endblock %}

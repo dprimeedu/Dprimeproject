@@ -49,6 +49,28 @@
         </div>
     </div>
 
+    <!-- 대전 입장 — 선생님이 알려준 코드로 친구들과 함께 풀기 -->
+    <div class="card mb-4" style="border: 1px solid #fcd34d; background: #fffbeb;">
+        <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
+            <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-gamepad fa-lg" style="color:#d97706;"></i>
+                <div>
+                    <strong>대전 입장</strong>
+                    <div class="text-muted small">선생님이 알려준 코드로 친구들과 함께 풀기</div>
+                </div>
+            </div>
+            <form onsubmit="event.preventDefault(); const c=this.code.value.trim().toUpperCase(); if(c) window.location.href='{% url 'writing:home' %}match/'+c+'/';"
+                  class="d-flex gap-1" style="max-width: 220px;">
+                <input name="code" maxlength="8" placeholder="ABC42" required autocomplete="off"
+                       class="form-control form-control-sm"
+                       style="font-family: ui-monospace, monospace; letter-spacing: 3px; text-transform: uppercase; text-align: center; font-weight: 700;">
+                <button type="submit" class="btn btn-sm btn-warning text-nowrap">
+                    <i class="fas fa-sign-in-alt me-1"></i>입장
+                </button>
+            </form>
+        </div>
+    </div>
+
     <div class="section-header">
         <h3><i class="fas fa-pen-nib me-2"></i>영작훈련 단원</h3>
         <p class="section-desc">
