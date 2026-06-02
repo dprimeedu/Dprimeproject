@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'vocab:student_admin' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>학생 관리</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-file-excel me-2"></i>학생 일괄 등록</h3>
+        <p class="section-desc">엑셀로 학생 계정을 일괄 생성합니다. (영작훈련과 동일 계정 풀)</p>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <p class="mb-2">엑셀 형식: <strong>1열 색인 · 2열 ID(login_id) · 3열 이름</strong> (헤더 1행)</p>
+            <p class="text-muted small">기본 비밀번호는 <code>{{ default_password }}</code> 로 설정됩니다. 이미 있는 ID는 건너뜁니다.</p>
+            <a href="{% url 'vocab:student_template' %}" class="btn btn-outline-secondary btn-sm mb-3">
+                <i class="fas fa-download me-1"></i>빈 양식 다운로드
+            </a>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <input type="file" name="excel_file" accept=".xlsx,.xls" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-upload me-1"></i>업로드 · 등록
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

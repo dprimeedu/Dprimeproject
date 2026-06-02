@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% block content %}
+<form style="display:none">{% csrf_token %}</form>
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3><i class="fas fa-layer-group me-2"></i>단어 단원 관리</h3>
+            <p class="section-desc mb-0">학교별 단어장 단원과 배정 현황. 단어 import는 서버에서 <code>manage.py import_vocab</code>.</p>
+        </div>
+        <a href="{% url 'vocab:student_admin' %}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-user-graduate me-1"></i>학생 관리로
+        </a>
+    </div>
+
+    {% if units %}
+    <form method="post" action="{% url 'vocab:unit_delete' %}" id="unitForm"
+          onsubmit="return confirm('선택한 단원을 단어·배정까지 삭제합니다. 계속할까요?');">
+        {% csrf_token %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:36px;"><input type="checkbox" id="checkAll"></th>
+                        <th>학교</th><th>단원명</th><th class="text-end">단어</th>
+                        <th class="text-end">배정 학생</th><th class="text-end">배정</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for u in units %}
+                    <tr>
+                        <td><input type="checkbox" name="unit_ids" value="{{ u.id }}" class="rowCheck"></td>
+                        <td><span class="badge bg-secondary">{{ u.school|default:u.grade }}</span></td>
+                        <td>{{ u.title }}</td>
+                        <td class="text-end">{{ u.word_count }}</td>
+                        <td class="text-end">{{ u.assigned_count }}명</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-success"
+                                    onclick="openUnitAssign({{ u.id }}, '{{ u.title|escapejs }}')">
+                                <i class="fas fa-user-plus me-1"></i>학생 배정
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit" class="btn btn-outline-danger btn-sm">
+            <i class="fas fa-trash me-1"></i>선택 단원 삭제
+        </button>
+    </form>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        등록된 단어 단원이 없습니다. 서버에서 <code>python manage.py import_vocab "&lt;통합본.xlsx&gt;" --school 학교 --grade 고2</code> 로 가져오세요.
+    </div>
+    {% endif %}
+</div>
+
+<!-- 단원별 학생 배정 모달 -->
+<div class="modal fade" id="unitAssignModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i><span id="uaTitle"></span> — 학생 배정</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between mb-2">
+            <input type="text" id="uaSearch" class="form-control form-control-sm w-auto" placeholder="이름/ID 검색">
+            <div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="uaToggleAll(true)">전체선택</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="uaToggleAll(false)">전체해제</button>
+            </div>
+        </div>
+        <div id="uaList" class="list-group small"></div>
+      </div>
+      <div class="modal-footer">
+        <span id="uaStatus" class="me-auto text-muted small"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-success" id="uaSave"><i class="fas fa-check me-1"></i>저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+document.getElementById('checkAll')?.addEventListener('change', e => {
+    document.querySelectorAll('.rowCheck').forEach(c => c.checked = e.target.checked);
+});
+
+let uaUnitId = null;
+const uaModal = new bootstrap.Modal(document.getElementById('unitAssignModal'));
+
+async function openUnitAssign(unitId, title) {
+    uaUnitId = unitId;
+    document.getElementById('uaTitle').textContent = title;
+    document.getElementById('uaList').innerHTML = '<div class="text-muted p-3">불러오는 중...</div>';
+    document.getElementById('uaStatus').textContent = '';
+    uaModal.show();
+    const r = await fetch(`/training/vocab/admin/units/${unitId}/assignments/`, {credentials:'same-origin'});
+    const d = await r.json();
+    renderUaList(d.students);
+    document.getElementById('uaStatus').textContent = `현재 ${d.assigned_count}명 배정됨`;
+}
+function renderUaList(students) {
+    const html = students.map(s => `
+        <label class="list-group-item d-flex align-items-center gap-2 ua-item" data-key="${(s.login_id+' '+s.name).toLowerCase()}">
+            <input type="checkbox" class="form-check-input m-0 ua-cb" value="${s.id}" ${s.is_assigned?'checked':''}>
+            <span><code>${s.login_id}</code> ${s.name}</span>
+        </label>`).join('');
+    document.getElementById('uaList').innerHTML = html || '<div class="text-muted p-3">학생이 없습니다.</div>';
+}
+function uaToggleAll(v) {
+    document.querySelectorAll('#uaList .ua-item:not([style*="none"]) .ua-cb').forEach(c => c.checked = v);
+}
+document.getElementById('uaSearch').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('#uaList .ua-item').forEach(it => {
+        it.style.display = it.dataset.key.includes(q) ? '' : 'none';
+    });
+});
+document.getElementById('uaSave').addEventListener('click', async () => {
+    const ids = [...document.querySelectorAll('#uaList .ua-cb:checked')].map(c => parseInt(c.value));
+    const btn = document.getElementById('uaSave'); btn.disabled = true;
+    try {
+        const r = await fetch(`/training/vocab/admin/units/${uaUnitId}/assignments/update/`, {
+            method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+            credentials:'same-origin', body: JSON.stringify({student_ids: ids}),
+        });
+        const d = await r.json();
+        if (d.success) { uaModal.hide(); location.reload(); }
+        else throw new Error('실패');
+    } catch (e) { alert('저장 실패: ' + e.message); btn.disabled = false; }
+});
+</script>
+{% endblock %}

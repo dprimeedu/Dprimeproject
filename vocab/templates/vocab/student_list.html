@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+{% block content %}
+<form style="display:none">{% csrf_token %}</form>
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3><i class="fas fa-user-graduate me-2"></i>단어훈련 학생 관리</h3>
+            <p class="section-desc mb-0">학생 계정은 영작훈련과 공유됩니다. 여기서는 <strong>단어 단원 배정</strong>을 관리합니다.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'vocab:unit_list' %}" class="btn btn-outline-primary btn-sm"><i class="fas fa-layer-group me-1"></i>단원 관리</a>
+            <a href="{% url 'vocab:student_upload' %}" class="btn btn-success btn-sm"><i class="fas fa-file-excel me-1"></i>학생 일괄 등록</a>
+        </div>
+    </div>
+
+    {% if students %}
+    <form method="post" action="{% url 'vocab:student_action' %}" id="stuForm">
+        {% csrf_token %}
+        <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+            <input type="text" id="stuSearch" class="form-control form-control-sm w-auto" placeholder="이름/ID 검색">
+            <select name="action" class="form-select form-select-sm w-auto">
+                <option value="">일괄 액션…</option>
+                <option value="approve">재원생 승인</option>
+                <option value="unapprove">승인 취소</option>
+                <option value="activate">활성화</option>
+                <option value="deactivate">비활성화</option>
+                <option value="delete">삭제</option>
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary"
+                    onclick="return confirm('선택한 학생에 액션을 적용할까요?');">적용</button>
+            <span class="text-muted small ms-auto">기본 비번: <code>{{ default_password }}</code></span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:36px;"><input type="checkbox" id="checkAll"></th>
+                        <th>ID</th><th>이름</th><th>승인</th><th>활성</th>
+                        <th class="text-end">배정 단원</th><th class="text-end">배정</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in students %}
+                    <tr class="stu-row" data-key="{{ s.login_id|default:''|lower }} {{ s.username|default:''|lower }}">
+                        <td><input type="checkbox" name="student_ids" value="{{ s.id }}" class="rowCheck"></td>
+                        <td><code>{{ s.login_id|default:'—' }}</code></td>
+                        <td>{{ s.username }}</td>
+                        <td>{% if s.is_approved %}<span class="badge bg-success">승인</span>{% else %}<span class="badge bg-warning text-dark">대기</span>{% endif %}</td>
+                        <td>{% if s.is_active %}<span class="badge bg-light text-dark">활성</span>{% else %}<span class="badge bg-secondary">비활성</span>{% endif %}</td>
+                        <td class="text-end">{{ s.vocab_assigned_count }}개</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-success"
+                                    onclick="openStuAssign({{ s.id }}, '{{ s.username|escapejs }}', '{{ s.login_id|default:''|escapejs }}')">
+                                <i class="fas fa-book me-1"></i>단어장
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        등록된 학생이 없습니다. <a href="{% url 'vocab:student_upload' %}">학생 일괄 등록</a>으로 추가하세요.
+    </div>
+    {% endif %}
+</div>
+
+<!-- 학생별 단어장 배정 모달 -->
+<div class="modal fade" id="stuAssignModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-book me-2"></i><span id="saTitle"></span> — 단어장 배정</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-end gap-1 mb-2">
+            <button class="btn btn-sm btn-outline-secondary" onclick="saToggleAll(true)">전체선택</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="saToggleAll(false)">전체해제</button>
+        </div>
+        <div id="saList" class="list-group small"></div>
+      </div>
+      <div class="modal-footer">
+        <span id="saStatus" class="me-auto text-muted small"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button type="button" class="btn btn-success" id="saSave"><i class="fas fa-check me-1"></i>저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+document.getElementById('checkAll')?.addEventListener('change', e => {
+    document.querySelectorAll('.rowCheck').forEach(c => {
+        if (c.closest('tr').style.display !== 'none') c.checked = e.target.checked;
+    });
+});
+document.getElementById('stuSearch')?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.stu-row').forEach(r => {
+        r.style.display = r.dataset.key.includes(q) ? '' : 'none';
+    });
+});
+
+let saStudentId = null;
+const saModal = new bootstrap.Modal(document.getElementById('stuAssignModal'));
+
+async function openStuAssign(sid, name, loginId) {
+    saStudentId = sid;
+    document.getElementById('saTitle').textContent = (loginId ? loginId + ' ' : '') + name;
+    document.getElementById('saList').innerHTML = '<div class="text-muted p-3">불러오는 중...</div>';
+    document.getElementById('saStatus').textContent = '';
+    saModal.show();
+    const r = await fetch(`/training/vocab/admin/api/students/${sid}/assignments/`, {credentials:'same-origin'});
+    const d = await r.json();
+    const html = d.units.map(u => `
+        <label class="list-group-item d-flex align-items-center gap-2">
+            <input type="checkbox" class="form-check-input m-0 sa-cb" value="${u.id}" ${u.is_assigned?'checked':''}>
+            <span><span class="badge bg-secondary">${u.school||u.grade}</span> ${u.title} <span class="text-muted">(${u.word_count}단어)</span></span>
+        </label>`).join('');
+    document.getElementById('saList').innerHTML = html || '<div class="text-muted p-3">단원이 없습니다.</div>';
+    document.getElementById('saStatus').textContent = `현재 ${d.assigned_count}개 배정됨`;
+}
+function saToggleAll(v) { document.querySelectorAll('#saList .sa-cb').forEach(c => c.checked = v); }
+document.getElementById('saSave').addEventListener('click', async () => {
+    const ids = [...document.querySelectorAll('#saList .sa-cb:checked')].map(c => parseInt(c.value));
+    const btn = document.getElementById('saSave'); btn.disabled = true;
+    try {
+        const r = await fetch(`/training/vocab/admin/api/students/${saStudentId}/assignments/update/`, {
+            method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+            credentials:'same-origin', body: JSON.stringify({unit_ids: ids}),
+        });
+        const d = await r.json();
+        if (d.success) { saModal.hide(); location.reload(); }
+        else throw new Error('실패');
+    } catch (e) { alert('저장 실패: ' + e.message); btn.disabled = false; }
+});
+</script>
+{% endblock %}
