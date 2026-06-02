@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'acad',
     'common',
     'writing',
+    'vocab',
     'academy_tools',
 
 ]

@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+.fc-wrap { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+.fc-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
+}
+.fc-counter { font-size: 1.1rem; color: var(--primary-color); font-weight: 700; }
+.fc-mode-toggle {
+    display: flex; align-items: center; gap: 0.5rem;
+    background: white; border: 1px solid #e5e7eb; border-radius: 999px;
+    padding: 0.3rem 0.9rem; cursor: pointer; font-size: 0.9rem;
+}
+.fc-mode-toggle input { margin: 0; cursor: pointer; }
+.fc-mode-toggle.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.fc-card-container { perspective: 1500px; margin: 2rem 0; }
+.fc-card {
+    position: relative; width: 100%; min-height: 320px; cursor: pointer;
+    transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(.4,.0,.2,1);
+}
+.fc-card.flipped { transform: rotateX(180deg); }
+.fc-face {
+    position: absolute; inset: 0; backface-visibility: hidden;
+    background: #ffffff; border-radius: 12px; padding: 3rem 2rem;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,.08); border: 1px solid #e5e7eb;
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+}
+.fc-face .label { position: absolute; top: 1.25rem; left: 1.5rem; font-size: 0.8rem; font-weight: 500; color: #9ca3af; }
+.fc-face .sub { position: absolute; bottom: 1.25rem; right: 1.5rem; font-size: 0.75rem; color: #d1d5db; }
+.fc-face .text { font-size: 1.8rem; font-weight: 500; line-height: 1.5; color: #111111; }
+.fc-back { transform: rotateX(180deg); }
+.fc-star {
+    position: absolute; top: 1rem; right: 1.25rem; background: none; border: 0;
+    font-size: 2rem; color: #d1d5db; cursor: pointer; line-height: 1;
+    transition: all 0.15s ease; z-index: 2;
+}
+.fc-star:hover { transform: scale(1.15); }
+.fc-star.on { color: #f59e0b; }
+.fc-controls { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; }
+.fc-progress { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+.fc-progress .bar { height: 100%; background: var(--primary-color); transition: width .3s; }
+.fc-empty { text-align: center; padding: 4rem 2rem; color: #6b7280; background: white; border-radius: 16px; border: 2px dashed #e5e7eb; }
+</style>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<div class="fc-wrap">
+    <a href="{% url 'vocab:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
+
+    <div class="fc-header">
+        <h3 class="mb-0"><i class="fas fa-layer-group me-2"></i>{{ unit.title }}</h3>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <label class="fc-mode-toggle" id="dirToggle" title="앞면을 단어/뜻 중 무엇으로 볼지">
+                <input type="checkbox" id="dirCb">
+                <span>뜻 먼저 보기</span>
+            </label>
+            <label class="fc-mode-toggle" id="starModeToggle">
+                <input type="checkbox" id="starOnlyCb">
+                <span>⭐ 별표만 (<span id="starCount">{{ star_count }}</span>)</span>
+            </label>
+            <div class="fc-counter"><span id="fcCounter">1</span> / <span id="fcTotal">{{ total }}</span></div>
+        </div>
+    </div>
+
+    <div id="fcMain">
+        <div class="fc-card-container">
+            <div class="fc-card" id="fcCard">
+                <button class="fc-star" id="fcStar" onclick="toggleStar(event)" aria-label="별표">☆</button>
+                <div class="fc-face fc-front">
+                    <div class="label" id="fcFrontLabel">단어</div>
+                    <div class="text" id="fcFront">불러오는 중...</div>
+                    <div class="sub" id="fcFrontSub"></div>
+                </div>
+                <div class="fc-face fc-back">
+                    <div class="label" id="fcBackLabel">뜻</div>
+                    <div class="text" id="fcBack"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="fc-controls">
+            <button class="btn btn-outline-secondary" id="fcPrev" onclick="prevCard()">
+                <i class="fas fa-chevron-left me-1"></i>이전
+            </button>
+            <div class="fc-progress"><div class="bar" id="fcBar" style="width: 0%"></div></div>
+            <button class="btn btn-primary" id="fcNext" onclick="nextCard()">
+                다음<i class="fas fa-chevron-right ms-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="fcEmpty" class="fc-empty" style="display:none;">
+        <div style="font-size: 3rem;">⭐</div>
+        <h4 class="mt-2">별표한 단어가 없어요</h4>
+        <p class="mb-0">카드 우상단의 별표를 눌러 '모르는 단어'를 표시하면 여기서 모아 볼 수 있어요.</p>
+    </div>
+</div>
+
+<script>
+const ALL_CARDS = {{ cards_json|safe }};
+const STAR_URL = '{% url "vocab:star_toggle" %}';
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+
+// 별표 상태는 서버 데이터(card.starred)를 신뢰. id 기준 Set.
+let starred = new Set(ALL_CARDS.filter(c => c.starred).map(c => c.id));
+let starOnly = false;
+let dirReversed = false;  // false: 단어→뜻, true: 뜻→단어
+let visible = ALL_CARDS.slice();
+let idx = 0;
+
+function updateStarCount() {
+    document.getElementById('starCount').textContent = starred.size;
+}
+
+function rebuildVisible() {
+    visible = starOnly ? ALL_CARDS.filter(c => starred.has(c.id)) : ALL_CARDS.slice();
+    if (idx >= visible.length) idx = Math.max(0, visible.length - 1);
+    render();
+}
+
+function render() {
+    const main = document.getElementById('fcMain');
+    const empty = document.getElementById('fcEmpty');
+    document.getElementById('fcTotal').textContent = visible.length;
+    if (visible.length === 0) {
+        main.style.display = 'none';
+        empty.style.display = '';
+        return;
+    }
+    main.style.display = '';
+    empty.style.display = 'none';
+
+    const c = visible[idx];
+    const wordText = c.word, meaningText = c.meaning;
+    if (!dirReversed) {
+        document.getElementById('fcFrontLabel').textContent = '단어';
+        document.getElementById('fcFront').textContent = wordText;
+        document.getElementById('fcBackLabel').textContent = '뜻';
+        document.getElementById('fcBack').textContent = meaningText;
+    } else {
+        document.getElementById('fcFrontLabel').textContent = '뜻';
+        document.getElementById('fcFront').textContent = meaningText;
+        document.getElementById('fcBackLabel').textContent = '단어';
+        document.getElementById('fcBack').textContent = wordText;
+    }
+    document.getElementById('fcFrontSub').textContent = c.sub_unit || '';
+
+    document.getElementById('fcCounter').textContent = idx + 1;
+    document.getElementById('fcCard').classList.remove('flipped');
+    document.getElementById('fcBar').style.width = ((idx + 1) / visible.length * 100) + '%';
+    document.getElementById('fcPrev').disabled = idx === 0;
+    document.getElementById('fcNext').disabled = idx === visible.length - 1;
+
+    const star = document.getElementById('fcStar');
+    if (starred.has(c.id)) { star.textContent = '★'; star.classList.add('on'); }
+    else { star.textContent = '☆'; star.classList.remove('on'); }
+}
+
+function flipCard() {
+    if (visible.length === 0) return;
+    document.getElementById('fcCard').classList.toggle('flipped');
+}
+function nextCard() { if (idx < visible.length - 1) { idx++; render(); } }
+function prevCard() { if (idx > 0) { idx--; render(); } }
+
+async function toggleStar(e) {
+    e.stopPropagation();
+    if (visible.length === 0) return;
+    const c = visible[idx];
+    const want = !starred.has(c.id);
+    // 낙관적 업데이트
+    if (want) starred.add(c.id); else starred.delete(c.id);
+    // ALL_CARDS의 원본도 갱신 (별표만 모드 재구성 대비)
+    const orig = ALL_CARDS.find(x => x.id === c.id);
+    if (orig) orig.starred = want;
+    updateStarCount();
+    if (starOnly) rebuildVisible(); else render();
+
+    try {
+        const r = await fetch(STAR_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            credentials: 'same-origin',
+            body: JSON.stringify({ word_id: c.id, starred: want }),
+        });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.error || 'fail');
+    } catch (err) {
+        // 실패 시 롤백
+        if (want) starred.delete(c.id); else starred.add(c.id);
+        if (orig) orig.starred = !want;
+        updateStarCount();
+        if (starOnly) rebuildVisible(); else render();
+        alert('별표 저장 실패: ' + err.message);
+    }
+}
+
+document.getElementById('starOnlyCb').addEventListener('change', e => {
+    starOnly = e.target.checked;
+    document.getElementById('starModeToggle').classList.toggle('active', starOnly);
+    idx = 0;
+    rebuildVisible();
+});
+document.getElementById('dirCb').addEventListener('change', e => {
+    dirReversed = e.target.checked;
+    document.getElementById('dirToggle').classList.toggle('active', dirReversed);
+    render();
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault(); flipCard();
+    } else if (e.key === 'ArrowRight') { nextCard(); }
+    else if (e.key === 'ArrowLeft') { prevCard(); }
+    else if (e.key === 's' || e.key === 'S') { toggleStar({ stopPropagation: () => {} }); }
+});
+
+// 카드 탭/클릭 + 스와이프 (모바일·태블릿)
+(function () {
+    const card = document.getElementById('fcCard');
+    const SWIPE = 50;
+    let startX = 0, startY = 0, swiped = false;
+    card.addEventListener('touchstart', e => {
+        if (e.target.closest('.fc-star')) return;
+        swiped = false;
+        const t = e.changedTouches[0]; startX = t.clientX; startY = t.clientY;
+    }, { passive: true });
+    card.addEventListener('touchend', e => {
+        if (e.target.closest('.fc-star')) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - startX, dy = t.clientY - startY;
+        if (Math.abs(dx) < SWIPE && Math.abs(dy) < SWIPE) return;
+        swiped = true;
+        if (Math.abs(dx) > Math.abs(dy)) { if (dx < 0) nextCard(); else prevCard(); }
+        else { flipCard(); }
+    }, { passive: true });
+    card.addEventListener('click', e => {
+        if (e.target.closest('.fc-star')) return;
+        if (swiped) { swiped = false; return; }
+        flipCard();
+    });
+})();
+
+updateStarCount();
+rebuildVisible();
+</script>
+{% endblock %}
