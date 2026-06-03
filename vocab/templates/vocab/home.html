@@ -52,6 +52,22 @@
                             <i class="fas fa-pen me-1"></i>테스트 (시험 범위 미배정)
                         </button>
                         {% endif %}
+                        {% if info.quizlet_ranges %}
+                        <div class="mt-1">
+                            <p class="small text-muted mb-1" style="font-size:0.78rem;">
+                                <i class="fas fa-bolt me-1" style="color:#f59e0b;"></i>퀴즈렛 (100단어 세트)
+                            </p>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for qr in info.quizlet_ranges %}
+                                <a href="{% url 'vocab:range_flashcard' qr.id %}"
+                                   class="btn btn-sm btn-outline-warning"
+                                   title="{{ qr.start_index }}~{{ qr.end_index }}번 플래시카드">
+                                    {{ qr.start_index }}-{{ qr.end_index }}
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

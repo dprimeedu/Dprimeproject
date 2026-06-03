@@ -64,11 +64,18 @@ def student_home(request):
 
     # 단원별 학생의 활성 시험범위(내신단어TEST) — 단원 카드 '테스트' 버튼이 시험을 띄움
     range_test_map = {}
+    quizlet_map = {}
     if is_assigned_view:
         for rt in (VocabRangeTest.objects
                    .filter(student=request.user, is_active=True, unit_id__in=unit_ids)
-                   .order_by('unit_id', '-created_at')):
-            range_test_map.setdefault(rt.unit_id, rt)  # 단원별 최신 1건
+                   .order_by('unit_id', '-created_at', 'start_index')):
+            if rt.source_label.startswith('퀴즈렛'):
+                quizlet_map.setdefault(rt.unit_id, []).append(rt)
+            else:
+                range_test_map.setdefault(rt.unit_id, rt)  # 단원별 최신 1건
+        # 퀴즈렛 범위는 start_index 순으로 정렬
+        for uid in quizlet_map:
+            quizlet_map[uid].sort(key=lambda r: r.start_index)
 
     unit_info = []
     for unit in units:
@@ -79,6 +86,7 @@ def student_home(request):
             'word_count': word_count_map.get(unit.id, 0),
             'star_count': star_count_map.get(unit.id, 0),
             'range_test': rt,
+            'quizlet_ranges': quizlet_map.get(unit.id, []),
         })
 
     return render(request, 'vocab/home.html', {
@@ -879,3 +887,24 @@ def range_results_api(request):
         })
     return JsonResponse({'success': True, 'results': results},
                         json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+@require_GET
+def unit_word_counts_api(request):
+    """활성 단원별 학교·단어 수 조회 (퀴즈렛 배정 스크립트용).
+    GET ?token=...
+    return: {success, units: [{school, title, word_count}]}
+    """
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+
+    rows = (VocabUnit.objects
+            .filter(is_active=True)
+            .annotate(word_count=Count('words'))
+            .values('school', 'title', 'word_count'))
+    return JsonResponse({
+        'success': True,
+        'units': list(rows),
+    }, json_dumps_params={'ensure_ascii': False})

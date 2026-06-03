@@ -27,6 +27,7 @@ urlpatterns = [
     # 외부 자동화(개별단어장생성.py) 연동 — 토큰 인증
     path('api/range/import/', views.range_import_api, name='range_import'),
     path('api/range/results/', views.range_results_api, name='range_results'),
+    path('api/unit/word-counts/', views.unit_word_counts_api, name='unit_word_counts'),
 
     # 선생님 / 관리자 — 단원 관리
     path('admin/units/', views.unit_list, name='unit_list'),
