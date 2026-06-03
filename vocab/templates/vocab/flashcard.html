@@ -82,10 +82,16 @@
 <form style="display:none">{% csrf_token %}</form>
 
 <div class="fc-wrap">
-    {% if range_title %}
-    <a href="{% url 'vocab:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
+    {% if viewing_student %}
+    <a href="{% url 'vocab:student_admin' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>학생 관리</a>
     {% else %}
     <a href="{% url 'vocab:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
+    {% endif %}
+
+    {% if viewing_student %}
+    <div class="alert alert-warning py-2 mt-2 mb-0">
+        <i class="fas fa-user-check me-1"></i><b>{{ viewing_student }}</b> 학생의 시험 범위입니다. 옆에서 보며 점검하세요. (⭐ = 학생이 어려워한 단어)
+    </div>
     {% endif %}
 
     <div class="fc-header">

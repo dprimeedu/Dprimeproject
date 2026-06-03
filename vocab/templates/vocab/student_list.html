@@ -38,6 +38,7 @@
                     <tr>
                         <th style="width:36px;"><input type="checkbox" id="checkAll"></th>
                         <th>ID</th><th>이름</th><th>승인</th><th>활성</th>
+                        <th>시험 범위 (플래시카드로 점검)</th>
                         <th class="text-end">배정 단원</th><th class="text-end">배정</th>
                     </tr>
                 </thead>
@@ -49,6 +50,16 @@
                         <td>{{ s.username }}</td>
                         <td>{% if s.is_approved %}<span class="badge bg-success">승인</span>{% else %}<span class="badge bg-warning text-dark">대기</span>{% endif %}</td>
                         <td>{% if s.is_active %}<span class="badge bg-light text-dark">활성</span>{% else %}<span class="badge bg-secondary">비활성</span>{% endif %}</td>
+                        <td>
+                            {% for rt in s.range_tests %}
+                            <a href="{% url 'vocab:range_flashcard' rt.id %}" target="_blank" rel="noopener"
+                               class="btn btn-sm btn-info text-white mb-1" title="새 탭에서 이 학생 범위를 플래시카드로 실행">
+                                <i class="fas fa-clone me-1"></i>{{ rt.label }}
+                            </a>
+                            {% empty %}
+                            <span class="text-muted small">미배정</span>
+                            {% endfor %}
+                        </td>
                         <td class="text-end">{{ s.vocab_assigned_count }}개</td>
                         <td class="text-end">
                             <button type="button" class="btn btn-sm btn-outline-success"

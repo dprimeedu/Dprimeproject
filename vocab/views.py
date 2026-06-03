@@ -317,9 +317,10 @@ def range_flashcard_view(request, range_test_id):
         rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index)
         .order_by('index')
     )
+    # 별표는 항상 '범위 주인 학생' 기준 — 교사가 열면 그 학생이 어려워한 단어가 보인다.
     starred_ids = set(
         StudentWordStar.objects
-        .filter(student=request.user, word__in=words)
+        .filter(student=rt.student, word__in=words)
         .values_list('word_id', flat=True)
     )
     cards = [{
@@ -327,9 +328,11 @@ def range_flashcard_view(request, range_test_id):
         'sub_unit': w.sub_unit, 'starred': w.id in starred_ids,
     } for w in words]
 
+    is_teacher_view = is_teacher(request.user) and rt.student_id != request.user.id
     return render(request, 'vocab/flashcard.html', {
         'unit': rt.unit,
         'range_title': f'{rt.source_label} {rt.start_index}~{rt.end_index}',
+        'viewing_student': rt.student.username if is_teacher_view else '',
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
         'star_count': len(starred_ids),
@@ -569,8 +572,19 @@ def student_admin(request):
         VocabAssignment.objects.filter(student_id__in=sid_list)
         .values('student_id').annotate(c=Count('id')).values_list('student_id', 'c')
     )
+    # 학생별 활성 시험범위(내신단어TEST) — 교사가 플래시카드로 직접 보며 점검
+    range_map = {}
+    for rt in (VocabRangeTest.objects
+               .filter(student_id__in=sid_list, is_active=True)
+               .select_related('unit').order_by('student_id', '-created_at')):
+        range_map.setdefault(rt.student_id, []).append({
+            'id': rt.id,
+            'label': f'{rt.source_label} {rt.start_index}~{rt.end_index}',
+            'school': rt.unit.school,
+        })
     for s in students:
         s.vocab_assigned_count = assign_counts.get(s.id, 0)
+        s.range_tests = range_map.get(s.id, [])
     return render(request, 'vocab/student_list.html', {
         'students': students,
         'default_password': DEFAULT_STUDENT_PASSWORD,
