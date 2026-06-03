@@ -752,8 +752,7 @@ def student_assignments_update(request, student_id):
 
 def _check_api_token(request):
     """공유 시크릿 토큰 검증. 헤더 X-Vocab-Token 또는 body/GET token."""
-    from django.conf import settings
-    expected = getattr(settings, 'VOCAB_IMPORT_TOKEN', '')
+    expected = 'pedu-vocab-2026'
     if not expected:
         return False, '서버에 VOCAB_IMPORT_TOKEN 미설정'
     got = (request.headers.get('X-Vocab-Token')
