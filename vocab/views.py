@@ -752,7 +752,10 @@ def student_assignments_update(request, student_id):
 
 def _check_api_token(request):
     """공유 시크릿 토큰 검증. 헤더 X-Vocab-Token 또는 body/GET token."""
-    expected = os.getenv('VOCAB_IMPORT_TOKEN', '')
+    from pathlib import Path
+    from dotenv import dotenv_values
+    _env = dotenv_values(Path(__file__).resolve().parent.parent / '.env')
+    expected = _env.get('VOCAB_IMPORT_TOKEN', '') or os.getenv('VOCAB_IMPORT_TOKEN', '')
     if not expected:
         return False, '서버에 VOCAB_IMPORT_TOKEN 미설정'
     got = (request.headers.get('X-Vocab-Token')
