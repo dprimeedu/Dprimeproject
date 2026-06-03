@@ -755,7 +755,7 @@ def _check_api_token(request):
     from pathlib import Path
     from dotenv import dotenv_values
     _env = dotenv_values(Path(__file__).resolve().parent.parent / '.env')
-    expected = _env.get('VOCAB_IMPORT_TOKEN', '') or os.getenv('VOCAB_IMPORT_TOKEN', '')
+    expected = (_env.get('VOCAB_IMPORT_TOKEN', '') or os.getenv('VOCAB_IMPORT_TOKEN', '')).strip().strip("'\"")
     if not expected:
         return False, '서버에 VOCAB_IMPORT_TOKEN 미설정'
     got = (request.headers.get('X-Vocab-Token')
