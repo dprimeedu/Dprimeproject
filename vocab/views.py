@@ -1,12 +1,11 @@
 import json
 import os
-import random
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Min
+from django.db.models import Count
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -63,13 +62,23 @@ def student_home(request):
         .values('word__unit_id').annotate(c=Count('id'))
     }
 
+    # 단원별 학생의 활성 시험범위(내신단어TEST) — 단원 카드 '테스트' 버튼이 시험을 띄움
+    range_test_map = {}
+    if is_assigned_view:
+        for rt in (VocabRangeTest.objects
+                   .filter(student=request.user, is_active=True, unit_id__in=unit_ids)
+                   .order_by('unit_id', '-created_at')):
+            range_test_map.setdefault(rt.unit_id, rt)  # 단원별 최신 1건
+
     unit_info = []
     for unit in units:
         unit._word_count = word_count_map.get(unit.id, 0)
+        rt = range_test_map.get(unit.id)
         unit_info.append({
             'unit': unit,
             'word_count': word_count_map.get(unit.id, 0),
             'star_count': star_count_map.get(unit.id, 0),
+            'range_test': rt,
         })
 
     return render(request, 'vocab/home.html', {
@@ -137,101 +146,8 @@ def star_toggle_api(request):
 
 
 # ─────────────────────────────────────────────
-# 학생 화면 — 영→한 주관식 테스트
+# 학생 화면 — 영→한 시험 (채점 공통: 정식 시험·연습 공용 answer/finish)
 # ─────────────────────────────────────────────
-
-def _can_access_unit(user, unit):
-    """선생님은 전체, 학생은 배정된 단원만."""
-    if is_teacher(user):
-        return True
-    return VocabAssignment.objects.filter(student=user, unit=unit).exists()
-
-
-@login_required
-def test_view(request, unit_id):
-    """영→한 테스트 화면 셸. 실제 출제 단어는 test_start API로 받아온다.
-
-    뜻(정답)은 서버에서만 채점하고 클라이언트로 내려보내지 않는다 (답 훔쳐보기 차단).
-    """
-    unit = get_object_or_404(VocabUnit, pk=unit_id, is_active=True)
-    if not _can_access_unit(request.user, unit):
-        messages.error(request, '이 단원은 배정되지 않았습니다.')
-        return redirect('vocab:home')
-
-    total = unit.words.count()
-    star_count = StudentWordStar.objects.filter(
-        student=request.user, word__unit=unit,
-    ).count()
-
-    # 시험 범위 = 소단원(sub_unit) 단위. 교재 진도 순서 유지 위해 최소 색인순 정렬.
-    sub_rows = (
-        unit.words.values('sub_unit')
-        .annotate(c=Count('id'), mn=Min('index'))
-        .order_by('mn')
-    )
-    sub_units = [
-        {'name': r['sub_unit'] or '', 'label': r['sub_unit'] or '(기타)', 'count': r['c']}
-        for r in sub_rows
-    ]
-    return render(request, 'vocab/test.html', {
-        'unit': unit,
-        'total': total,
-        'star_count': star_count,
-        'sub_units_json': json.dumps(sub_units, ensure_ascii=False),
-        'sub_unit_count': len(sub_units),
-    })
-
-
-@login_required
-@require_POST
-def test_start_api(request):
-    """테스트 세션 생성 + 출제 단어 목록 반환 (뜻 제외).
-
-    body: {unit_id, star_only}
-    return: {session_id, words: [{id, index, word, sub_unit}]}  (셔플됨)
-    """
-    try:
-        data = json.loads(request.body or '{}')
-        unit_id = int(data['unit_id'])
-        star_only = bool(data.get('star_only'))
-        sub_units = data.get('sub_units')  # None 또는 선택된 소단원명 리스트
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
-
-    unit = get_object_or_404(VocabUnit, pk=unit_id, is_active=True)
-    if not _can_access_unit(request.user, unit):
-        return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
-
-    words = list(unit.words.all().order_by('index'))
-    # 시험 범위: 선택된 소단원만 (리스트가 비어있지 않을 때만 적용 = 그 외엔 전체)
-    if isinstance(sub_units, list) and len(sub_units) > 0:
-        selected = {str(s) for s in sub_units}
-        words = [w for w in words if (w.sub_unit or '') in selected]
-    if star_only:
-        starred_ids = set(
-            StudentWordStar.objects
-            .filter(student=request.user, word__unit=unit)
-            .values_list('word_id', flat=True)
-        )
-        words = [w for w in words if w.id in starred_ids]
-
-    if not words:
-        return JsonResponse({'success': False, 'error': '출제할 단어가 없습니다.'}, status=400)
-
-    random.shuffle(words)
-    session = VocabSession.objects.create(
-        student=request.user, unit=unit, star_only=star_only,
-        total_count=len(words),
-    )
-    return JsonResponse({
-        'success': True,
-        'session_id': session.id,
-        'words': [
-            {'id': w.id, 'index': w.index, 'word': w.word, 'sub_unit': w.sub_unit}
-            for w in words
-        ],
-    }, json_dumps_params={'ensure_ascii': False})
-
 
 @login_required
 @require_POST
@@ -341,26 +257,6 @@ def test_finish_api(request):
 # ─────────────────────────────────────────────
 
 @login_required
-def range_test_home(request):
-    """학생의 활성 시험 범위 목록 — 시험 보기 / 범위 훈련(플래시카드)."""
-    if not is_teacher(request.user) and not getattr(request.user, 'is_approved', False):
-        return render(request, 'vocab/student_pending.html', {})
-
-    qs = (VocabRangeTest.objects
-          .filter(student=request.user, is_active=True)
-          .select_related('unit').order_by('-created_at'))
-    rts = []
-    for rt in qs:
-        word_n = rt.unit.words.filter(
-            index__gte=rt.start_index, index__lte=rt.end_index,
-        ).count()
-        last = (rt.sessions.filter(mode=VocabSession.MODE_TEST)
-                .order_by('-started_at').first())
-        rts.append({'rt': rt, 'word_n': word_n, 'last': last})
-    return render(request, 'vocab/range_home.html', {'range_tests': rts})
-
-
-@login_required
 def range_test_take(request, range_test_id):
     """정식 시험 응시 화면 셸. 출제는 range_start API로 받아온다."""
     rt = get_object_or_404(
@@ -415,7 +311,7 @@ def range_flashcard_view(request, range_test_id):
     )
     if not is_teacher(request.user) and rt.student_id != request.user.id:
         messages.error(request, '본인 시험 범위만 훈련할 수 있습니다.')
-        return redirect('vocab:range_home')
+        return redirect('vocab:home')
 
     words = list(
         rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index)

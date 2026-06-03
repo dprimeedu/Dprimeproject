@@ -43,9 +43,15 @@
                         <a href="{% url 'vocab:flashcard' info.unit.id %}" class="btn btn-info text-white">
                             <i class="fas fa-book-open me-1"></i>플래시카드 학습
                         </a>
-                        <a href="{% url 'vocab:test' info.unit.id %}" class="btn btn-primary">
-                            <i class="fas fa-pen me-1"></i>테스트 (영→한)
+                        {% if info.range_test %}
+                        <a href="{% url 'vocab:range_test' info.range_test.id %}" class="btn btn-primary">
+                            <i class="fas fa-pen me-1"></i>테스트 (영→한) · {{ info.range_test.start_index }}~{{ info.range_test.end_index }}번
                         </a>
+                        {% elif is_assigned_view %}
+                        <button class="btn btn-outline-secondary" disabled title="선생님이 시험 범위를 배정하면 활성화됩니다">
+                            <i class="fas fa-pen me-1"></i>테스트 (시험 범위 미배정)
+                        </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>

@@ -28,7 +28,7 @@
 </style>
 
 <div class="rt-wrap">
-    <a href="{% url 'vocab:range_home' %}" class="back-link" id="rtBack"><i class="fas fa-arrow-left me-1"></i>내 단어 시험</a>
+    <a href="{% url 'vocab:home' %}" class="back-link" id="rtBack"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
 
     <!-- 시작 화면 -->
     <div id="rtStart" class="rt-panel">
@@ -37,7 +37,12 @@
         <p class="text-muted mb-1">영어 단어를 보고 <b>한글 뜻</b>을 입력합니다. ({{ rt.question_count }}문제)</p>
         <p class="text-muted mb-1">제한 시간 <b>{{ rt.time_limit_seconds }}초</b> — 시작하면 타이머가 작동하고, 시간이 끝나면 자동 제출됩니다.</p>
         <p class="text-muted">채점은 자동으로 먼저 되고, <b>선생님 검수 후 점수가 확정</b>됩니다.</p>
-        <button class="btn btn-primary btn-lg px-4 mt-3" id="rtStartBtn"><i class="fas fa-play me-1"></i>시험 시작</button>
+        <div class="d-flex gap-2 justify-content-center flex-wrap mt-3">
+            <a class="btn btn-info text-white btn-lg px-4" href="{% url 'vocab:range_flashcard' rt.id %}">
+                <i class="fas fa-book-open me-1"></i>범위 훈련 (플래시카드)
+            </a>
+            <button class="btn btn-primary btn-lg px-4" id="rtStartBtn"><i class="fas fa-play me-1"></i>시험 시작</button>
+        </div>
     </div>
 
     <!-- 시험 진행 -->
@@ -68,7 +73,7 @@
         <h4 class="mt-2">시험이 제출되었습니다</h4>
         <div class="rt-score mt-2"><span id="rtPct">0</span>점 <small class="text-muted" style="font-size:1rem;">(자동채점, 잠정)</small></div>
         <p class="text-muted mt-2">선생님 검수 후 최종 점수가 확정됩니다.</p>
-        <a class="btn btn-primary mt-2" href="{% url 'vocab:range_home' %}">내 단어 시험으로</a>
+        <a class="btn btn-primary mt-2" href="{% url 'vocab:home' %}">단어훈련 홈으로</a>
     </div>
 </div>
 

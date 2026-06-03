@@ -7,16 +7,13 @@ urlpatterns = [
     # 학생
     path('', views.student_home, name='home'),
     path('unit/<int:unit_id>/flashcard/', views.flashcard_view, name='flashcard'),
-    path('unit/<int:unit_id>/test/', views.test_view, name='test'),
 
     # 학생 — 개인별 시험범위(내신단어TEST)
-    path('range/', views.range_test_home, name='range_home'),
     path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
     path('range/<int:range_test_id>/flashcard/', views.range_flashcard_view, name='range_flashcard'),
 
     # AJAX API
     path('api/star/toggle/', views.star_toggle_api, name='star_toggle'),
-    path('api/test/start/', views.test_start_api, name='test_start'),
     path('api/test/answer/', views.test_answer_api, name='test_answer'),
     path('api/test/finish/', views.test_finish_api, name='test_finish'),
     path('api/range/start/', views.range_test_start_api, name='range_start'),
