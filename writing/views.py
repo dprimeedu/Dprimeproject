@@ -1139,11 +1139,18 @@ def _category_key(title: str) -> str:
     """학교 내신 단원명에서 카테고리(prefix) 추출.
 
     예: "외부지문 1" → "외부지문", "본문 3" → "본문", "외부지문" → "외부지문"
+        "올림포스2 전국연합 part1" → "올림포스2 전국연합"
+        "수능특강 light part2" → "수능특강 light"
     숫자 분리가 안 되면 단원명 그대로.
     """
     if not title:
         return '(분류없음)'
     t = title.strip()
+    # "... part1", "... part 2", "...-part3" 등 → part 토큰 앞부분을 카테고리로
+    m = re.match(r'^(.+?)[\s\-_]*part\s*\d+\s*$', t, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    # "외부지문 1", "본문 3" 등 → 끝 숫자 앞부분을 카테고리로
     m = re.match(r'^(.+?)\s+\d+\s*$', t)
     if m:
         return m.group(1).strip()
