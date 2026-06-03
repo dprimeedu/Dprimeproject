@@ -9,7 +9,7 @@
         <h3><i class="fas fa-layer-group me-2"></i>단어훈련 단원</h3>
         <p class="section-desc">
             {% if is_assigned_view %}
-            배정받은 단원을 골라 플래시카드로 암기하세요. ⭐ 별표한 단어만 모아 집중훈련도 가능합니다.
+            배정받은 단원을 골라 플래시카드로 암기하고, 테스트(영→한)로 점검하세요. ⭐ 별표한 단어만 모아 집중훈련도 가능합니다.
             {% else %}
             (관리자 모드) 모든 활성 단원이 표시됩니다.
             {% endif %}
@@ -32,9 +32,14 @@
                     {% else %}
                     <p class="small text-muted mb-3">아직 별표한 단어가 없어요</p>
                     {% endif %}
-                    <a href="{% url 'vocab:flashcard' info.unit.id %}" class="btn btn-info text-white mt-auto">
-                        <i class="fas fa-book-open me-1"></i>플래시카드 학습
-                    </a>
+                    <div class="mt-auto d-grid gap-2">
+                        <a href="{% url 'vocab:flashcard' info.unit.id %}" class="btn btn-info text-white">
+                            <i class="fas fa-book-open me-1"></i>플래시카드 학습
+                        </a>
+                        <a href="{% url 'vocab:test' info.unit.id %}" class="btn btn-primary">
+                            <i class="fas fa-pen me-1"></i>테스트 (영→한)
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

@@ -7,9 +7,13 @@ urlpatterns = [
     # 학생
     path('', views.student_home, name='home'),
     path('unit/<int:unit_id>/flashcard/', views.flashcard_view, name='flashcard'),
+    path('unit/<int:unit_id>/test/', views.test_view, name='test'),
 
     # AJAX API
     path('api/star/toggle/', views.star_toggle_api, name='star_toggle'),
+    path('api/test/start/', views.test_start_api, name='test_start'),
+    path('api/test/answer/', views.test_answer_api, name='test_answer'),
+    path('api/test/finish/', views.test_finish_api, name='test_finish'),
 
     # 선생님 / 관리자 — 단원 관리
     path('admin/units/', views.unit_list, name='unit_list'),

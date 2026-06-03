@@ -1,4 +1,5 @@
 import json
+import random
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -6,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponseBadRequest
+from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
 
 # 동일 접근제어·헬퍼·학생 일괄등록 로직 재사용 (writing 미러)
@@ -15,7 +17,11 @@ from writing.views import (
 )
 from writing.services.students_excel import parse_students_excel
 
-from .models import VocabUnit, VocabWord, VocabAssignment, StudentWordStar
+from .models import (
+    VocabUnit, VocabWord, VocabAssignment, StudentWordStar,
+    VocabSession, VocabAttempt,
+)
+from .services import grade_meaning
 
 
 # ─────────────────────────────────────────────
@@ -126,6 +132,172 @@ def star_toggle_api(request):
         StudentWordStar.objects.filter(student=request.user, word=word).delete()
 
     return JsonResponse({'success': True, 'word_id': word_id, 'starred': want_starred})
+
+
+# ─────────────────────────────────────────────
+# 학생 화면 — 영→한 주관식 테스트
+# ─────────────────────────────────────────────
+
+def _can_access_unit(user, unit):
+    """선생님은 전체, 학생은 배정된 단원만."""
+    if is_teacher(user):
+        return True
+    return VocabAssignment.objects.filter(student=user, unit=unit).exists()
+
+
+@login_required
+def test_view(request, unit_id):
+    """영→한 테스트 화면 셸. 실제 출제 단어는 test_start API로 받아온다.
+
+    뜻(정답)은 서버에서만 채점하고 클라이언트로 내려보내지 않는다 (답 훔쳐보기 차단).
+    """
+    unit = get_object_or_404(VocabUnit, pk=unit_id, is_active=True)
+    if not _can_access_unit(request.user, unit):
+        messages.error(request, '이 단원은 배정되지 않았습니다.')
+        return redirect('vocab:home')
+
+    total = unit.words.count()
+    star_count = StudentWordStar.objects.filter(
+        student=request.user, word__unit=unit,
+    ).count()
+    return render(request, 'vocab/test.html', {
+        'unit': unit,
+        'total': total,
+        'star_count': star_count,
+    })
+
+
+@login_required
+@require_POST
+def test_start_api(request):
+    """테스트 세션 생성 + 출제 단어 목록 반환 (뜻 제외).
+
+    body: {unit_id, star_only}
+    return: {session_id, words: [{id, index, word, sub_unit}]}  (셔플됨)
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        unit_id = int(data['unit_id'])
+        star_only = bool(data.get('star_only'))
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    unit = get_object_or_404(VocabUnit, pk=unit_id, is_active=True)
+    if not _can_access_unit(request.user, unit):
+        return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+    words = list(unit.words.all().order_by('index'))
+    if star_only:
+        starred_ids = set(
+            StudentWordStar.objects
+            .filter(student=request.user, word__unit=unit)
+            .values_list('word_id', flat=True)
+        )
+        words = [w for w in words if w.id in starred_ids]
+
+    if not words:
+        return JsonResponse({'success': False, 'error': '출제할 단어가 없습니다.'}, status=400)
+
+    random.shuffle(words)
+    session = VocabSession.objects.create(
+        student=request.user, unit=unit, star_only=star_only,
+        total_count=len(words),
+    )
+    return JsonResponse({
+        'success': True,
+        'session_id': session.id,
+        'words': [
+            {'id': w.id, 'index': w.index, 'word': w.word, 'sub_unit': w.sub_unit}
+            for w in words
+        ],
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@require_POST
+def test_answer_api(request):
+    """단어 1개 채점 + 시도 기록 저장. 틀리면 자동 별표(모르는 단어).
+
+    body: {session_id, word_id, input, time}
+    return: {correct, correct_meaning, word}
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        session_id = int(data['session_id'])
+        word_id = int(data['word_id'])
+        student_input = str(data.get('input', ''))
+        time_taken = int(data.get('time', 0))
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    session = get_object_or_404(
+        VocabSession, pk=session_id, student=request.user, finished_at__isnull=True,
+    )
+    word = get_object_or_404(VocabWord, pk=word_id, unit=session.unit)
+
+    is_correct = grade_meaning(student_input, word.meaning)
+    VocabAttempt.objects.update_or_create(
+        session=session, word=word,
+        defaults={
+            'input_value': student_input[:200],
+            'is_correct': is_correct,
+            'time_taken_seconds': max(0, time_taken),
+            'score_earned': 10 if is_correct else 0,
+        },
+    )
+
+    # 틀린 단어는 자동으로 별표 → 플래시카드 '별표만' 집중훈련으로 흐름 연결
+    if not is_correct:
+        StudentWordStar.objects.get_or_create(student=request.user, word=word)
+
+    return JsonResponse({
+        'success': True,
+        'correct': is_correct,
+        'correct_meaning': word.meaning,
+        'word': word.word,
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@require_POST
+def test_finish_api(request):
+    """세션 종료 + 집계. 오답 목록(정답 뜻 포함) 반환.
+
+    body: {session_id}
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        session_id = int(data['session_id'])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    session = get_object_or_404(VocabSession, pk=session_id, student=request.user)
+    attempts = list(
+        session.attempts.select_related('word').order_by('word__index')
+    )
+    correct = sum(1 for a in attempts if a.is_correct)
+    total = len(attempts)
+
+    if not session.finished_at:
+        session.finished_at = timezone.now()
+        session.correct_count = correct
+        session.total_count = total
+        session.total_score = sum(a.score_earned for a in attempts)
+        session.save(update_fields=[
+            'finished_at', 'correct_count', 'total_count', 'total_score',
+        ])
+
+    wrong = [
+        {'word': a.word.word, 'meaning': a.word.meaning, 'input': a.input_value}
+        for a in attempts if not a.is_correct
+    ]
+    return JsonResponse({
+        'success': True,
+        'correct': correct,
+        'total': total,
+        'percent': round(correct / total * 100) if total else 0,
+        'wrong': wrong,
+    }, json_dumps_params={'ensure_ascii': False})
 
 
 # ─────────────────────────────────────────────

@@ -6,7 +6,7 @@
 .fc-wrap { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
 .fc-header {
     display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
+    margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;
 }
 .fc-counter { font-size: 1.1rem; color: var(--primary-color); font-weight: 700; }
 .fc-mode-toggle {
@@ -16,7 +16,19 @@
 }
 .fc-mode-toggle input { margin: 0; cursor: pointer; }
 .fc-mode-toggle.active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
-.fc-card-container { perspective: 1500px; margin: 2rem 0; }
+
+/* 학습 현황 칩 (모름 / 알아요) */
+.lm-status { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.lm-chip { padding: 0.35rem 0.9rem; border-radius: 999px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 0.5rem; border: 1.5px solid; font-size: 0.9rem; }
+.lm-chip .num { display: inline-flex; min-width: 26px; height: 26px; border-radius: 50%;
+    align-items: center; justify-content: center; font-size: 0.85rem; }
+.lm-chip.still { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+.lm-chip.still .num { background: #f59e0b; color: #fff; }
+.lm-chip.known { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.lm-chip.known .num { background: #16a34a; color: #fff; }
+
+.fc-card-container { perspective: 1500px; margin: 1rem 0 1.5rem; }
 .fc-card {
     position: relative; width: 100%; min-height: 320px; cursor: pointer;
     transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(.4,.0,.2,1);
@@ -40,10 +52,31 @@
 }
 .fc-star:hover { transform: scale(1.15); }
 .fc-star.on { color: #f59e0b; }
-.fc-controls { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; }
 .fc-progress { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
 .fc-progress .bar { height: 100%; background: var(--primary-color); transition: width .3s; }
 .fc-empty { text-align: center; padding: 4rem 2rem; color: #6b7280; background: white; border-radius: 16px; border: 2px dashed #e5e7eb; }
+
+/* 하단 컨트롤 바 */
+.fc-bottom { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
+.fc-bottom .center { display: flex; align-items: center; gap: 1rem; flex: 1; justify-content: center; min-width: 260px; }
+.fc-bottom .right { display: flex; align-items: center; gap: 0.25rem; }
+
+.lm-switch { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600; color: #6d28d9; font-size: 0.9rem; user-select: none; }
+.lm-switch .track { width: 42px; height: 24px; border-radius: 999px; background: #d1d5db; position: relative; transition: .2s; }
+.lm-switch .track .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.lm-switch.on .track { background: #6d28d9; }
+.lm-switch.on .track .knob { left: 21px; }
+
+.lm-btn { width: 64px; height: 64px; border-radius: 999px; border: 2px solid #e5e7eb; background: #fff;
+    font-size: 1.6rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: .15s; }
+.lm-btn.no { color: #ef4444; } .lm-btn.no:hover { border-color: #ef4444; background: #fef2f2; transform: scale(1.05); }
+.lm-btn.yes { color: #16a34a; } .lm-btn.yes:hover { border-color: #16a34a; background: #f0fdf4; transform: scale(1.05); }
+.lm-icon-btn { background: none; border: 0; color: #9ca3af; font-size: 1.2rem; cursor: pointer; padding: 0.5rem; border-radius: 8px; }
+.lm-icon-btn:hover { color: #374151; background: #f3f4f6; }
+.lm-icon-btn:disabled { opacity: .35; cursor: default; }
+
+.lm-done { text-align: center; padding: 3rem 2rem; background: white; border-radius: 16px; border: 1px solid #e5e7eb; box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.lm-done .big { font-size: 3rem; }
 </style>
 
 <form style="display:none">{% csrf_token %}</form>
@@ -66,6 +99,12 @@
         </div>
     </div>
 
+    <!-- 학습 현황 칩 (관리 모드에서만) -->
+    <div class="lm-status" id="lmStatus" style="display:none;">
+        <span class="lm-chip still"><span class="num" id="lmStill">0</span> 학습 중</span>
+        <span class="lm-chip known">알고 있음 <span class="num" id="lmKnown">0</span></span>
+    </div>
+
     <div id="fcMain">
         <div class="fc-card-container">
             <div class="fc-card" id="fcCard">
@@ -82,14 +121,68 @@
             </div>
         </div>
 
-        <div class="fc-controls">
-            <button class="btn btn-outline-secondary" id="fcPrev" onclick="prevCard()">
-                <i class="fas fa-chevron-left me-1"></i>이전
+        <!-- 하단 컨트롤 -->
+        <div class="fc-bottom">
+            <label class="lm-switch" id="lmSwitch" title="알고 있는/모르는 단어를 분류하며 학습">
+                <span class="track"><span class="knob"></span></span>
+                <span>학습 현황 관리</span>
+            </label>
+
+            <!-- 둘러보기 모드 -->
+            <div class="center" id="browseControls">
+                <button class="btn btn-outline-secondary" id="fcPrev" onclick="prevCard()">
+                    <i class="fas fa-chevron-left me-1"></i>이전
+                </button>
+                <div class="fc-progress"><div class="bar" id="fcBar" style="width: 0%"></div></div>
+                <button class="btn btn-primary" id="fcNext" onclick="nextCard()">
+                    다음<i class="fas fa-chevron-right ms-1"></i>
+                </button>
+            </div>
+
+            <!-- 학습 현황 관리 모드 -->
+            <div class="center" id="manageControls" style="display:none;">
+                <button class="lm-btn no" id="lmNo" onclick="mark(false)" title="모름 (←)">
+                    <i class="fas fa-xmark"></i>
+                </button>
+                <div class="fc-progress" style="max-width:160px;"><div class="bar" id="lmBar" style="width:0%"></div></div>
+                <button class="lm-btn yes" id="lmYes" onclick="mark(true)" title="알아요 (→)">
+                    <i class="fas fa-check"></i>
+                </button>
+            </div>
+
+            <div class="right">
+                <button class="lm-icon-btn" id="lmUndo" onclick="undo()" title="되돌리기" disabled>
+                    <i class="fas fa-rotate-left"></i>
+                </button>
+                <button class="lm-icon-btn" id="lmShuffle" onclick="shuffleRemaining()" title="남은 카드 섞기">
+                    <i class="fas fa-shuffle"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 라운드 완료 (모르는 단어가 남음) -->
+    <div id="lmRoundDone" class="lm-done" style="display:none;">
+        <div class="big">💪</div>
+        <h4 class="mt-2">한 세트 끝!</h4>
+        <p class="mb-1">알아요 <b id="rdKnown" style="color:#16a34a;">0</b>개 · 아직 모름 <b id="rdStill" style="color:#f59e0b;">0</b>개</p>
+        <p class="text-muted">모른다고 표시한 단어만 다시 학습할 수 있어요.</p>
+        <div class="d-flex gap-2 justify-content-center mt-3 flex-wrap">
+            <button class="btn btn-primary" id="lmContinue">
+                <i class="fas fa-rotate-right me-1"></i>계속 학습하기 (<span id="rdContN">0</span>개)
             </button>
-            <div class="fc-progress"><div class="bar" id="fcBar" style="width: 0%"></div></div>
-            <button class="btn btn-primary" id="fcNext" onclick="nextCard()">
-                다음<i class="fas fa-chevron-right ms-1"></i>
-            </button>
+            <button class="btn btn-outline-secondary" id="lmRestart">처음부터 다시</button>
+        </div>
+    </div>
+
+    <!-- 전부 완료 (모르는 단어 0) -->
+    <div id="lmAllDone" class="lm-done" style="display:none;">
+        <div class="big">🎉</div>
+        <h3 class="mt-2">모든 단어를 다 외웠어요!</h3>
+        <p class="text-muted">이 세트의 단어를 전부 "알아요"로 분류했습니다.</p>
+        <div class="d-flex gap-2 justify-content-center mt-3 flex-wrap">
+            <button class="btn btn-primary" id="lmRestart2"><i class="fas fa-rotate-right me-1"></i>처음부터 다시</button>
+            <a class="btn btn-outline-secondary" href="{% url 'vocab:home' %}">홈으로</a>
         </div>
     </div>
 
@@ -104,81 +197,177 @@
 const ALL_CARDS = {{ cards_json|safe }};
 const STAR_URL = '{% url "vocab:star_toggle" %}';
 const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+const CARD_BY_ID = Object.fromEntries(ALL_CARDS.map(c => [c.id, c]));
 
 // 별표 상태는 서버 데이터(card.starred)를 신뢰. id 기준 Set.
 let starred = new Set(ALL_CARDS.filter(c => c.starred).map(c => c.id));
 let starOnly = false;
-let dirReversed = false;  // false: 단어→뜻, true: 뜻→단어
-let visible = ALL_CARDS.slice();
-let idx = 0;
+let dirReversed = false;       // false: 단어→뜻, true: 뜻→단어
+let manageMode = false;        // 학습 현황 관리(분류 학습) 모드
 
-function updateStarCount() {
-    document.getElementById('starCount').textContent = starred.size;
+// 라운드 상태
+let pool = [];                 // 이번 라운드 카드 배열
+let pos = 0;                   // 현재 위치
+let known = [];                // 이번 라운드 '알아요'로 분류한 id
+let still = [];                // 이번 라운드 '모름'으로 분류한 id
+let history = [];              // 되돌리기용: [{pos, knowIt}]
+let finished = false;
+
+const $ = id => document.getElementById(id);
+
+function baseCards() {
+    return starOnly ? ALL_CARDS.filter(c => starred.has(c.id)) : ALL_CARDS.slice();
 }
 
-function rebuildVisible() {
-    visible = starOnly ? ALL_CARDS.filter(c => starred.has(c.id)) : ALL_CARDS.slice();
-    if (idx >= visible.length) idx = Math.max(0, visible.length - 1);
+function startRound(cards) {
+    pool = cards.slice();
+    pos = 0; known = []; still = []; history = []; finished = false;
     render();
 }
 
+function updateStarCount() { $('starCount').textContent = starred.size; }
+
+function setScreen(name) {
+    // name: 'card' | 'roundDone' | 'allDone' | 'empty'
+    $('fcMain').style.display = name === 'card' ? '' : 'none';
+    $('lmRoundDone').style.display = name === 'roundDone' ? '' : 'none';
+    $('lmAllDone').style.display = name === 'allDone' ? '' : 'none';
+    $('fcEmpty').style.display = name === 'empty' ? '' : 'none';
+    $('lmStatus').style.display = (manageMode && name === 'card') ? '' : 'none';
+}
+
 function render() {
-    const main = document.getElementById('fcMain');
-    const empty = document.getElementById('fcEmpty');
-    document.getElementById('fcTotal').textContent = visible.length;
-    if (visible.length === 0) {
-        main.style.display = 'none';
-        empty.style.display = '';
+    $('fcTotal').textContent = pool.length;
+    $('lmStill').textContent = still.length;
+    $('lmKnown').textContent = known.length;
+    $('lmUndo').disabled = history.length === 0;
+
+    if (pool.length === 0) { setScreen('empty'); return; }
+
+    if (manageMode && finished) {
+        if (still.length === 0) {
+            setScreen('allDone');
+            celebrate();
+        } else {
+            $('rdKnown').textContent = known.length;
+            $('rdStill').textContent = still.length;
+            $('rdContN').textContent = still.length;
+            setScreen('roundDone');
+        }
         return;
     }
-    main.style.display = '';
-    empty.style.display = 'none';
 
-    const c = visible[idx];
-    const wordText = c.word, meaningText = c.meaning;
+    setScreen('card');
+
+    const c = pool[pos];
     if (!dirReversed) {
-        document.getElementById('fcFrontLabel').textContent = '단어';
-        document.getElementById('fcFront').textContent = wordText;
-        document.getElementById('fcBackLabel').textContent = '뜻';
-        document.getElementById('fcBack').textContent = meaningText;
+        $('fcFrontLabel').textContent = '단어'; $('fcFront').textContent = c.word;
+        $('fcBackLabel').textContent = '뜻';   $('fcBack').textContent = c.meaning;
     } else {
-        document.getElementById('fcFrontLabel').textContent = '뜻';
-        document.getElementById('fcFront').textContent = meaningText;
-        document.getElementById('fcBackLabel').textContent = '단어';
-        document.getElementById('fcBack').textContent = wordText;
+        $('fcFrontLabel').textContent = '뜻';   $('fcFront').textContent = c.meaning;
+        $('fcBackLabel').textContent = '단어';  $('fcBack').textContent = c.word;
     }
-    document.getElementById('fcFrontSub').textContent = c.sub_unit || '';
+    $('fcFrontSub').textContent = c.sub_unit || '';
 
-    document.getElementById('fcCounter').textContent = idx + 1;
-    document.getElementById('fcCard').classList.remove('flipped');
-    document.getElementById('fcBar').style.width = ((idx + 1) / visible.length * 100) + '%';
-    document.getElementById('fcPrev').disabled = idx === 0;
-    document.getElementById('fcNext').disabled = idx === visible.length - 1;
+    $('fcCounter').textContent = pos + 1;
+    $('fcCard').classList.remove('flipped');
+    const pct = ((pos + 1) / pool.length * 100);
+    $('fcBar').style.width = pct + '%';
+    $('lmBar').style.width = pct + '%';
+    $('fcPrev').disabled = pos === 0;
+    $('fcNext').disabled = pos === pool.length - 1;
 
-    const star = document.getElementById('fcStar');
+    const star = $('fcStar');
     if (starred.has(c.id)) { star.textContent = '★'; star.classList.add('on'); }
     else { star.textContent = '☆'; star.classList.remove('on'); }
 }
 
 function flipCard() {
-    if (visible.length === 0) return;
-    document.getElementById('fcCard').classList.toggle('flipped');
+    if (pool.length === 0 || finished) return;
+    $('fcCard').classList.toggle('flipped');
 }
-function nextCard() { if (idx < visible.length - 1) { idx++; render(); } }
-function prevCard() { if (idx > 0) { idx--; render(); } }
+function nextCard() { if (!manageMode && pos < pool.length - 1) { pos++; render(); } }
+function prevCard() { if (!manageMode && pos > 0) { pos--; render(); } }
+
+// 분류 학습: 알아요(→) / 모름(←)
+function mark(knowIt) {
+    if (!manageMode || finished || pool.length === 0) return;
+    const c = pool[pos];
+    history.push({ pos, knowIt });
+    if (knowIt) known.push(c.id); else still.push(c.id);
+    pos++;
+    if (pos >= pool.length) finished = true;
+    render();
+}
+
+function undo() {
+    if (history.length === 0) return;
+    const h = history.pop();
+    if (h.knowIt) known.pop(); else still.pop();
+    finished = false;
+    pos = h.pos;
+    render();
+}
+
+// 남은(아직 안 본) 카드만 섞기 — 이미 분류한 건 그대로
+function shuffleRemaining() {
+    if (pool.length === 0 || finished) return;
+    for (let i = pool.length - 1; i > pos; i--) {
+        const j = pos + Math.floor(Math.random() * (i - pos + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    render();
+}
+
+// 폭죽
+let confettiShown = false;
+function celebrate() {
+    if (confettiShown) return;
+    confettiShown = true;
+    const cv = document.createElement('canvas');
+    cv.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;';
+    cv.width = window.innerWidth; cv.height = window.innerHeight;
+    document.body.appendChild(cv);
+    const ctx = cv.getContext('2d');
+    const colors = ['#f59e0b', '#16a34a', '#3b82f6', '#ef4444', '#a855f7', '#ec4899'];
+    const parts = [];
+    for (let i = 0; i < 180; i++) {
+        parts.push({
+            x: cv.width / 2 + (Math.random() - 0.5) * 80,
+            y: cv.height / 3,
+            vx: (Math.random() - 0.5) * 14,
+            vy: Math.random() * -13 - 4,
+            g: 0.28 + Math.random() * 0.18,
+            r: 4 + Math.random() * 5,
+            c: colors[i % colors.length],
+            rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+        });
+    }
+    let frames = 0;
+    (function tick() {
+        frames++;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        parts.forEach(p => {
+            p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+            ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+            ctx.fillStyle = p.c; ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * 1.6);
+            ctx.restore();
+        });
+        if (frames < 200) requestAnimationFrame(tick);
+        else cv.remove();
+    })();
+}
 
 async function toggleStar(e) {
-    e.stopPropagation();
-    if (visible.length === 0) return;
-    const c = visible[idx];
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (pool.length === 0 || finished) return;
+    const c = pool[pos];
     const want = !starred.has(c.id);
-    // 낙관적 업데이트
     if (want) starred.add(c.id); else starred.delete(c.id);
-    // ALL_CARDS의 원본도 갱신 (별표만 모드 재구성 대비)
-    const orig = ALL_CARDS.find(x => x.id === c.id);
+    const orig = CARD_BY_ID[c.id];
     if (orig) orig.starred = want;
     updateStarCount();
-    if (starOnly) rebuildVisible(); else render();
+    render();
 
     try {
         const r = await fetch(STAR_URL, {
@@ -190,38 +379,55 @@ async function toggleStar(e) {
         const d = await r.json();
         if (!d.success) throw new Error(d.error || 'fail');
     } catch (err) {
-        // 실패 시 롤백
         if (want) starred.delete(c.id); else starred.add(c.id);
         if (orig) orig.starred = !want;
         updateStarCount();
-        if (starOnly) rebuildVisible(); else render();
+        render();
         alert('별표 저장 실패: ' + err.message);
     }
 }
 
-document.getElementById('starOnlyCb').addEventListener('change', e => {
+// 모드 전환
+function setManageMode(on) {
+    manageMode = on;
+    $('lmSwitch').classList.toggle('on', on);
+    $('browseControls').style.display = on ? 'none' : '';
+    $('manageControls').style.display = on ? '' : 'none';
+    startRound(baseCards());   // 모드 바뀌면 라운드 새로 시작
+}
+
+// 이벤트 바인딩
+$('lmSwitch').addEventListener('click', () => setManageMode(!manageMode));
+$('lmContinue').addEventListener('click', () => startRound(still.map(id => CARD_BY_ID[id])));
+$('lmRestart').addEventListener('click', () => startRound(baseCards()));
+$('lmRestart2').addEventListener('click', () => startRound(baseCards()));
+
+$('starOnlyCb').addEventListener('change', e => {
     starOnly = e.target.checked;
-    document.getElementById('starModeToggle').classList.toggle('active', starOnly);
-    idx = 0;
-    rebuildVisible();
+    $('starModeToggle').classList.toggle('active', starOnly);
+    startRound(baseCards());
 });
-document.getElementById('dirCb').addEventListener('change', e => {
+$('dirCb').addEventListener('change', e => {
     dirReversed = e.target.checked;
-    document.getElementById('dirToggle').classList.toggle('active', dirReversed);
+    $('dirToggle').classList.toggle('active', dirReversed);
     render();
 });
 
 document.addEventListener('keydown', e => {
     if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault(); flipCard();
-    } else if (e.key === 'ArrowRight') { nextCard(); }
-    else if (e.key === 'ArrowLeft') { prevCard(); }
-    else if (e.key === 's' || e.key === 'S') { toggleStar({ stopPropagation: () => {} }); }
+    } else if (e.key === 'ArrowRight') {
+        if (manageMode) mark(true); else nextCard();
+    } else if (e.key === 'ArrowLeft') {
+        if (manageMode) mark(false); else prevCard();
+    } else if (e.key === 's' || e.key === 'S') {
+        toggleStar();
+    }
 });
 
 // 카드 탭/클릭 + 스와이프 (모바일·태블릿)
 (function () {
-    const card = document.getElementById('fcCard');
+    const card = $('fcCard');
     const SWIPE = 50;
     let startX = 0, startY = 0, swiped = false;
     card.addEventListener('touchstart', e => {
@@ -235,8 +441,11 @@ document.addEventListener('keydown', e => {
         const dx = t.clientX - startX, dy = t.clientY - startY;
         if (Math.abs(dx) < SWIPE && Math.abs(dy) < SWIPE) return;
         swiped = true;
-        if (Math.abs(dx) > Math.abs(dy)) { if (dx < 0) nextCard(); else prevCard(); }
-        else { flipCard(); }
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // 좌우 스와이프
+            if (manageMode) { if (dx > 0) mark(true); else mark(false); }
+            else { if (dx < 0) nextCard(); else prevCard(); }
+        } else { flipCard(); }
     }, { passive: true });
     card.addEventListener('click', e => {
         if (e.target.closest('.fc-star')) return;
@@ -246,6 +455,6 @@ document.addEventListener('keydown', e => {
 })();
 
 updateStarCount();
-rebuildVisible();
+setManageMode(true);   // 학습 현황 관리(분류 학습)를 기본 모드로 시작
 </script>
 {% endblock %}

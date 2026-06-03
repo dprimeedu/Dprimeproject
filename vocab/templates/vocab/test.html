@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+.vt-wrap { max-width: 720px; margin: 0 auto; padding: 2rem 1rem;
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+.vt-header { display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+.vt-counter { font-size: 1.1rem; color: var(--primary-color); font-weight: 700; }
+.vt-progress { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-bottom: 1.5rem; }
+.vt-progress .bar { height: 100%; background: var(--primary-color); transition: width .3s; }
+
+.vt-panel { background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    border: 1px solid #e5e7eb; padding: 2.5rem 2rem; text-align: center; }
+.vt-subunit { font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.75rem; min-height: 1rem; }
+.vt-word { font-size: 2.4rem; font-weight: 600; color: #111; line-height: 1.3; word-break: break-word; }
+.vt-input { font-size: 1.4rem; text-align: center; padding: 0.6rem 1rem; margin-top: 1.75rem;
+    border: 2px solid #e5e7eb; border-radius: 12px; width: 100%; }
+.vt-input:focus { outline: none; border-color: var(--primary-color); }
+
+.vt-feedback { margin-top: 1.5rem; min-height: 3.5rem; }
+.vt-feedback .verdict { font-size: 1.3rem; font-weight: 700; }
+.vt-feedback.correct .verdict { color: #16a34a; }
+.vt-feedback.wrong .verdict { color: #dc2626; }
+.vt-feedback .answer { margin-top: 0.4rem; font-size: 1.1rem; color: #374151; }
+.vt-feedback .answer b { color: #111; }
+
+.vt-actions { margin-top: 1.5rem; display: flex; gap: 0.75rem; justify-content: center; }
+
+/* 결과 */
+.vt-result { background:#fff; border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,.08);
+    border:1px solid #e5e7eb; padding: 2.5rem 2rem; text-align:center; }
+.vt-score-ring { font-size: 3.2rem; font-weight: 800; color: var(--primary-color); }
+.vt-score-sub { color:#6b7280; margin-bottom: 1.5rem; }
+.vt-wrong-list { text-align:left; margin: 1.5rem auto 0; max-width: 560px; }
+.vt-wrong-item { display:flex; justify-content:space-between; gap:1rem; padding:0.6rem 0.25rem;
+    border-bottom:1px solid #f3f4f6; }
+.vt-wrong-item .w { font-weight:600; color:#111; }
+.vt-wrong-item .m { color:#16a34a; text-align:right; }
+.vt-wrong-item .badin { color:#dc2626; font-size:0.85rem; }
+</style>
+
+<div class="vt-wrap">
+    <a href="{% url 'vocab:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
+
+    <div class="vt-header">
+        <h3 class="mb-0"><i class="fas fa-pen me-2"></i>{{ unit.title }} <small class="text-muted">영→한 테스트</small></h3>
+        <div class="vt-counter" id="vtCounter" style="display:none;"><span id="vtCur">0</span> / <span id="vtTotal">0</span></div>
+    </div>
+
+    <!-- 시작 화면 -->
+    <div id="vtStart" class="vt-panel">
+        <div style="font-size:2.5rem;">📝</div>
+        <h4 class="mt-2 mb-3">테스트를 시작할까요?</h4>
+        <p class="text-muted">영어 단어를 보고 <b>한글 뜻</b>을 입력합니다. 뜻이 여러 개면 하나만 맞아도 정답이에요.</p>
+        {% if star_count %}
+        <label class="d-inline-flex align-items-center gap-2 mt-2" style="cursor:pointer;">
+            <input type="checkbox" id="vtStarOnly">
+            <span>⭐ 별표한 단어만 ({{ star_count }}개)</span>
+        </label>
+        {% endif %}
+        <div class="mt-4">
+            <button class="btn btn-primary btn-lg px-4" id="vtStartBtn">
+                <i class="fas fa-play me-1"></i>시작 ({{ total }}개)
+            </button>
+        </div>
+    </div>
+
+    <!-- 진행 화면 -->
+    <div id="vtPlay" style="display:none;">
+        <div class="vt-progress"><div class="bar" id="vtBar" style="width:0%"></div></div>
+        <div class="vt-panel">
+            <div class="vt-subunit" id="vtSubunit"></div>
+            <div class="vt-word" id="vtWord">—</div>
+            <input type="text" class="vt-input" id="vtInput" autocomplete="off"
+                   autocorrect="off" autocapitalize="off" spellcheck="false"
+                   placeholder="한글 뜻 입력 후 Enter">
+            <div class="vt-feedback" id="vtFeedback"></div>
+            <div class="vt-actions">
+                <button class="btn btn-primary px-4" id="vtSubmitBtn">제출 (Enter)</button>
+                <button class="btn btn-outline-secondary px-4" id="vtNextBtn" style="display:none;">다음 (Enter)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div id="vtResult" class="vt-result" style="display:none;">
+        <div class="vt-score-ring"><span id="vtPercent">0</span>점</div>
+        <div class="vt-score-sub"><span id="vtCorrect">0</span> / <span id="vtTotalR">0</span> 정답</div>
+        <div id="vtWrongWrap" style="display:none;">
+            <h6 class="text-start" style="max-width:560px;margin:0 auto;">틀린 단어 (자동으로 ⭐ 별표 표시됨)</h6>
+            <div class="vt-wrong-list" id="vtWrongList"></div>
+        </div>
+        <div class="vt-actions mt-4 flex-wrap">
+            <button class="btn btn-primary" id="vtRetryBtn"><i class="fas fa-rotate-right me-1"></i>다시 풀기</button>
+            <button class="btn btn-warning" id="vtRetryWrongBtn" style="display:none;">⭐ 틀린 것만 다시</button>
+            <a class="btn btn-info text-white" href="{% url 'vocab:flashcard' unit.id %}"><i class="fas fa-book-open me-1"></i>플래시카드</a>
+            <a class="btn btn-outline-secondary" href="{% url 'vocab:home' %}">홈으로</a>
+        </div>
+    </div>
+</div>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<script>
+const UNIT_ID = {{ unit.id }};
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+const URLS = {
+    start: '{% url "vocab:test_start" %}',
+    answer: '{% url "vocab:test_answer" %}',
+    finish: '{% url "vocab:test_finish" %}',
+};
+
+let sessionId = null;
+let words = [];      // [{id, word, sub_unit}]
+let idx = 0;
+let answered = false;  // 현재 단어 제출 완료 여부
+let startTime = 0;
+
+const $ = id => document.getElementById(id);
+
+async function api(url, body) {
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+    });
+    return r.json();
+}
+
+async function startTest(starOnly) {
+    $('vtStartBtn').disabled = true;
+    let d;
+    try {
+        d = await api(URLS.start, { unit_id: UNIT_ID, star_only: !!starOnly });
+    } catch (e) {
+        alert('시작 실패: ' + e.message); $('vtStartBtn').disabled = false; return;
+    }
+    if (!d.success) { alert(d.error || '시작 실패'); $('vtStartBtn').disabled = false; return; }
+    sessionId = d.session_id;
+    words = d.words;
+    idx = 0;
+    $('vtStart').style.display = 'none';
+    $('vtResult').style.display = 'none';
+    $('vtPlay').style.display = '';
+    $('vtCounter').style.display = '';
+    $('vtTotal').textContent = words.length;
+    renderWord();
+}
+
+function renderWord() {
+    answered = false;
+    const w = words[idx];
+    $('vtSubunit').textContent = w.sub_unit || '';
+    $('vtWord').textContent = w.word;
+    $('vtCur').textContent = idx + 1;
+    $('vtBar').style.width = (idx / words.length * 100) + '%';
+    const inp = $('vtInput');
+    inp.value = '';
+    inp.disabled = false;
+    inp.classList.remove('is-valid', 'is-invalid');
+    $('vtFeedback').className = 'vt-feedback';
+    $('vtFeedback').innerHTML = '';
+    $('vtSubmitBtn').style.display = '';
+    $('vtNextBtn').style.display = 'none';
+    inp.focus();
+}
+
+async function submitAnswer() {
+    if (answered) return;
+    const w = words[idx];
+    const val = $('vtInput').value.trim();
+    if (!val) { $('vtInput').focus(); return; }
+    $('vtSubmitBtn').disabled = true;
+    let d;
+    try {
+        d = await api(URLS.answer, { session_id: sessionId, word_id: w.id, input: val, time: 0 });
+    } catch (e) {
+        alert('채점 실패: ' + e.message); $('vtSubmitBtn').disabled = false; return;
+    }
+    $('vtSubmitBtn').disabled = false;
+    if (!d.success) { alert(d.error || '채점 실패'); return; }
+
+    answered = true;
+    const fb = $('vtFeedback');
+    const inp = $('vtInput');
+    inp.disabled = true;
+    if (d.correct) {
+        fb.className = 'vt-feedback correct';
+        fb.innerHTML = '<div class="verdict">⭕ 정답!</div><div class="answer"><b>' + esc(d.correct_meaning) + '</b></div>';
+        inp.classList.add('is-valid');
+    } else {
+        fb.className = 'vt-feedback wrong';
+        fb.innerHTML = '<div class="verdict">❌ 오답</div><div class="answer">정답: <b>' + esc(d.correct_meaning) + '</b></div>';
+        inp.classList.add('is-invalid');
+    }
+    $('vtSubmitBtn').style.display = 'none';
+    const isLast = idx >= words.length - 1;
+    const nb = $('vtNextBtn');
+    nb.style.display = '';
+    nb.textContent = isLast ? '결과 보기 (Enter)' : '다음 (Enter)';
+    nb.focus();
+}
+
+function nextWord() {
+    if (!answered) return;
+    if (idx >= words.length - 1) { finishTest(); return; }
+    idx++;
+    renderWord();
+}
+
+async function finishTest() {
+    $('vtBar').style.width = '100%';
+    let d;
+    try {
+        d = await api(URLS.finish, { session_id: sessionId });
+    } catch (e) {
+        alert('결과 집계 실패: ' + e.message); return;
+    }
+    if (!d.success) { alert(d.error || '집계 실패'); return; }
+    $('vtPlay').style.display = 'none';
+    $('vtCounter').style.display = 'none';
+    $('vtResult').style.display = '';
+    $('vtPercent').textContent = d.percent;
+    $('vtCorrect').textContent = d.correct;
+    $('vtTotalR').textContent = d.total;
+
+    const wrongWrap = $('vtWrongWrap');
+    const list = $('vtWrongList');
+    list.innerHTML = '';
+    if (d.wrong && d.wrong.length) {
+        wrongWrap.style.display = '';
+        d.wrong.forEach(w => {
+            const div = document.createElement('div');
+            div.className = 'vt-wrong-item';
+            div.innerHTML = '<span><span class="w">' + esc(w.word) + '</span>'
+                + (w.input ? ' <span class="badin">(내 답: ' + esc(w.input) + ')</span>' : '')
+                + '</span><span class="m">' + esc(w.meaning) + '</span>';
+            list.appendChild(div);
+        });
+        $('vtRetryWrongBtn').style.display = '';
+    } else {
+        wrongWrap.style.display = 'none';
+        $('vtRetryWrongBtn').style.display = 'none';
+    }
+}
+
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
+// 이벤트
+$('vtStartBtn').addEventListener('click', () => startTest($('vtStarOnly')?.checked));
+$('vtSubmitBtn').addEventListener('click', submitAnswer);
+$('vtNextBtn').addEventListener('click', nextWord);
+$('vtRetryBtn').addEventListener('click', () => startTest(false));
+$('vtRetryWrongBtn').addEventListener('click', () => startTest(true));
+$('vtInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); if (!answered) submitAnswer(); }
+});
+document.addEventListener('keydown', e => {
+    // 채점 후 Enter → 다음
+    if (e.key === 'Enter' && answered && $('vtPlay').style.display !== 'none') {
+        e.preventDefault(); nextWord();
+    }
+});
+</script>
+{% endblock %}
