@@ -137,6 +137,8 @@ _TITLE_PATTERNS = [
     re.compile(r'(Lesson\s*\d+)', re.IGNORECASE),
     re.compile(r'(Review\s*\d*)', re.IGNORECASE),
 ]
+# 학교 시험명 경계 (예: "기말고사", "중간고사") → '고사' 직후를 출판사/단원명 구분점으로
+_EXAM_BOUNDARY = re.compile(r'고사')
 
 
 def parse_filename(raw: str) -> Dict[str, str]:
@@ -183,6 +185,16 @@ def parse_filename(raw: str) -> Dict[str, str]:
         if em:
             grade = em.group(1)
             # 출판사 문자열은 그대로 유지 (학교명 포함된 채로)
+
+    # 시험명(기말고사/중간고사 등)이 있으면 '고사' 직후를 출판사/단원명 경계로 사용
+    # 예: "2026년 동백고2 1학기 기말고사 올림포스2 전국연합 part1"
+    #     → 출판사 "2026년 동백고2 1학기 기말고사" / 단원명 "올림포스2 전국연합 part1"
+    exam_m = _EXAM_BOUNDARY.search(name)
+    if exam_m:
+        head = re.sub(r'\s+', ' ', name[:exam_m.end()]).strip()
+        tail = re.sub(r'\s+', ' ', name[exam_m.end():]).strip()
+        if tail:
+            return {'grade': grade, 'publisher': head, 'title': tail}
 
     match_idx = -1
     for re_p in _TITLE_PATTERNS:
