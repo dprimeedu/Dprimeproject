@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'vocab:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="mb-0"><i class="fas fa-user-check me-2"></i>단어 시험 검수</h3>
+        <div class="btn-group btn-group-sm">
+            <a href="?show=pending" class="btn btn-{% if show == 'pending' %}primary{% else %}outline-primary{% endif %}">검수 대기</a>
+            <a href="?show=all" class="btn btn-{% if show == 'all' %}primary{% else %}outline-primary{% endif %}">전체</a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>학생</th><th>학교/범위</th><th>응시</th>
+                    <th class="text-center">잠정점수</th><th class="text-center">상태</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sessions %}
+                <tr>
+                    <td>{{ s.student.username }} <small class="text-muted">{{ s.student.login_id }}</small></td>
+                    <td>
+                        {{ s.unit.school }}
+                        {% if s.range_test %}<small class="text-muted">{{ s.range_test.start_index }}~{{ s.range_test.end_index }}</small>{% endif %}
+                    </td>
+                    <td><small>{{ s.finished_at|date:"m/d H:i" }}</small></td>
+                    <td class="text-center"><b>{{ s.percent }}</b></td>
+                    <td class="text-center">
+                        {% if s.is_reviewed %}
+                            {% if s.passed %}<span class="badge bg-success">합격</span>
+                            {% else %}<span class="badge bg-danger">재시험</span>{% endif %}
+                        {% else %}
+                            <span class="badge bg-warning text-dark">검수 대기</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'vocab:review_detail' s.id %}" class="btn btn-sm btn-primary">검수</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">
+                    {% if show == 'pending' %}검수할 시험이 없습니다.{% else %}응시한 시험이 없습니다.{% endif %}
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

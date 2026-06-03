@@ -140,8 +140,53 @@ class StudentWordStar(models.Model):
         return f'⭐ {self.student.username} — {self.word.word}'
 
 
+class VocabRangeTest(models.Model):
+    """개인별 시험 범위 (학생관리자료 '내신단어TEST' 기반).
+
+    학생관리표: A=이름, C=학교학년(→단원), O=단어장('내신단어TEST'), Q=오늘시작, R=오늘끝.
+    학생은 이 범위에서 영→한 40문제 시험을 보고, 같은 범위만 따로 떼어 플래시카드로 훈련한다.
+    """
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='vocab_range_tests', verbose_name='학생',
+    )
+    unit = models.ForeignKey(
+        VocabUnit, on_delete=models.CASCADE,
+        related_name='range_tests', verbose_name='단원(내신 단어장)',
+    )
+    start_index = models.IntegerField(verbose_name='시작 번호')
+    end_index = models.IntegerField(verbose_name='끝 번호')
+    source_label = models.CharField(max_length=100, default='내신단어TEST', verbose_name='단어장 라벨')
+
+    question_count = models.IntegerField(default=40, verbose_name='문제 수')
+    time_limit_seconds = models.IntegerField(default=1200, verbose_name='제한시간(초)')
+    pass_threshold = models.IntegerField(default=90, verbose_name='합격 기준 점수')
+
+    is_active = models.BooleanField(default=True, verbose_name='활성화')
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vocab_range_tests_made', verbose_name='배정자',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'vocab_range_test'
+        verbose_name = '시험 범위'
+        verbose_name_plural = '시험 범위'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['student', 'is_active'])]
+
+    def __str__(self):
+        return f'{self.student.username} | {self.unit.title} {self.start_index}~{self.end_index}'
+
+
 class VocabSession(models.Model):
     """학생이 한 단원을 훈련하는 한 번의 세션 (퀴즈/테스트)."""
+    MODE_PRACTICE = 'practice'
+    MODE_TEST = 'test'
+    MODE_CHOICES = [(MODE_PRACTICE, '연습'), (MODE_TEST, '정식 시험')]
+
     student = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -149,12 +194,25 @@ class VocabSession(models.Model):
     )
     unit = models.ForeignKey(VocabUnit, on_delete=models.CASCADE, related_name='sessions')
     star_only = models.BooleanField(default=False, verbose_name='별표만 훈련')
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default=MODE_PRACTICE, verbose_name='모드')
+    range_test = models.ForeignKey(
+        VocabRangeTest, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sessions', verbose_name='시험 범위',
+    )
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
     total_score = models.IntegerField(default=0, verbose_name='획득 점수')
     correct_count = models.IntegerField(default=0, verbose_name='맞은 개수')
     total_count = models.IntegerField(default=0, verbose_name='출제 개수')
+
+    # 사람(교사) 검수
+    is_reviewed = models.BooleanField(default=False, verbose_name='검수 완료')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vocab_sessions_reviewed', verbose_name='검수자',
+    )
 
     class Meta:
         db_table = 'vocab_session'
@@ -168,6 +226,16 @@ class VocabSession(models.Model):
     @property
     def is_completed(self):
         return self.finished_at is not None
+
+    @property
+    def percent(self):
+        return round(self.correct_count / self.total_count * 100) if self.total_count else 0
+
+    @property
+    def passed(self):
+        """검수 후 합격 여부. range_test 있으면 그 기준, 없으면 기본 90."""
+        threshold = self.range_test.pass_threshold if self.range_test else 90
+        return self.percent >= threshold
 
 
 class VocabAttempt(models.Model):

@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.rv-toggle { display:inline-flex; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }
+.rv-toggle button { border:0; background:#fff; padding:.3rem .8rem; cursor:pointer; font-weight:700; color:#9ca3af; }
+.rv-toggle button.o.on { background:#16a34a; color:#fff; }
+.rv-toggle button.x.on { background:#dc2626; color:#fff; }
+tr.wrong td { background:#fef2f2; }
+.rv-input { color:#374151; }
+.rv-input.empty { color:#d1d5db; font-style:italic; }
+</style>
+
+<div class="home-wrap">
+    <a href="{% url 'vocab:review_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>검수 목록</a>
+
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-user-check me-2"></i>{{ session.student.username }} 검수</h3>
+        <p class="section-desc mb-0">
+            {{ session.unit.school }}
+            {% if session.range_test %}· {{ session.range_test.start_index }}~{{ session.range_test.end_index }}번{% endif %}
+            · 응시 {{ session.finished_at|date:"Y-m-d H:i" }}
+        </p>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-3" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
+        <div>
+            점수 <b id="rvPct" style="font-size:1.4rem;color:var(--primary-color);">{{ session.percent }}</b>점
+            (<span id="rvCorrect">{{ session.correct_count }}</span>/<span id="rvTotal">{{ session.total_count }}</span>)
+            <span id="rvVerdict" class="ms-2"></span>
+        </div>
+        {% if session.range_test %}
+        <div class="d-flex align-items-center gap-2">
+            <label class="small mb-0">합격 기준</label>
+            <input type="number" id="rvThreshold" class="form-control form-control-sm" style="width:80px;"
+                   value="{{ session.range_test.pass_threshold }}" min="0" max="100">
+            <button class="btn btn-sm btn-outline-secondary" id="rvThSave">저장</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead class="table-light">
+                <tr><th>#</th><th>단어</th><th>학생 입력</th><th>정답 뜻</th><th class="text-center">판정</th></tr>
+            </thead>
+            <tbody>
+                {% for a in attempts %}
+                <tr data-aid="{{ a.id }}" class="{% if not a.is_correct %}wrong{% endif %}">
+                    <td class="text-muted">{{ forloop.counter }}</td>
+                    <td><b>{{ a.word.word }}</b></td>
+                    <td class="rv-input {% if not a.input_value %}empty{% endif %}">{{ a.input_value|default:"(미입력)" }}</td>
+                    <td class="text-success">{{ a.word.meaning }}</td>
+                    <td class="text-center">
+                        <span class="rv-toggle">
+                            <button type="button" class="o {% if a.is_correct %}on{% endif %}" data-v="1">O</button>
+                            <button type="button" class="x {% if not a.is_correct %}on{% endif %}" data-v="0">X</button>
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="text-center my-3">
+        <button class="btn btn-success btn-lg px-4" id="rvSave">
+            <i class="fas fa-check-double me-1"></i>검수 완료 저장
+        </button>
+        {% if session.is_reviewed %}<span class="ms-2 badge bg-success">검수 완료됨 (재저장 가능)</span>{% endif %}
+    </div>
+</div>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<script>
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+const UPDATE_URL = '{% url "vocab:review_update" session.id %}';
+{% if session.range_test %}const THRESHOLD_URL = '{% url "vocab:range_threshold" %}'; const RT_ID = {{ session.range_test.id }};{% endif %}
+const $ = id => document.getElementById(id);
+
+// O/X 토글
+document.querySelectorAll('tr[data-aid]').forEach(tr => {
+    tr.querySelectorAll('.rv-toggle button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const correct = btn.dataset.v === '1';
+            tr.querySelector('.o').classList.toggle('on', correct);
+            tr.querySelector('.x').classList.toggle('on', !correct);
+            tr.classList.toggle('wrong', !correct);
+            recalc();
+        });
+    });
+});
+
+function collectFlips() {
+    const flips = {};
+    document.querySelectorAll('tr[data-aid]').forEach(tr => {
+        flips[tr.dataset.aid] = tr.querySelector('.o').classList.contains('on');
+    });
+    return flips;
+}
+
+function recalc() {
+    const flips = collectFlips();
+    const total = Object.keys(flips).length;
+    const correct = Object.values(flips).filter(Boolean).length;
+    const pct = total ? Math.round(correct/total*100) : 0;
+    $('rvPct').textContent = pct;
+    $('rvCorrect').textContent = correct;
+    showVerdict(pct);
+}
+
+function showVerdict(pct) {
+    const th = $('rvThreshold') ? parseInt($('rvThreshold').value,10) : 90;
+    const v = $('rvVerdict');
+    if (pct >= th) v.innerHTML = '<span class="badge bg-success">합격</span>';
+    else v.innerHTML = '<span class="badge bg-danger">재시험</span>';
+}
+
+async function api(url, body) {
+    const r = await fetch(url, {method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+        credentials:'same-origin', body:JSON.stringify(body)});
+    return r.json();
+}
+
+$('rvSave').addEventListener('click', async () => {
+    $('rvSave').disabled = true;
+    let d;
+    try { d = await api(UPDATE_URL, { flips: collectFlips(), finalize: true }); }
+    catch(e){ alert('저장 실패: '+e.message); $('rvSave').disabled=false; return; }
+    if (!d.success){ alert(d.error||'저장 실패'); $('rvSave').disabled=false; return; }
+    alert(`검수 완료! ${d.percent}점 — ${d.passed ? '합격' : '재시험'}`);
+    location.href = '{% url "vocab:review_list" %}';
+});
+
+{% if session.range_test %}
+$('rvThSave').addEventListener('click', async () => {
+    const th = parseInt($('rvThreshold').value, 10);
+    const d = await api(THRESHOLD_URL, { range_test_id: RT_ID, pass_threshold: th });
+    if (d.success){ showVerdict(parseInt($('rvPct').textContent,10)); alert('합격 기준 ' + d.pass_threshold + '점 저장'); }
+});
+$('rvThreshold').addEventListener('input', () => showVerdict(parseInt($('rvPct').textContent,10)));
+{% endif %}
+
+recalc();
+</script>
+{% endblock %}

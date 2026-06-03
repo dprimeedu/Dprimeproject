@@ -1,4 +1,5 @@
 import json
+import os
 import random
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -8,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Min
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 
 # 동일 접근제어·헬퍼·학생 일괄등록 로직 재사용 (writing 미러)
@@ -19,9 +21,9 @@ from writing.services.students_excel import parse_students_excel
 
 from .models import (
     VocabUnit, VocabWord, VocabAssignment, StudentWordStar,
-    VocabSession, VocabAttempt,
+    VocabSession, VocabAttempt, VocabRangeTest,
 )
-from .services import grade_meaning
+from .services import grade_meaning, select_test_words
 
 
 # ─────────────────────────────────────────────
@@ -264,7 +266,11 @@ def test_answer_api(request):
         },
     )
 
-    # 틀린 단어는 자동으로 별표 → 플래시카드 '별표만' 집중훈련으로 흐름 연결
+    # 정식 시험: 자동채점만 저장하고 정오는 숨김 (사람 검수 후 확정).
+    if session.mode == VocabSession.MODE_TEST:
+        return JsonResponse({'success': True, 'recorded': True})
+
+    # 연습 모드: 틀린 단어 자동 별표 → 플래시카드 '별표만' 집중훈련으로 흐름 연결
     if not is_correct:
         StudentWordStar.objects.get_or_create(student=request.user, word=word)
 
@@ -305,6 +311,18 @@ def test_finish_api(request):
             'finished_at', 'correct_count', 'total_count', 'total_score',
         ])
 
+    percent = round(correct / total * 100) if total else 0
+
+    # 정식 시험: 검수 대기. 정답/오답 상세는 검수 전까지 비공개.
+    if session.mode == VocabSession.MODE_TEST:
+        return JsonResponse({
+            'success': True,
+            'mode': 'test',
+            'provisional_percent': percent,
+            'total': total,
+            'needs_review': not session.is_reviewed,
+        })
+
     wrong = [
         {'word': a.word.word, 'meaning': a.word.meaning, 'input': a.input_value}
         for a in attempts if not a.is_correct
@@ -313,9 +331,222 @@ def test_finish_api(request):
         'success': True,
         'correct': correct,
         'total': total,
-        'percent': round(correct / total * 100) if total else 0,
+        'percent': percent,
         'wrong': wrong,
     }, json_dumps_params={'ensure_ascii': False})
+
+
+# ─────────────────────────────────────────────
+# 학생 화면 — 개인별 시험 범위(내신단어TEST)
+# ─────────────────────────────────────────────
+
+@login_required
+def range_test_home(request):
+    """학생의 활성 시험 범위 목록 — 시험 보기 / 범위 훈련(플래시카드)."""
+    if not is_teacher(request.user) and not getattr(request.user, 'is_approved', False):
+        return render(request, 'vocab/student_pending.html', {})
+
+    qs = (VocabRangeTest.objects
+          .filter(student=request.user, is_active=True)
+          .select_related('unit').order_by('-created_at'))
+    rts = []
+    for rt in qs:
+        word_n = rt.unit.words.filter(
+            index__gte=rt.start_index, index__lte=rt.end_index,
+        ).count()
+        last = (rt.sessions.filter(mode=VocabSession.MODE_TEST)
+                .order_by('-started_at').first())
+        rts.append({'rt': rt, 'word_n': word_n, 'last': last})
+    return render(request, 'vocab/range_home.html', {'range_tests': rts})
+
+
+@login_required
+def range_test_take(request, range_test_id):
+    """정식 시험 응시 화면 셸. 출제는 range_start API로 받아온다."""
+    rt = get_object_or_404(
+        VocabRangeTest.objects.select_related('unit'),
+        pk=range_test_id, student=request.user, is_active=True,
+    )
+    return render(request, 'vocab/range_test.html', {'rt': rt})
+
+
+@login_required
+@require_POST
+def range_test_start_api(request):
+    """정식 시험 세션 생성 + 출제 단어(뜻 제외) 반환.
+
+    body: {range_test_id}
+    return: {session_id, words, time_limit_seconds, question_count}
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        rt_id = int(data['range_test_id'])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    rt = get_object_or_404(VocabRangeTest, pk=rt_id, student=request.user, is_active=True)
+    words = select_test_words(
+        request.user, rt.unit, rt.start_index, rt.end_index, count=rt.question_count,
+    )
+    if not words:
+        return JsonResponse({'success': False, 'error': '출제할 단어가 없습니다.'}, status=400)
+
+    session = VocabSession.objects.create(
+        student=request.user, unit=rt.unit, mode=VocabSession.MODE_TEST,
+        range_test=rt, total_count=len(words),
+    )
+    return JsonResponse({
+        'success': True,
+        'session_id': session.id,
+        'time_limit_seconds': rt.time_limit_seconds,
+        'question_count': len(words),
+        'words': [
+            {'id': w.id, 'index': w.index, 'word': w.word, 'sub_unit': w.sub_unit}
+            for w in words
+        ],
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+def range_flashcard_view(request, range_test_id):
+    """시험 범위만 떼어 플래시카드(quizlet)로 훈련 — flashcard.html 재사용."""
+    rt = get_object_or_404(
+        VocabRangeTest, pk=range_test_id, is_active=True,
+    )
+    if not is_teacher(request.user) and rt.student_id != request.user.id:
+        messages.error(request, '본인 시험 범위만 훈련할 수 있습니다.')
+        return redirect('vocab:range_home')
+
+    words = list(
+        rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index)
+        .order_by('index')
+    )
+    starred_ids = set(
+        StudentWordStar.objects
+        .filter(student=request.user, word__in=words)
+        .values_list('word_id', flat=True)
+    )
+    cards = [{
+        'id': w.id, 'index': w.index, 'word': w.word, 'meaning': w.meaning,
+        'sub_unit': w.sub_unit, 'starred': w.id in starred_ids,
+    } for w in words]
+
+    return render(request, 'vocab/flashcard.html', {
+        'unit': rt.unit,
+        'range_title': f'{rt.source_label} {rt.start_index}~{rt.end_index}',
+        'cards_json': json.dumps(cards, ensure_ascii=False),
+        'total': len(cards),
+        'star_count': len(starred_ids),
+    })
+
+
+# ─────────────────────────────────────────────
+# 선생님 / 관리자 — 시험 검수
+# ─────────────────────────────────────────────
+
+@teacher_required
+def review_list(request):
+    """정식 시험 세션 목록 — 검수 대기/완료, 학생·범위·점수."""
+    show = request.GET.get('show', 'pending')  # pending|all
+    qs = (VocabSession.objects
+          .filter(mode=VocabSession.MODE_TEST, finished_at__isnull=False)
+          .select_related('student', 'unit', 'range_test')
+          .order_by('-finished_at'))
+    if show == 'pending':
+        qs = qs.filter(is_reviewed=False)
+    sessions = list(qs[:300])
+    return render(request, 'vocab/review_list.html', {
+        'sessions': sessions, 'show': show,
+    })
+
+
+@teacher_required
+def review_detail(request, session_id):
+    """시험 1건 검수 — 단어별 학생입력·자동 O/X, 뒤집기."""
+    session = get_object_or_404(
+        VocabSession.objects.select_related('student', 'unit', 'range_test'),
+        pk=session_id, mode=VocabSession.MODE_TEST,
+    )
+    attempts = list(session.attempts.select_related('word').order_by('word__index'))
+    return render(request, 'vocab/review_detail.html', {
+        'session': session, 'attempts': attempts,
+    })
+
+
+@teacher_required
+@require_POST
+def review_update_api(request, session_id):
+    """검수 반영 — 단어별 정오 뒤집기 + 점수 재계산 + 검수 완료.
+
+    body: {flips: {attempt_id: bool}, finalize: bool}
+    """
+    session = get_object_or_404(VocabSession, pk=session_id, mode=VocabSession.MODE_TEST)
+    try:
+        data = json.loads(request.body or '{}')
+        flips = data.get('flips') or {}
+        finalize = bool(data.get('finalize'))
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    attempts = {a.id: a for a in session.attempts.select_related('word')}
+    changed = []
+    for aid_str, val in flips.items():
+        try:
+            a = attempts.get(int(aid_str))
+        except (ValueError, TypeError):
+            continue
+        if a is None:
+            continue
+        new_correct = bool(val)
+        if a.is_correct != new_correct:
+            a.is_correct = new_correct
+            a.score_earned = 10 if new_correct else 0
+            changed.append(a)
+    if changed:
+        VocabAttempt.objects.bulk_update(changed, ['is_correct', 'score_earned'])
+
+    # 재계산
+    all_attempts = list(session.attempts.all())
+    session.correct_count = sum(1 for a in all_attempts if a.is_correct)
+    session.total_count = len(all_attempts)
+    session.total_score = sum(a.score_earned for a in all_attempts)
+    fields = ['correct_count', 'total_count', 'total_score']
+    if finalize:
+        session.is_reviewed = True
+        session.reviewed_at = timezone.now()
+        session.reviewed_by = request.user
+        fields += ['is_reviewed', 'reviewed_at', 'reviewed_by']
+        # 검수 확정 시: 틀린 단어 자동 별표 (후속 훈련 연결)
+        wrong_word_ids = [a.word_id for a in all_attempts if not a.is_correct]
+        for wid in wrong_word_ids:
+            StudentWordStar.objects.get_or_create(student=session.student, word_id=wid)
+    session.save(update_fields=fields)
+
+    return JsonResponse({
+        'success': True,
+        'correct': session.correct_count,
+        'total': session.total_count,
+        'percent': session.percent,
+        'passed': session.passed,
+        'is_reviewed': session.is_reviewed,
+    })
+
+
+@teacher_required
+@require_POST
+def range_threshold_api(request):
+    """시험 범위의 합격 기준 점수 개인별 조정. body: {range_test_id, pass_threshold}."""
+    try:
+        data = json.loads(request.body or '{}')
+        rt_id = int(data['range_test_id'])
+        threshold = int(data['pass_threshold'])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+    threshold = max(0, min(100, threshold))
+    rt = get_object_or_404(VocabRangeTest, pk=rt_id)
+    rt.pass_threshold = threshold
+    rt.save(update_fields=['pass_threshold'])
+    return JsonResponse({'success': True, 'pass_threshold': threshold})
 
 
 # ─────────────────────────────────────────────
@@ -602,3 +833,139 @@ def student_assignments_update(request, student_id):
         'assigned_count': VocabAssignment.objects.filter(student=student).count(),
         'added': len(to_add), 'removed': len(to_remove),
     })
+
+
+# ─────────────────────────────────────────────
+# 외부(로컬 자동화 스크립트) 연동 — 토큰 인증 API
+# 개별단어장생성.py 가 실행될 때 시험범위를 밀어넣고, 결과를 되읽어 N열에 기록.
+# ─────────────────────────────────────────────
+
+def _check_api_token(request):
+    """공유 시크릿 토큰 검증. 헤더 X-Vocab-Token 또는 body/GET token."""
+    expected = os.getenv('VOCAB_IMPORT_TOKEN', '')
+    if not expected:
+        return False, '서버에 VOCAB_IMPORT_TOKEN 미설정'
+    got = (request.headers.get('X-Vocab-Token')
+           or request.GET.get('token') or '')
+    if not got and request.body:
+        try:
+            got = (json.loads(request.body) or {}).get('token', '')
+        except (json.JSONDecodeError, TypeError):
+            got = ''
+    if got != expected:
+        return False, '토큰 불일치'
+    return True, ''
+
+
+def _find_student(User, name, login_id):
+    """이름(username) 또는 login_id로 학생 1명 찾기. 모호하면 None + 사유."""
+    base = User.objects.exclude(is_staff=True).exclude(is_superuser=True)
+    if login_id:
+        u = base.filter(login_id=login_id).first()
+        if u:
+            return u, ''
+    if name:
+        qs = list(base.filter(username=name)[:2])
+        if len(qs) == 1:
+            return qs[0], ''
+        if len(qs) > 1:
+            return None, f'동명이인 {len(qs)}명'
+    return None, '학생 없음'
+
+
+@csrf_exempt
+@require_POST
+def range_import_api(request):
+    """시험범위 일괄 등록 (학생관리표 '내신단어TEST' 행).
+
+    body: {token, items: [{name, login_id?, school, start, end,
+                           source?, threshold?, question_count?, time_limit_seconds?}]}
+    학생은 이름/ID로, 단원은 school(학교학년)로 매칭. 같은 (학생, source)의 기존 활성 범위는 비활성화.
+    """
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        items = data.get('items') or []
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+
+    User = get_user_model()
+    created, skipped = 0, []
+    for it in items:
+        name = str(it.get('name', '')).strip()
+        login_id = str(it.get('login_id', '')).strip()
+        school = str(it.get('school', '')).strip()
+        source = str(it.get('source') or '내신단어TEST').strip()
+        try:
+            start = int(it['start']); end = int(it['end'])
+        except (KeyError, ValueError, TypeError):
+            skipped.append(f'{name or login_id}: 범위 숫자 오류')
+            continue
+
+        student, why = _find_student(User, name, login_id)
+        if not student:
+            skipped.append(f'{name or login_id}: {why}')
+            continue
+
+        unit = VocabUnit.objects.filter(school=school, is_active=True).first()
+        if not unit:
+            skipped.append(f'{name}: 단원 없음(학교={school})')
+            continue
+
+        # 배정도 보장 (학생 홈/접근권한)
+        VocabAssignment.objects.get_or_create(student=student, unit=unit)
+
+        # 같은 학생·source 기존 활성 범위 비활성화 후 새로 생성
+        VocabRangeTest.objects.filter(
+            student=student, source_label=source, is_active=True,
+        ).update(is_active=False)
+        rt = VocabRangeTest.objects.create(
+            student=student, unit=unit, start_index=start, end_index=end,
+            source_label=source,
+            question_count=int(it.get('question_count', 40)),
+            time_limit_seconds=int(it.get('time_limit_seconds', 1200)),
+            pass_threshold=int(it.get('threshold', 90)),
+        )
+        created += 1
+    return JsonResponse({
+        'success': True, 'created': created,
+        'skipped': skipped, 'skipped_count': len(skipped),
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+@require_GET
+def range_results_api(request):
+    """검수 완료된 최신 시험 결과 조회 (엑셀 N열 되쓰기용).
+
+    GET ?token=...&source=내신단어TEST
+    return: {results: [{name, login_id, school, source, start, end,
+                        percent, passed, reviewed}]}  (활성 범위별 최신 시험)
+    """
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    source = request.GET.get('source', '내신단어TEST')
+
+    rts = (VocabRangeTest.objects
+           .filter(is_active=True, source_label=source)
+           .select_related('student', 'unit'))
+    results = []
+    for rt in rts:
+        sess = (rt.sessions.filter(mode=VocabSession.MODE_TEST, finished_at__isnull=False)
+                .order_by('-finished_at').first())
+        results.append({
+            'name': rt.student.username,
+            'login_id': getattr(rt.student, 'login_id', '') or '',
+            'school': rt.unit.school,
+            'source': rt.source_label,
+            'start': rt.start_index, 'end': rt.end_index,
+            'percent': sess.percent if sess else None,
+            'passed': sess.passed if sess else None,
+            'reviewed': sess.is_reviewed if sess else False,
+            'tested_at': sess.finished_at.strftime('%Y-%m-%d %H:%M') if sess else None,
+        })
+    return JsonResponse({'success': True, 'results': results},
+                        json_dumps_params={'ensure_ascii': False})

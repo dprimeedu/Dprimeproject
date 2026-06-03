@@ -4,6 +4,7 @@
 뜻은 보통 쉼표로 여러 개(예: '값이 비싼, 귀중한')이고 괄호 보충(예: '평형 (균형)')도 있어,
 그 중 하나만 맞아도 정답으로 인정한다.
 """
+import random
 import re
 
 # 뜻 구분자: 쉼표·슬래시·세미콜론·가운뎃점 + ' 또는 '
@@ -53,3 +54,75 @@ def grade_meaning(student_input, correct_meaning):
     if not si:
         return False
     return si in meaning_variants(correct_meaning)
+
+
+# ─────────────────────────────────────────────
+# 시험 문제 추출
+# ─────────────────────────────────────────────
+
+def _wrong_rate_map(word_ids):
+    """단어별 과거 오답률 (= 난이도 proxy). 시도 기록이 있는 단어만 반환."""
+    from django.db.models import Count, Q
+    from .models import VocabAttempt
+    rows = (
+        VocabAttempt.objects.filter(word_id__in=word_ids)
+        .values('word_id')
+        .annotate(total=Count('id'), wrong=Count('id', filter=Q(is_correct=False)))
+    )
+    return {r['word_id']: (r['wrong'] / r['total']) for r in rows if r['total']}
+
+
+def select_test_words(student, unit, start_index, end_index, count=40, star_ratio=0.7):
+    """범위(start~end 번호)에서 시험 문제용 단어를 골라 반환 (셔플된 VocabWord 리스트).
+
+    규칙: 별표(모르는 단어) 70% 랜덤 + 비별표 30% 난이도 어려운 순.
+    난이도 = 과거 오답률(기록 있을 때) → 없으면 단어 길이. 한쪽이 모자라면 다른 쪽에서 채움.
+    """
+    from .models import StudentWordStar
+
+    words = list(
+        unit.words.filter(index__gte=start_index, index__lte=end_index).order_by('index')
+    )
+    if not words:
+        return []
+    if len(words) <= count:
+        random.shuffle(words)
+        return words
+
+    word_ids = [w.id for w in words]
+    starred = set(
+        StudentWordStar.objects
+        .filter(student=student, word_id__in=word_ids)
+        .values_list('word_id', flat=True)
+    )
+    starred_words = [w for w in words if w.id in starred]
+    non_starred = [w for w in words if w.id not in starred]
+
+    n_star = min(len(starred_words), round(count * star_ratio))
+    n_non = count - n_star
+    if n_non > len(non_starred):  # 비별표 부족 → 별표에서 더
+        n_star = min(len(starred_words), n_star + (n_non - len(non_starred)))
+        n_non = count - n_star
+
+    # 별표: 랜덤
+    random.shuffle(starred_words)
+    pick = starred_words[:n_star]
+
+    # 비별표: 난이도 어려운 순 (오답률 → 길이)
+    diff = _wrong_rate_map([w.id for w in non_starred])
+    non_sorted = sorted(
+        non_starred,
+        key=lambda w: (diff.get(w.id, 0.0), len(w.word or '')),
+        reverse=True,
+    )
+    pick += non_sorted[:n_non]
+
+    # 그래도 모자라면 남은 단어로 채움
+    if len(pick) < count:
+        chosen = {w.id for w in pick}
+        rest = [w for w in words if w.id not in chosen]
+        random.shuffle(rest)
+        pick += rest[: count - len(pick)]
+
+    random.shuffle(pick)
+    return pick[:count]

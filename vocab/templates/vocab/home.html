@@ -14,6 +14,13 @@
             (관리자 모드) 모든 활성 단원이 표시됩니다.
             {% endif %}
         </p>
+        {% if not is_assigned_view %}
+        <div class="d-flex gap-2 flex-wrap mt-2">
+            <a href="{% url 'vocab:review_list' %}" class="btn btn-sm btn-primary"><i class="fas fa-user-check me-1"></i>단어 시험 검수</a>
+            <a href="{% url 'vocab:unit_list' %}" class="btn btn-sm btn-outline-secondary">단원 관리</a>
+            <a href="{% url 'vocab:student_admin' %}" class="btn btn-sm btn-outline-secondary">학생 관리</a>
+        </div>
+        {% endif %}
     </div>
 
     {% if unit_info %}

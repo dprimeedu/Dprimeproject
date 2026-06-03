@@ -9,11 +9,27 @@ urlpatterns = [
     path('unit/<int:unit_id>/flashcard/', views.flashcard_view, name='flashcard'),
     path('unit/<int:unit_id>/test/', views.test_view, name='test'),
 
+    # 학생 — 개인별 시험범위(내신단어TEST)
+    path('range/', views.range_test_home, name='range_home'),
+    path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
+    path('range/<int:range_test_id>/flashcard/', views.range_flashcard_view, name='range_flashcard'),
+
     # AJAX API
     path('api/star/toggle/', views.star_toggle_api, name='star_toggle'),
     path('api/test/start/', views.test_start_api, name='test_start'),
     path('api/test/answer/', views.test_answer_api, name='test_answer'),
     path('api/test/finish/', views.test_finish_api, name='test_finish'),
+    path('api/range/start/', views.range_test_start_api, name='range_start'),
+
+    # 선생님 / 관리자 — 시험 검수
+    path('admin/reviews/', views.review_list, name='review_list'),
+    path('admin/reviews/<int:session_id>/', views.review_detail, name='review_detail'),
+    path('admin/reviews/<int:session_id>/update/', views.review_update_api, name='review_update'),
+    path('admin/range/threshold/', views.range_threshold_api, name='range_threshold'),
+
+    # 외부 자동화(개별단어장생성.py) 연동 — 토큰 인증
+    path('api/range/import/', views.range_import_api, name='range_import'),
+    path('api/range/results/', views.range_results_api, name='range_results'),
 
     # 선생님 / 관리자 — 단원 관리
     path('admin/units/', views.unit_list, name='unit_list'),

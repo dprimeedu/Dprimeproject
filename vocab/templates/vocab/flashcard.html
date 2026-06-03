@@ -82,10 +82,14 @@
 <form style="display:none">{% csrf_token %}</form>
 
 <div class="fc-wrap">
+    {% if range_title %}
+    <a href="{% url 'vocab:range_home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>내 단어 시험</a>
+    {% else %}
     <a href="{% url 'vocab:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어훈련 홈</a>
+    {% endif %}
 
     <div class="fc-header">
-        <h3 class="mb-0"><i class="fas fa-layer-group me-2"></i>{{ unit.title }}</h3>
+        <h3 class="mb-0"><i class="fas fa-layer-group me-2"></i>{% if range_title %}{{ unit.school }} · {{ range_title }}{% else %}{{ unit.title }}{% endif %}</h3>
         <div class="d-flex align-items-center gap-3 flex-wrap">
             <label class="fc-mode-toggle" id="dirToggle" title="앞면을 단어/뜻 중 무엇으로 볼지">
                 <input type="checkbox" id="dirCb">
