@@ -171,3 +171,6 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 50000
 # 개발용 결정적 키로 폴백하므로 운영 부적합 — settings/.env 에 강제 등록 권장.
 PEDU_AES_KEY = os.getenv('PEDU_AES_KEY', '')
 PEDU_HMAC_KEY = os.getenv('PEDU_HMAC_KEY', '')
+
+# 내신단어TEST 자동화 API 토큰 (개별단어장생성.py 연동)
+VOCAB_IMPORT_TOKEN = os.getenv('VOCAB_IMPORT_TOKEN', 'pedu-vocab-2026')
