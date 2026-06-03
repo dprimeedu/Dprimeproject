@@ -15,6 +15,14 @@
     border: 1px solid #e5e7eb; padding: 2.5rem 2rem; text-align: center; }
 .vt-subunit { font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.75rem; min-height: 1rem; }
 .vt-word { font-size: 2.4rem; font-weight: 600; color: #111; line-height: 1.3; word-break: break-word; }
+.vt-range { text-align: left; margin-top: 1.25rem; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem; background: #f9fafb; }
+.vt-range-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 0.75rem; }
+.vt-range-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; max-height: 220px; overflow-y: auto; }
+.vt-sub { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border-radius: 999px;
+    border: 1.5px solid #e5e7eb; background: #fff; cursor: pointer; font-size: 0.85rem; user-select: none; transition: .12s; }
+.vt-sub .cnt { color: #9ca3af; font-size: 0.78rem; }
+.vt-sub.on { border-color: var(--primary-color); background: #eef2ff; color: var(--primary-color); font-weight: 600; }
+.vt-sub.on .cnt { color: var(--primary-color); }
 .vt-input { font-size: 1.4rem; text-align: center; padding: 0.6rem 1rem; margin-top: 1.75rem;
     border: 2px solid #e5e7eb; border-radius: 12px; width: 100%; }
 .vt-input:focus { outline: none; border-color: var(--primary-color); }
@@ -54,15 +62,26 @@
         <div style="font-size:2.5rem;">📝</div>
         <h4 class="mt-2 mb-3">테스트를 시작할까요?</h4>
         <p class="text-muted">영어 단어를 보고 <b>한글 뜻</b>을 입력합니다. 뜻이 여러 개면 하나만 맞아도 정답이에요.</p>
+
+        {% if sub_unit_count > 1 %}
+        <div class="vt-range">
+            <div class="vt-range-head">
+                <span><i class="fas fa-list-check me-1"></i>시험 범위 <small class="text-muted">(소단원 선택)</small></span>
+                <button type="button" class="btn btn-sm btn-link p-0" id="vtToggleAll">전체 해제</button>
+            </div>
+            <div class="vt-range-grid" id="vtSubList"><!-- JS로 채움 --></div>
+        </div>
+        {% endif %}
+
         {% if star_count %}
-        <label class="d-inline-flex align-items-center gap-2 mt-2" style="cursor:pointer;">
+        <label class="d-inline-flex align-items-center gap-2 mt-3" style="cursor:pointer;">
             <input type="checkbox" id="vtStarOnly">
-            <span>⭐ 별표한 단어만 ({{ star_count }}개)</span>
+            <span>⭐ 선택 범위 중 별표한 단어만 ({{ star_count }}개)</span>
         </label>
         {% endif %}
         <div class="mt-4">
             <button class="btn btn-primary btn-lg px-4" id="vtStartBtn">
-                <i class="fas fa-play me-1"></i>시작 ({{ total }}개)
+                <i class="fas fa-play me-1"></i>시작 (<span id="vtStartCount">{{ total }}</span>개)
             </button>
         </div>
     </div>
@@ -112,13 +131,47 @@ const URLS = {
     finish: '{% url "vocab:test_finish" %}',
 };
 
+const SUB_UNITS = {% if sub_units_json %}{{ sub_units_json|safe }}{% else %}[]{% endif %};
+
 let sessionId = null;
 let words = [];      // [{id, word, sub_unit}]
 let idx = 0;
 let answered = false;  // 현재 단어 제출 완료 여부
-let startTime = 0;
+let lastOpts = { starOnly: false, subUnits: [] };  // 다시 풀기용
 
 const $ = id => document.getElementById(id);
+
+// ── 시험 범위(소단원) 선택 ──────────────────────────
+function selectedSubUnits() {
+    return [...document.querySelectorAll('.vt-sub.on')].map(el => el.dataset.name);
+}
+function rangeCount() {
+    const on = [...document.querySelectorAll('.vt-sub.on')];
+    if (SUB_UNITS.length <= 1) return {{ total }};
+    return on.reduce((s, el) => s + (parseInt(el.dataset.count, 10) || 0), 0);
+}
+function refreshStartCount() {
+    const el = $('vtStartCount');
+    if (el) el.textContent = $('vtStarOnly')?.checked ? '별표' : rangeCount();
+    const allOn = document.querySelectorAll('.vt-sub').length === document.querySelectorAll('.vt-sub.on').length;
+    const t = $('vtToggleAll');
+    if (t) t.textContent = allOn ? '전체 해제' : '전체 선택';
+    if ($('vtStartBtn')) $('vtStartBtn').disabled = rangeCount() === 0 && !$('vtStarOnly')?.checked;
+}
+(function renderSubList() {
+    const wrap = $('vtSubList');
+    if (!wrap || SUB_UNITS.length <= 1) return;
+    SUB_UNITS.forEach(s => {
+        const el = document.createElement('span');
+        el.className = 'vt-sub on';
+        el.dataset.name = s.name;
+        el.dataset.count = s.count;
+        el.innerHTML = '<i class="fas fa-check" style="font-size:.7rem;"></i>' +
+            esc(s.label) + ' <span class="cnt">' + s.count + '</span>';
+        el.addEventListener('click', () => { el.classList.toggle('on'); refreshStartCount(); });
+        wrap.appendChild(el);
+    });
+})();
 
 async function api(url, body) {
     const r = await fetch(url, {
@@ -130,11 +183,15 @@ async function api(url, body) {
     return r.json();
 }
 
-async function startTest(starOnly) {
+async function startTest(opts) {
+    opts = opts || {};
+    const starOnly = !!opts.starOnly;
+    const subUnits = opts.subUnits || [];
+    lastOpts = { starOnly, subUnits };
     $('vtStartBtn').disabled = true;
     let d;
     try {
-        d = await api(URLS.start, { unit_id: UNIT_ID, star_only: !!starOnly });
+        d = await api(URLS.start, { unit_id: UNIT_ID, star_only: starOnly, sub_units: subUnits });
     } catch (e) {
         alert('시작 실패: ' + e.message); $('vtStartBtn').disabled = false; return;
     }
@@ -254,11 +311,21 @@ function esc(s) {
 }
 
 // 이벤트
-$('vtStartBtn').addEventListener('click', () => startTest($('vtStarOnly')?.checked));
+$('vtStartBtn').addEventListener('click', () => startTest({
+    starOnly: $('vtStarOnly')?.checked, subUnits: selectedSubUnits(),
+}));
 $('vtSubmitBtn').addEventListener('click', submitAnswer);
 $('vtNextBtn').addEventListener('click', nextWord);
-$('vtRetryBtn').addEventListener('click', () => startTest(false));
-$('vtRetryWrongBtn').addEventListener('click', () => startTest(true));
+$('vtRetryBtn').addEventListener('click', () => startTest({ starOnly: false, subUnits: lastOpts.subUnits }));
+$('vtRetryWrongBtn').addEventListener('click', () => startTest({ starOnly: true, subUnits: lastOpts.subUnits }));
+$('vtStarOnly')?.addEventListener('change', refreshStartCount);
+$('vtToggleAll')?.addEventListener('click', () => {
+    const chips = [...document.querySelectorAll('.vt-sub')];
+    const allOn = chips.every(c => c.classList.contains('on'));
+    chips.forEach(c => c.classList.toggle('on', !allOn));
+    refreshStartCount();
+});
+refreshStartCount();
 $('vtInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); if (!answered) submitAnswer(); }
 });

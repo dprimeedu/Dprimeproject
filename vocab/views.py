@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
+from django.db.models import Count, Min
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
@@ -160,10 +160,23 @@ def test_view(request, unit_id):
     star_count = StudentWordStar.objects.filter(
         student=request.user, word__unit=unit,
     ).count()
+
+    # 시험 범위 = 소단원(sub_unit) 단위. 교재 진도 순서 유지 위해 최소 색인순 정렬.
+    sub_rows = (
+        unit.words.values('sub_unit')
+        .annotate(c=Count('id'), mn=Min('index'))
+        .order_by('mn')
+    )
+    sub_units = [
+        {'name': r['sub_unit'] or '', 'label': r['sub_unit'] or '(기타)', 'count': r['c']}
+        for r in sub_rows
+    ]
     return render(request, 'vocab/test.html', {
         'unit': unit,
         'total': total,
         'star_count': star_count,
+        'sub_units_json': json.dumps(sub_units, ensure_ascii=False),
+        'sub_unit_count': len(sub_units),
     })
 
 
@@ -179,6 +192,7 @@ def test_start_api(request):
         data = json.loads(request.body or '{}')
         unit_id = int(data['unit_id'])
         star_only = bool(data.get('star_only'))
+        sub_units = data.get('sub_units')  # None 또는 선택된 소단원명 리스트
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
 
@@ -187,6 +201,10 @@ def test_start_api(request):
         return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
 
     words = list(unit.words.all().order_by('index'))
+    # 시험 범위: 선택된 소단원만 (리스트가 비어있지 않을 때만 적용 = 그 외엔 전체)
+    if isinstance(sub_units, list) and len(sub_units) > 0:
+        selected = {str(s) for s in sub_units}
+        words = [w for w in words if (w.sub_unit or '') in selected]
     if star_only:
         starred_ids = set(
             StudentWordStar.objects
