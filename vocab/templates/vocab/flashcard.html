@@ -209,6 +209,8 @@
 
 <script>
 const ALL_CARDS = {{ cards_json|safe }};
+const DEFAULT_STAR_ONLY = {{ default_star_only|yesno:"true,false" }};
+const DEFAULT_SHUFFLE = {{ default_shuffle|yesno:"true,false" }};
 const STAR_URL = '{% url "vocab:star_toggle" %}';
 const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
 const CARD_BY_ID = Object.fromEntries(ALL_CARDS.map(c => [c.id, c]));
@@ -216,6 +218,7 @@ const CARD_BY_ID = Object.fromEntries(ALL_CARDS.map(c => [c.id, c]));
 // 별표 상태는 서버 데이터(card.starred)를 신뢰. id 기준 Set.
 let starred = new Set(ALL_CARDS.filter(c => c.starred).map(c => c.id));
 let starFilter = 'all';        // 'all' | 'only'(별표만) | 'exclude'(별표 제외)
+let autoShuffle = false;       // 라운드 시작 시 카드 섞기
 let dirReversed = false;       // false: 단어→뜻, true: 뜻→단어
 let manageMode = false;        // 학습 현황 관리(분류 학습) 모드
 
@@ -235,8 +238,17 @@ function baseCards() {
     return ALL_CARDS.slice();
 }
 
+function shuffleArray(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
 function startRound(cards) {
     pool = cards.slice();
+    if (autoShuffle) shuffleArray(pool);
     pos = 0; known = []; still = []; history = []; finished = false;
     render();
 }
@@ -297,7 +309,13 @@ function render() {
     $('fcFrontSub').textContent = c.sub_unit || '';
 
     $('fcCounter').textContent = pos + 1;
-    $('fcCard').classList.remove('flipped');
+    // 카드 이동 시 '뒤집힘'을 애니메이션 없이 즉시 해제 — 다음 카드의 뒷면(뜻)이
+    // 회전 도중 살짝 보여 답이 노출되는 것을 막는다.
+    const card = $('fcCard');
+    card.style.transition = 'none';
+    card.classList.remove('flipped');
+    void card.offsetWidth;          // 리플로우로 즉시 반영(애니메이션 생략)
+    card.style.transition = '';
     const pct = ((pos + 1) / pool.length * 100);
     $('fcBar').style.width = pct + '%';
     $('lmBar').style.width = pct + '%';
@@ -320,7 +338,13 @@ function prevCard() { if (!manageMode && pos > 0) { pos--; render(); } }
 function mark(knowIt) {
     if (!manageMode || finished || pool.length === 0) return;
     const c = pool[pos];
-    history.push({ pos, knowIt });
+    // 학습 중(모름)으로 넘기면 자동 별표 — 이미 별표면 그대로 둠
+    let autoStarred = false;
+    if (!knowIt) {
+        autoStarred = markStarLocal(c, true);   // 새로 표시됐을 때만 true
+        if (autoStarred) persistStar(c, true);  // 서버 저장(비동기, 진행 막지 않음)
+    }
+    history.push({ pos, knowIt, autoStarred });
     if (knowIt) known.push(c.id); else still.push(c.id);
     pos++;
     if (pos >= pool.length) finished = true;
@@ -331,6 +355,11 @@ function undo() {
     if (history.length === 0) return;
     const h = history.pop();
     if (h.knowIt) known.pop(); else still.pop();
+    // 이 동작으로 자동 별표한 단어만 되돌림 (원래 별표였던 건 유지)
+    if (h.autoStarred) {
+        const c = pool[h.pos];
+        if (markStarLocal(c, false)) persistStar(c, false);
+    }
     finished = false;
     pos = h.pos;
     render();
@@ -385,17 +414,18 @@ function celebrate() {
     })();
 }
 
-async function toggleStar(e) {
-    if (e && e.stopPropagation) e.stopPropagation();
-    if (pool.length === 0 || finished) return;
-    const c = pool[pos];
-    const want = !starred.has(c.id);
+// 별표 로컬 상태만 동기 갱신 (변경됐으면 true)
+function markStarLocal(c, want) {
+    if (starred.has(c.id) === want) return false;
     if (want) starred.add(c.id); else starred.delete(c.id);
     const orig = CARD_BY_ID[c.id];
     if (orig) orig.starred = want;
     updateStarCount();
-    render();
+    return true;
+}
 
+// 별표 서버 저장 (실패 시 로컬 롤백)
+async function persistStar(c, want) {
     try {
         const r = await fetch(STAR_URL, {
             method: 'POST',
@@ -407,11 +437,22 @@ async function toggleStar(e) {
         if (!d.success) throw new Error(d.error || 'fail');
     } catch (err) {
         if (want) starred.delete(c.id); else starred.add(c.id);
+        const orig = CARD_BY_ID[c.id];
         if (orig) orig.starred = !want;
         updateStarCount();
         render();
         alert('별표 저장 실패: ' + err.message);
     }
+}
+
+async function toggleStar(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (pool.length === 0 || finished) return;
+    const c = pool[pos];
+    const want = !starred.has(c.id);
+    if (!markStarLocal(c, want)) return;
+    render();
+    await persistStar(c, want);
 }
 
 // 모드 전환
@@ -493,6 +534,12 @@ document.addEventListener('keydown', e => {
 })();
 
 updateStarCount();
+autoShuffle = DEFAULT_SHUFFLE;            // 시험 진입 시 카드 섞기
+if (DEFAULT_STAR_ONLY) {                  // 시험 진입 시 별표만 기본
+    starFilter = 'only';
+    $('starOnlyCb').checked = true;
+    syncStarToggles();
+}
 setManageMode(true);   // 학습 현황 관리(분류 학습)를 기본 모드로 시작
 </script>
 {% endblock %}

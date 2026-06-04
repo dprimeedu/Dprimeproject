@@ -124,6 +124,8 @@ def flashcard_view(request, unit_id):
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
         'star_count': len(starred_ids),
+        'default_star_only': False,
+        'default_shuffle': False,
     })
 
 
@@ -344,6 +346,9 @@ def range_flashcard_view(request, range_test_id):
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
         'star_count': len(starred_ids),
+        # 번호 세트 = 플래시카드 시험: 카드섞기 + 별표만(별표 있을 때) 기본
+        'default_star_only': len(starred_ids) > 0,
+        'default_shuffle': True,
     })
 
 

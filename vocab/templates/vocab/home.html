@@ -45,9 +45,11 @@
                     <p class="small text-muted mb-3">아직 별표한 단어가 없어요</p>
                     {% endif %}
                     <div class="mt-auto d-grid gap-2">
+                        {% if not is_assigned_view %}
                         <a href="{% url 'vocab:flashcard' info.unit.id %}" class="btn btn-info text-white">
-                            <i class="fas fa-book-open me-1"></i>플래시카드 학습
+                            <i class="fas fa-book-open me-1"></i>플래시카드 학습 (관리자)
                         </a>
+                        {% endif %}
                         {% if info.quizlet_ranges %}
                         <div class="mt-1">
                             <p class="small text-muted mb-1" style="font-size:0.78rem;">
