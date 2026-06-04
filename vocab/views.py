@@ -23,7 +23,7 @@ from django.urls import reverse
 from .models import (
     VocabUnit, VocabWord, VocabAssignment, StudentWordStar,
     VocabSession, VocabAttempt, VocabRangeTest,
-    WordCardSet, WordCard, DictionaryCache,
+    WordCardSet, WordCard, DictionaryCache, DictionaryEntry,
 )
 from .services import grade_meaning, select_test_words
 
@@ -932,17 +932,26 @@ def _student_gate(request):
 
 
 def lookup_meaning(word):
-    """영→한 사전 조회. 반환: (meaning, source). 순서: 캐시 → 교재 단어DB → AI."""
+    """영→한 사전 조회. 반환: (meaning, source).
+
+    순서: 전체 단어장 사전(DictionaryEntry) → 캐시 → 교재 단원 단어 → AI.
+    """
     w = (word or '').strip()
     if not w:
         return '', ''
     key = w.lower()
 
+    # 1) 전체 단어장 사전 (단어장 전체 모음 — 1순위)
+    de = DictionaryEntry.objects.filter(key=key).first()
+    if de:
+        return de.meaning, 'book'
+
+    # 2) 이전 조회 캐시 (AI 결과 등)
     cached = DictionaryCache.objects.filter(word=key).first()
     if cached:
         return cached.meaning, cached.source
 
-    # 교재 단어DB (대소문자 무시, 뜻 있는 것)
+    # 3) 교재 단원 단어 (대소문자 무시, 뜻 있는 것)
     vw = (VocabWord.objects
           .filter(word__iexact=w).exclude(meaning='')
           .order_by('id').first())

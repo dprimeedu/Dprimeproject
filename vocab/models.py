@@ -300,6 +300,26 @@ class WordCard(models.Model):
         return f'{self.index}. {self.word} — {self.meaning[:20]}'
 
 
+class DictionaryEntry(models.Model):
+    """전체 단어장 모음 사전 (영어 → 한글). 낱말카드 '사전 기능' 1순위 소스.
+
+    출처: '단어장 전체 영영전체모음.xlsm' 시트 '출제지' B열(영어)/C열(한글).
+    management command `import_dictionary`로 적재. key=영어 소문자(매칭용).
+    """
+    word = models.CharField(max_length=255, verbose_name='영어')
+    key = models.CharField(max_length=255, unique=True, db_index=True, verbose_name='매칭키(소문자)')
+    meaning = models.TextField(verbose_name='한글 뜻')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'vocab_dictionary_entry'
+        verbose_name = '사전 단어'
+        verbose_name_plural = '사전 단어'
+
+    def __str__(self):
+        return f'{self.word} → {self.meaning[:20]}'
+
+
 class DictionaryCache(models.Model):
     """영→한 사전 조회 캐시 — 같은 단어 반복 조회/AI 재호출 방지."""
     SRC_DB = 'db'
