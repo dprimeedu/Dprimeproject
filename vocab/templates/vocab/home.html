@@ -2,6 +2,11 @@
 {% load static %}
 
 {% block content %}
+<style>
+/* 퀴즈렛 100단어 세트 번호 버튼 — 균일한 격자로 정렬 */
+.quizlet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+.quizlet-grid .btn { white-space: nowrap; padding: 0.4rem 0.25rem; font-size: 0.8rem; font-weight: 600; }
+</style>
 <div class="home-wrap">
     <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
 
@@ -9,7 +14,7 @@
         <h3><i class="fas fa-layer-group me-2"></i>단어훈련 단원</h3>
         <p class="section-desc">
             {% if is_assigned_view %}
-            배정받은 단원을 골라 플래시카드로 암기하고, 테스트(영→한)로 점검하세요. ⭐ 별표한 단어만 모아 집중훈련도 가능합니다.
+            배정받은 단원을 골라 플래시카드로 암기하고, 100단어 세트로 시험을 보며 점검하세요. ⭐ 별표한 단어만(또는 별표 제외) 모아 집중훈련도 가능합니다.
             {% else %}
             (관리자 모드) 모든 활성 단원이 표시됩니다.
             {% endif %}
@@ -43,25 +48,16 @@
                         <a href="{% url 'vocab:flashcard' info.unit.id %}" class="btn btn-info text-white">
                             <i class="fas fa-book-open me-1"></i>플래시카드 학습
                         </a>
-                        {% if info.range_test %}
-                        <a href="{% url 'vocab:range_test' info.range_test.id %}" class="btn btn-primary">
-                            <i class="fas fa-pen me-1"></i>테스트 (영→한) · {{ info.range_test.start_index }}~{{ info.range_test.end_index }}번
-                        </a>
-                        {% elif is_assigned_view %}
-                        <button class="btn btn-outline-secondary" disabled title="선생님이 시험 범위를 배정하면 활성화됩니다">
-                            <i class="fas fa-pen me-1"></i>테스트 (시험 범위 미배정)
-                        </button>
-                        {% endif %}
                         {% if info.quizlet_ranges %}
                         <div class="mt-1">
                             <p class="small text-muted mb-1" style="font-size:0.78rem;">
-                                <i class="fas fa-bolt me-1" style="color:#f59e0b;"></i>퀴즈렛 (100단어 세트)
+                                <i class="fas fa-bolt me-1" style="color:#f59e0b;"></i>플래시카드 시험 (100단어 세트)
                             </p>
-                            <div class="d-flex flex-wrap gap-1">
+                            <div class="quizlet-grid">
                                 {% for qr in info.quizlet_ranges %}
                                 <a href="{% url 'vocab:range_flashcard' qr.id %}"
-                                   class="btn btn-sm btn-outline-warning"
-                                   title="{{ qr.start_index }}~{{ qr.end_index }}번 플래시카드">
+                                   class="btn btn-outline-warning"
+                                   title="{{ qr.start_index }}~{{ qr.end_index }}번 플래시카드 시험">
                                     {{ qr.start_index }}-{{ qr.end_index }}
                                 </a>
                                 {% endfor %}

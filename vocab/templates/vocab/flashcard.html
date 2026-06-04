@@ -3,7 +3,7 @@
 
 {% block content %}
 <style>
-.fc-wrap { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+.fc-wrap { max-width: 960px; margin: 0 auto; padding: 1.25rem 1rem 2rem; }
 .fc-header {
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;
@@ -28,9 +28,9 @@
 .lm-chip.known { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 .lm-chip.known .num { background: #16a34a; color: #fff; }
 
-.fc-card-container { perspective: 1500px; margin: 1rem 0 1.5rem; }
+.fc-card-container { perspective: 1500px; margin: 0.75rem 0 1.25rem; }
 .fc-card {
-    position: relative; width: 100%; min-height: 320px; cursor: pointer;
+    position: relative; width: 100%; min-height: clamp(360px, 62vh, 640px); cursor: pointer;
     transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(.4,.0,.2,1);
 }
 .fc-card.flipped { transform: rotateX(180deg); }
@@ -104,6 +104,10 @@
             <label class="fc-mode-toggle" id="starModeToggle">
                 <input type="checkbox" id="starOnlyCb">
                 <span>⭐ 별표만 (<span id="starCount">{{ star_count }}</span>)</span>
+            </label>
+            <label class="fc-mode-toggle" id="starExcludeToggle" title="별표 안 한 단어만 모아 보기">
+                <input type="checkbox" id="starExcludeCb">
+                <span>☆ 별표 제외</span>
             </label>
             <div class="fc-counter"><span id="fcCounter">1</span> / <span id="fcTotal">{{ total }}</span></div>
         </div>
@@ -197,9 +201,9 @@
     </div>
 
     <div id="fcEmpty" class="fc-empty" style="display:none;">
-        <div style="font-size: 3rem;">⭐</div>
-        <h4 class="mt-2">별표한 단어가 없어요</h4>
-        <p class="mb-0">카드 우상단의 별표를 눌러 '모르는 단어'를 표시하면 여기서 모아 볼 수 있어요.</p>
+        <div style="font-size: 3rem;" id="fcEmptyIcon">⭐</div>
+        <h4 class="mt-2" id="fcEmptyTitle">별표한 단어가 없어요</h4>
+        <p class="mb-0" id="fcEmptyDesc">카드 우상단의 별표를 눌러 '모르는 단어'를 표시하면 여기서 모아 볼 수 있어요.</p>
     </div>
 </div>
 
@@ -211,7 +215,7 @@ const CARD_BY_ID = Object.fromEntries(ALL_CARDS.map(c => [c.id, c]));
 
 // 별표 상태는 서버 데이터(card.starred)를 신뢰. id 기준 Set.
 let starred = new Set(ALL_CARDS.filter(c => c.starred).map(c => c.id));
-let starOnly = false;
+let starFilter = 'all';        // 'all' | 'only'(별표만) | 'exclude'(별표 제외)
 let dirReversed = false;       // false: 단어→뜻, true: 뜻→단어
 let manageMode = false;        // 학습 현황 관리(분류 학습) 모드
 
@@ -226,7 +230,9 @@ let finished = false;
 const $ = id => document.getElementById(id);
 
 function baseCards() {
-    return starOnly ? ALL_CARDS.filter(c => starred.has(c.id)) : ALL_CARDS.slice();
+    if (starFilter === 'only') return ALL_CARDS.filter(c => starred.has(c.id));
+    if (starFilter === 'exclude') return ALL_CARDS.filter(c => !starred.has(c.id));
+    return ALL_CARDS.slice();
 }
 
 function startRound(cards) {
@@ -252,7 +258,18 @@ function render() {
     $('lmKnown').textContent = known.length;
     $('lmUndo').disabled = history.length === 0;
 
-    if (pool.length === 0) { setScreen('empty'); return; }
+    if (pool.length === 0) {
+        if (starFilter === 'exclude') {
+            $('fcEmptyIcon').textContent = '🎉';
+            $('fcEmptyTitle').textContent = '별표 안 한 단어가 없어요';
+            $('fcEmptyDesc').textContent = '이 범위의 모든 단어에 별표가 되어 있어요. "⭐ 별표만"으로 학습하세요.';
+        } else {
+            $('fcEmptyIcon').textContent = '⭐';
+            $('fcEmptyTitle').textContent = '별표한 단어가 없어요';
+            $('fcEmptyDesc').textContent = "카드 우상단의 별표를 눌러 '모르는 단어'를 표시하면 여기서 모아 볼 수 있어요.";
+        }
+        setScreen('empty'); return;
+    }
 
     if (manageMode && finished) {
         if (still.length === 0) {
@@ -412,9 +429,20 @@ $('lmContinue').addEventListener('click', () => startRound(still.map(id => CARD_
 $('lmRestart').addEventListener('click', () => startRound(baseCards()));
 $('lmRestart2').addEventListener('click', () => startRound(baseCards()));
 
+function syncStarToggles() {
+    $('starModeToggle').classList.toggle('active', starFilter === 'only');
+    $('starExcludeToggle').classList.toggle('active', starFilter === 'exclude');
+}
 $('starOnlyCb').addEventListener('change', e => {
-    starOnly = e.target.checked;
-    $('starModeToggle').classList.toggle('active', starOnly);
+    if (e.target.checked) { $('starExcludeCb').checked = false; starFilter = 'only'; }
+    else starFilter = 'all';
+    syncStarToggles();
+    startRound(baseCards());
+});
+$('starExcludeCb').addEventListener('change', e => {
+    if (e.target.checked) { $('starOnlyCb').checked = false; starFilter = 'exclude'; }
+    else starFilter = 'all';
+    syncStarToggles();
     startRound(baseCards());
 });
 $('dirCb').addEventListener('change', e => {
