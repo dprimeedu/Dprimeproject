@@ -25,7 +25,7 @@ from .models import (
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
-from .services.ai import generate_word_hints, generate_word_hints_batch
+from .services.ai import generate_word_hints, generate_word_hints_batch, split_sentence_clauses
 from .services import scoring, level as level_service
 
 
@@ -954,9 +954,40 @@ def leaderboard_api(request, unit_id):
 VALID_GRADES = {g[0] for g in WritingUnit.GRADE_CHOICES}
 
 
-def _start_hint_generation(unit_id, force=False):
+_HIGH_SCHOOL_GRADES = {'고1', '고2', '고3'}
+
+
+def _split_unit_for_training(unit_id):
+    """고등학교 단원 한정: 20단어 초과 문장을 절·쉼표 기준 10~15단어로 분할.
+
+    영어 원문 단어는 그대로 보존. 중학교/초등/기타는 무변경. 업로드 직후 1회 실행.
+    힌트 생성 전 단계라 word_hints는 빈 채로 재생성된다.
+    """
+    unit = WritingUnit.objects.filter(pk=unit_id).first()
+    if not unit or unit.grade not in _HIGH_SCHOOL_GRADES:
+        return
+    problems = list(unit.problems.order_by('index'))
+    new_rows, changed = [], False
+    for p in problems:
+        chunks = split_sentence_clauses(p.english, p.korean)
+        if len(chunks) > 1:
+            changed = True
+        for c in chunks:
+            new_rows.append((c['english'], c['korean']))
+    if not changed:
+        return
+    with transaction.atomic():
+        unit.problems.all().delete()
+        WritingProblem.objects.bulk_create([
+            WritingProblem(unit=unit, index=i, korean=k, english=e, word_hints=[])
+            for i, (e, k) in enumerate(new_rows, start=1)
+        ])
+
+
+def _start_hint_generation(unit_id, force=False, split_first=False):
     """단원의 AI 한글뜻 생성 백그라운드 스레드 시작.
-    force=True면 이미 한글뜻 있는 문제도 다시 생성 (고유명사 식별 보완용)."""
+    force=True면 이미 한글뜻 있는 문제도 다시 생성 (고유명사 식별 보완용).
+    split_first=True면(업로드 시) 고등학교 단원에 한해 문장 분할 후 힌트 생성."""
     unit = WritingUnit.objects.filter(pk=unit_id).first()
     if not unit:
         return False
@@ -973,7 +1004,7 @@ def _start_hint_generation(unit_id, force=False):
             'total': remaining, 'completed': 0,
             'done': False, 'running': True, 'error': None,
         }
-    threading.Thread(target=_run_hint_generation, args=(unit_id,), daemon=True).start()
+    threading.Thread(target=_run_hint_generation, args=(unit_id, split_first), daemon=True).start()
     return True
 
 
@@ -1050,10 +1081,10 @@ def upload_view(request):
             messages.error(request, '생성된 단원이 없습니다.')
         return render(request, 'writing/upload.html', {})
 
-    # 새로 생긴 단원들에 대해 AI 한글뜻 생성 자동 시작
+    # 새로 생긴 단원들에 대해 AI 한글뜻 생성 자동 시작 (고등학교는 문장 자동 분할 후)
     hint_started = 0
     for u in created_units:
-        if _start_hint_generation(u.id):
+        if _start_hint_generation(u.id, split_first=True):
             hint_started += 1
 
     skip_msg = f' · 3단어 이하 제외 {total_skipped}행' if total_skipped else ''
@@ -1508,10 +1539,12 @@ def unit_detail(request, unit_id):
 BATCH_SIZE = 20  # API 호출당 문제 수
 
 
-def _run_hint_generation(unit_id):
-    """백그라운드 스레드에서 단원 전체 한글뜻 생성"""
+def _run_hint_generation(unit_id, split_first=False):
+    """백그라운드 스레드에서 (업로드 시 고등학교는 문장 분할 후) 단원 전체 한글뜻 생성"""
     from django.db import connection
     try:
+        if split_first:
+            _split_unit_for_training(unit_id)   # 고등학교 단원만 분할 (내부에서 학년 체크)
         problems = list(
             WritingProblem.objects.filter(unit_id=unit_id, word_hints=[]).order_by('index')
         )

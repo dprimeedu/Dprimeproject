@@ -132,6 +132,82 @@ def translate_word_en_ko(word: str) -> str:
         return ''
 
 
+def split_sentence_clauses(english: str, korean: str, max_words: int = 20,
+                           lo: int = 10, hi: int = 15) -> List[Dict[str, str]]:
+    """긴 영어 문장을 절·쉼표·관계대명사 기준 10~15단어 조각으로 분할 (영작 훈련용).
+
+    - 영어는 원문 단어를 그대로 보존(채점 정확성 보장). 각 조각에 대응 한국어를 함께 반환.
+    - max_words 이하면 분할하지 않고 원문 1개 반환.
+    - AI 분할 실패/단어수 불일치 시 안전하게 원문 1개 반환.
+    반환: [{'english': ..., 'korean': ...}, ...]
+    """
+    english = (english or '').strip()
+    korean = (korean or '').strip()
+    words = english.split()
+    if len(words) <= max_words:
+        return [{'english': english, 'korean': korean}]
+
+    prompt = (
+        "다음 영어 문장을 '영작 훈련용'으로 의미 단위(절·구)로 끊어 주세요.\n"
+        "끊는 기준: 주절/종속절 경계, 쉼표, 대시(— -), 관계대명사(who/which/that/where 등), "
+        "등위접속사(and/but/or) 앞.\n"
+        "각 조각에 대응하는 한국어 번역 조각을 함께 주세요.\n"
+        "영어 단어는 원문 순서를 그대로 유지하고, 조각들을 이으면 원문 전체가 되어야 합니다.\n"
+        'JSON 배열만 출력: [{"english":"...","korean":"..."}, ...]\n\n'
+        f'영어: "{english}"\n한국어: "{korean}"\n'
+    )
+    try:
+        resp = get_client().models.generate_content(model=MODEL_NAME, contents=prompt)
+        text = (resp.text or '').strip()
+        m = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+        if m:
+            text = m.group(0)
+        ai = json.loads(text)
+        counts = [len((c.get('english') or '').split()) for c in ai]
+    except Exception as e:
+        print(f'[split] AI 분할 실패: {e}')
+        return [{'english': english, 'korean': korean}]
+
+    if not counts or sum(counts) != len(words):
+        return [{'english': english, 'korean': korean}]   # 단어수 보존 실패 → 미분할
+
+    # 원문 단어를 그대로 잘라 영어 보존 + 한국어는 AI 조각
+    fine, pos = [], 0
+    for c, n in zip(ai, counts):
+        if n <= 0:
+            continue
+        fine.append({'english': ' '.join(words[pos:pos + n]),
+                     'korean': (c.get('korean') or '').strip()})
+        pos += n
+
+    # 인접 조각 병합 → 10~15단어 목표
+    merged, ce, ck, cn = [], [], [], 0
+    for f in fine:
+        n = len(f['english'].split())
+        if cn > 0 and cn + n > hi:
+            merged.append({'english': ' '.join(ce),
+                           'korean': ' '.join(x for x in ck if x).strip()})
+            ce, ck, cn = [], [], 0
+        ce.append(f['english']); ck.append(f['korean']); cn += n
+        if cn >= lo:
+            merged.append({'english': ' '.join(ce),
+                           'korean': ' '.join(x for x in ck if x).strip()})
+            ce, ck, cn = [], [], 0
+    if ce:
+        tail_k = ' '.join(x for x in ck if x).strip()
+        if merged and cn < lo:          # 짧은 꼬리는 직전 조각에 병합
+            merged[-1]['english'] += ' ' + ' '.join(ce)
+            if tail_k:
+                merged[-1]['korean'] = (merged[-1]['korean'] + ' ' + tail_k).strip()
+        else:
+            merged.append({'english': ' '.join(ce), 'korean': tail_k})
+
+    # 최종 영어 보존 검증 (조각 합 == 원문)
+    if ' '.join(mm['english'] for mm in merged).split() != words:
+        return [{'english': english, 'korean': korean}]
+    return merged
+
+
 def generate_word_hints_batch(problems: List[Dict]) -> List[List[Dict[str, str]]]:
     """
     여러 문제를 한 번의 API 호출로 처리.
