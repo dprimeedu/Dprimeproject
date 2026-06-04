@@ -96,6 +96,42 @@ def generate_word_hints(english: str, korean: str) -> List[Dict[str, str]]:
         return [{'word': w, 'meaning': ''} for w in words]
 
 
+def translate_word_en_ko(word: str) -> str:
+    """영어 단어 하나의 한국어 사전 뜻을 반환 (낱말카드 만들기 사전 기능용).
+
+    예: "abandon" → "버리다, 포기하다". 실패 시 빈 문자열.
+    """
+    word = (word or '').strip()
+    if not word:
+        return ''
+
+    prompt = f"""영어 단어 "{word}"의 한국어 뜻을 알려주세요.
+
+규칙:
+- 가장 일반적인 뜻 1~3개를 쉼표로 구분
+- 짧고 명확하게 (학습용 사전식)
+- 품사 표기·예문·영어 설명 없이 한국어 뜻만
+- 한 줄로만 출력
+
+예: "abandon" → 버리다, 포기하다
+출력:"""
+
+    try:
+        client = get_client()
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+        )
+        text = (response.text or '').strip()
+        # 첫 줄만, 따옴표/화살표 등 군더더기 제거
+        line = text.splitlines()[0].strip() if text else ''
+        line = line.lstrip('→-:').strip().strip('"').strip()
+        return line[:200]
+    except Exception as e:
+        print(f'[AI] translate_word_en_ko 실패: {e}')
+        return ''
+
+
 def generate_word_hints_batch(problems: List[Dict]) -> List[List[Dict[str, str]]]:
     """
     여러 문제를 한 번의 API 호출로 처리.

@@ -18,9 +18,12 @@ from writing.views import (
 )
 from writing.services.students_excel import parse_students_excel
 
+from django.urls import reverse
+
 from .models import (
     VocabUnit, VocabWord, VocabAssignment, StudentWordStar,
     VocabSession, VocabAttempt, VocabRangeTest,
+    WordCardSet, WordCard, DictionaryCache,
 )
 from .services import grade_meaning, select_test_words
 
@@ -126,6 +129,7 @@ def flashcard_view(request, unit_id):
         'star_count': len(starred_ids),
         'default_star_only': False,
         'default_shuffle': False,
+        'star_enabled': True,
     })
 
 
@@ -349,6 +353,7 @@ def range_flashcard_view(request, range_test_id):
         # 번호 세트 = 플래시카드 시험: 카드섞기 + 별표만(별표 있을 때) 기본
         'default_star_only': len(starred_ids) > 0,
         'default_shuffle': True,
+        'star_enabled': True,
     })
 
 
@@ -913,3 +918,221 @@ def unit_word_counts_api(request):
         'success': True,
         'units': list(rows),
     }, json_dumps_params={'ensure_ascii': False})
+
+
+# ─────────────────────────────────────────────
+# 학생 화면 — 단어찾기 (낱말카드 만들기, 퀴즈렛식)
+# ─────────────────────────────────────────────
+
+def _student_gate(request):
+    """재원생 승인 안 된 일반 학생은 안내 페이지. 통과면 None."""
+    if not is_teacher(request.user) and not getattr(request.user, 'is_approved', False):
+        return render(request, 'vocab/student_pending.html', {})
+    return None
+
+
+def lookup_meaning(word):
+    """영→한 사전 조회. 반환: (meaning, source). 순서: 캐시 → 교재 단어DB → AI."""
+    w = (word or '').strip()
+    if not w:
+        return '', ''
+    key = w.lower()
+
+    cached = DictionaryCache.objects.filter(word=key).first()
+    if cached:
+        return cached.meaning, cached.source
+
+    # 교재 단어DB (대소문자 무시, 뜻 있는 것)
+    vw = (VocabWord.objects
+          .filter(word__iexact=w).exclude(meaning='')
+          .order_by('id').first())
+    if vw:
+        meaning = vw.meaning.strip()
+        DictionaryCache.objects.get_or_create(
+            word=key, defaults={'meaning': meaning, 'source': DictionaryCache.SRC_DB})
+        return meaning, DictionaryCache.SRC_DB
+
+    # AI 폴백 (지연 import — genai 미설치 환경에서도 앞단계는 동작)
+    try:
+        from writing.services.ai import translate_word_en_ko
+        meaning = translate_word_en_ko(w)
+    except Exception as e:
+        print(f'[dict] AI 조회 실패: {e}')
+        meaning = ''
+    if meaning:
+        DictionaryCache.objects.get_or_create(
+            word=key, defaults={'meaning': meaning, 'source': DictionaryCache.SRC_AI})
+        return meaning, DictionaryCache.SRC_AI
+    return '', ''
+
+
+@login_required
+def wordcard_list(request):
+    """학생이 만든 낱말카드 세트 목록 (임시저장 포함) + 새로 만들기."""
+    gate = _student_gate(request)
+    if gate:
+        return gate
+
+    sets = list(
+        WordCardSet.objects.filter(student=request.user)
+        .annotate(card_total=Count('cards'))
+        .order_by('-updated_at')
+    )
+    return render(request, 'vocab/wordcard_list.html', {'sets': sets})
+
+
+@login_required
+def wordcard_new(request):
+    """새 낱말카드 세트(임시저장) 생성 → 편집기로. 번호는 이어서 연속 매김."""
+    gate = _student_gate(request)
+    if gate:
+        return gate
+
+    last = (WordCardSet.objects.filter(student=request.user)
+            .order_by('-end_index').first())
+    start = (last.end_index + 1) if last else 1
+    count = 20
+    s = WordCardSet.objects.create(
+        student=request.user,
+        title=f'{start}-{start + count - 1}',
+        start_index=start,
+        end_index=start + count - 1,
+        status=WordCardSet.STATUS_DRAFT,
+    )
+    return redirect('vocab:wordcard_edit', set_id=s.id)
+
+
+@login_required
+def wordcard_edit(request, set_id):
+    """낱말카드 편집기 — 단어 입력 시 영→한 사전으로 뜻 자동 채움."""
+    gate = _student_gate(request)
+    if gate:
+        return gate
+
+    s = get_object_or_404(WordCardSet, pk=set_id, student=request.user)
+    cards = list(s.cards.all().order_by('index'))
+    cards_json = json.dumps(
+        [{'index': c.index, 'word': c.word, 'meaning': c.meaning} for c in cards],
+        ensure_ascii=False,
+    )
+    return render(request, 'vocab/wordcard_edit.html', {
+        'set': s,
+        'cards_json': cards_json,
+    })
+
+
+@login_required
+@require_POST
+def wordcard_save_api(request):
+    """편집기 저장 — 세트 메타 + 카드 전체 교체. status: draft(임시저장)/published(완성).
+
+    body: {set_id, title, description, start_index, cards:[{word, meaning}], status}
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        set_id = int(data['set_id'])
+        raw_cards = data.get('cards', [])
+        status = data.get('status', WordCardSet.STATUS_DRAFT)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    if status not in (WordCardSet.STATUS_DRAFT, WordCardSet.STATUS_PUBLISHED):
+        status = WordCardSet.STATUS_DRAFT
+
+    s = get_object_or_404(WordCardSet, pk=set_id, student=request.user)
+
+    # 카드 정리 (순번 1부터 다시 매김)
+    cards = []
+    for i, c in enumerate(raw_cards, start=1):
+        word = str(c.get('word', '')).strip()[:200]
+        meaning = str(c.get('meaning', '')).strip()
+        cards.append({'index': i, 'word': word, 'meaning': meaning})
+
+    # 완성(publish) 시 검증: 빈 카드 없어야 함
+    if status == WordCardSet.STATUS_PUBLISHED:
+        filled = [c for c in cards if c['word'] and c['meaning']]
+        if not filled:
+            return JsonResponse({'success': False, 'error': '단어가 하나도 없습니다.'}, status=400)
+        empties = [c['index'] for c in cards if not (c['word'] and c['meaning'])]
+        if empties:
+            return JsonResponse({
+                'success': False,
+                'error': f'{len(empties)}개 카드가 비어 있습니다. 단어와 뜻을 모두 채워주세요.',
+                'empty_indexes': empties,
+            }, status=400)
+
+    start = int(data.get('start_index') or s.start_index or 1)
+    count = len(cards)
+    end = start + count - 1 if count else start
+
+    title = str(data.get('title', '')).strip()[:200] or f'{start}-{end}'
+    s.title = title
+    s.description = str(data.get('description', '')).strip()
+    s.start_index = start
+    s.end_index = end
+    s.status = status
+    s.save()
+
+    # 카드 전체 교체 (단순·안전)
+    s.cards.all().delete()
+    WordCard.objects.bulk_create([
+        WordCard(card_set=s, index=c['index'], word=c['word'], meaning=c['meaning'])
+        for c in cards
+    ])
+
+    return JsonResponse({'success': True, 'set_id': s.id, 'status': s.status,
+                         'title': s.title, 'start_index': start, 'end_index': end})
+
+
+@login_required
+@require_POST
+def wordcard_delete(request, set_id):
+    """낱말카드 세트 삭제."""
+    s = get_object_or_404(WordCardSet, pk=set_id, student=request.user)
+    s.delete()
+    return redirect('vocab:wordcard_list')
+
+
+@login_required
+def wordcard_flashcard(request, set_id):
+    """완성한 낱말카드 세트를 플래시카드로 학습 — flashcard.html 재사용(별표 비활성)."""
+    gate = _student_gate(request)
+    if gate:
+        return gate
+
+    s = get_object_or_404(WordCardSet, pk=set_id, student=request.user)
+    cards = [
+        {'id': c.id, 'index': c.index, 'word': c.word, 'meaning': c.meaning,
+         'sub_unit': '', 'starred': False}
+        for c in s.cards.exclude(word='').exclude(meaning='').order_by('index')
+    ]
+    return render(request, 'vocab/flashcard.html', {
+        'unit': s,                       # __str__/title 표시용 (range_title이 우선됨)
+        'range_title': s.title,
+        'cards_json': json.dumps(cards, ensure_ascii=False),
+        'total': len(cards),
+        'star_count': 0,
+        'default_star_only': False,
+        'default_shuffle': False,
+        'star_enabled': False,           # 내 낱말카드엔 별표 기능 비활성
+        'back_url': reverse('vocab:wordcard_list'),
+        'back_label': '낱말카드',
+    })
+
+
+@login_required
+@require_POST
+def dict_lookup_api(request):
+    """영→한 사전 단건 조회. body: {word} → {success, meaning, source}."""
+    try:
+        data = json.loads(request.body or '{}')
+        word = str(data.get('word', '')).strip()
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    if not word:
+        return JsonResponse({'success': True, 'meaning': '', 'source': ''})
+
+    meaning, source = lookup_meaning(word)
+    return JsonResponse({'success': True, 'meaning': meaning, 'source': source},
+                        json_dumps_params={'ensure_ascii': False})

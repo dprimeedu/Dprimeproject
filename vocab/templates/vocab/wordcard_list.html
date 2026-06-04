@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-magnifying-glass me-2" style="color:#2563eb;"></i>단어찾기 — 내 낱말카드</h3>
+        <p class="section-desc">영어 단어를 입력하면 뜻을 자동으로 찾아줍니다. 완성하면 플래시카드로 바로 학습하세요.</p>
+    </div>
+
+    <div class="mb-3">
+        <a href="{% url 'vocab:wordcard_new' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>새 낱말카드 세트 만들기
+        </a>
+    </div>
+
+    {% if sets %}
+    <div class="row g-3">
+        {% for s in sets %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <h5 class="card-title mb-1">{{ s.title }}</h5>
+                        {% if s.status == 'published' %}
+                        <span class="badge bg-success">완성</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">임시저장</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-muted small mb-3">카드 {{ s.card_total }}장 · {{ s.updated_at|date:"n월 j일 H:i" }}</p>
+                    <div class="mt-auto d-grid gap-2">
+                        {% if s.status == 'published' %}
+                        <a href="{% url 'vocab:wordcard_flashcard' s.id %}" class="btn btn-info text-white">
+                            <i class="fas fa-book-open me-1"></i>플래시카드 학습
+                        </a>
+                        <a href="{% url 'vocab:wordcard_edit' s.id %}" class="btn btn-outline-secondary btn-sm">수정</a>
+                        {% else %}
+                        <a href="{% url 'vocab:wordcard_edit' s.id %}" class="btn btn-primary">
+                            <i class="fas fa-pen me-1"></i>이어서 만들기
+                        </a>
+                        {% endif %}
+                        <form method="post" action="{% url 'vocab:wordcard_delete' s.id %}"
+                              onsubmit="return confirm('이 낱말카드 세트를 삭제할까요?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger btn-sm w-100">삭제</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        아직 만든 낱말카드가 없어요. <b>"새 낱말카드 세트 만들기"</b>로 시작하세요.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

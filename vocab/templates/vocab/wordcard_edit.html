@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+.wc-wrap { max-width: 1040px; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+.wc-top { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+.wc-top h3 { margin:0; font-weight:800; }
+.wc-savestate { font-size:.85rem; color:#9ca3af; }
+.wc-savestate.saving { color:#f59e0b; }
+.wc-savestate.saved { color:#16a34a; }
+
+.wc-meta { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:1.25rem; box-shadow:0 2px 10px rgba(0,0,0,.04); margin-bottom:1rem; }
+.wc-title-input { font-size:1.4rem; font-weight:700; border:0; border-bottom:2px solid #e5e7eb; width:100%; padding:.4rem .2rem; }
+.wc-title-input:focus { outline:none; border-bottom-color:var(--primary-color); }
+.wc-desc-input { border:0; width:100%; padding:.4rem .2rem; color:#374151; margin-top:.4rem; }
+.wc-desc-input:focus { outline:none; }
+
+.wc-controls { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin:1rem 0 .75rem; }
+.wc-count { display:flex; align-items:center; gap:.5rem; font-weight:600; color:#374151; }
+.wc-count input { width:90px; font-size:1.1rem; text-align:center; padding:.35rem .5rem; border:1.5px solid #e5e7eb; border-radius:10px; }
+.wc-count input:focus { outline:none; border-color:var(--primary-color); }
+
+.wc-card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:1rem 1.1rem; margin-bottom:.7rem; box-shadow:0 1px 6px rgba(0,0,0,.03); }
+.wc-card-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem; }
+.wc-card-no { font-weight:800; color:#6b7280; }
+.wc-row { display:grid; grid-template-columns: 1fr 1fr; gap:1rem; }
+@media (max-width: 600px){ .wc-row { grid-template-columns:1fr; } }
+.wc-field { display:flex; flex-direction:column; }
+.wc-field label { font-size:.72rem; color:#9ca3af; margin-bottom:.2rem; order:2; }
+.wc-field input { border:0; border-bottom:1.5px solid #e5e7eb; padding:.5rem .2rem; font-size:1.05rem; order:1; }
+.wc-field input:focus { outline:none; border-bottom-color:var(--primary-color); }
+.wc-meaning-wrap { position:relative; }
+.wc-spin { position:absolute; right:.2rem; top:.4rem; font-size:.85rem; color:#9ca3af; display:none; }
+.wc-meaning-wrap.loading .wc-spin { display:inline; }
+.wc-src { font-size:.68rem; color:#c4b5fd; margin-left:.4rem; }
+.wc-del { background:none; border:0; color:#d1d5db; cursor:pointer; font-size:1rem; padding:.2rem .4rem; }
+.wc-del:hover { color:#ef4444; }
+
+.wc-add { display:block; margin:1rem auto; background:#fff; border:1.5px dashed #d1d5db; border-radius:999px;
+    padding:.7rem 1.6rem; color:#6b7280; cursor:pointer; font-weight:600; }
+.wc-add:hover { border-color:var(--primary-color); color:var(--primary-color); }
+
+.wc-publish { position:sticky; bottom:0; padding:1rem 0; text-align:center; }
+.wc-hint { color:#9ca3af; font-size:.82rem; margin-top:.4rem; }
+</style>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<div class="wc-wrap">
+    <a href="{% url 'vocab:wordcard_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>내 낱말카드</a>
+
+    <div class="wc-top">
+        <h3>낱말카드 세트 만들기</h3>
+        <div class="d-flex align-items-center gap-3">
+            <span class="wc-savestate" id="wcSaveState">자동 임시저장</span>
+            <button class="btn btn-primary px-4" id="wcPublishTop"><i class="fas fa-check me-1"></i>만들기</button>
+        </div>
+    </div>
+
+    <div class="wc-meta">
+        <input type="text" class="wc-title-input" id="wcTitle" placeholder="제목 (예: 1-20)">
+        <input type="text" class="wc-desc-input" id="wcDesc" placeholder="설명을 추가하세요... (선택)">
+    </div>
+
+    <div class="wc-controls">
+        <div class="text-muted small">
+            <i class="fas fa-bolt me-1" style="color:#f59e0b;"></i>단어(영어)를 입력하면 뜻(한글)이 자동으로 채워져요.
+        </div>
+        <div class="wc-count">
+            <span>카드 수</span>
+            <input type="number" id="wcCount" min="1" max="300" step="1">
+        </div>
+    </div>
+
+    <div id="wcCards"></div>
+
+    <button class="wc-add" id="wcAdd"><i class="fas fa-plus me-1"></i>카드 추가하기</button>
+
+    <div class="wc-publish">
+        <button class="btn btn-primary btn-lg px-5" id="wcPublish"><i class="fas fa-check me-1"></i>만들기</button>
+        <div class="wc-hint">다 채우지 않고 나가도 <b>임시저장</b>됩니다. 모든 칸을 채우면 완성할 수 있어요.</div>
+    </div>
+</div>
+
+{{ set.title|json_script:"set-title" }}
+{{ set.description|json_script:"set-desc" }}
+<script>
+const SET = {
+    id: {{ set.id }},
+    start_index: {{ set.start_index }},
+    end_index: {{ set.end_index }},
+    title: JSON.parse(document.getElementById('set-title').textContent) || '',
+};
+const SAVED_CARDS = {{ cards_json|safe }};
+const SET_DESC = JSON.parse(document.getElementById('set-desc').textContent) || '';
+
+const SAVE_URL = '{% url "vocab:wordcard_save" %}';
+const DICT_URL = '{% url "vocab:dict_lookup" %}';
+const FLASH_URL = '{% url "vocab:wordcard_flashcard" set.id %}';
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+
+const $ = id => document.getElementById(id);
+
+let cards = [];     // [{word, meaning}]
+let titleAuto = (SET.title === (SET.start_index + '-' + SET.end_index));
+let publishing = false;
+
+// 초기 카드 구성
+if (SAVED_CARDS && SAVED_CARDS.length) {
+    cards = SAVED_CARDS.map(c => ({ word: c.word || '', meaning: c.meaning || '' }));
+} else {
+    const n = Math.max(1, SET.end_index - SET.start_index + 1);
+    for (let i = 0; i < n; i++) cards.push({ word: '', meaning: '' });
+}
+
+$('wcTitle').value = SET.title;
+$('wcDesc').value = SET_DESC;
+$('wcCount').value = cards.length;
+
+function endIndex() { return SET.start_index + cards.length - 1; }
+
+function syncTitle() {
+    if (titleAuto) $('wcTitle').value = SET.start_index + '-' + endIndex();
+}
+
+function meaningInput(idx) { return document.querySelector(`.wc-card[data-idx="${idx}"] .wc-meaning`); }
+
+function renderCards() {
+    const wrap = $('wcCards');
+    wrap.innerHTML = '';
+    cards.forEach((c, idx) => {
+        const el = document.createElement('div');
+        el.className = 'wc-card';
+        el.dataset.idx = idx;
+        el.innerHTML = `
+            <div class="wc-card-head">
+                <span class="wc-card-no">${idx + 1}</span>
+                <button class="wc-del" title="이 카드 삭제" data-del="${idx}"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="wc-row">
+                <div class="wc-field">
+                    <input type="text" class="wc-word" data-idx="${idx}" autocomplete="off"
+                           autocapitalize="off" spellcheck="false" placeholder="영어 단어" value="${escapeHtml(c.word)}">
+                    <label>단어</label>
+                </div>
+                <div class="wc-field wc-meaning-wrap">
+                    <input type="text" class="wc-meaning" data-idx="${idx}" autocomplete="off"
+                           placeholder="뜻 (자동 채움)" value="${escapeHtml(c.meaning)}">
+                    <span class="wc-spin"><i class="fas fa-spinner fa-spin"></i></span>
+                    <label>뜻</label>
+                </div>
+            </div>`;
+        wrap.appendChild(el);
+    });
+    bindCardEvents();
+}
+
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function bindCardEvents() {
+    document.querySelectorAll('.wc-word').forEach(inp => {
+        const idx = +inp.dataset.idx;
+        inp.addEventListener('input', () => { cards[idx].word = inp.value; scheduleSave(); });
+        inp.addEventListener('change', () => lookupWord(idx));       // blur
+        inp.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); lookupWord(idx);
+                const next = document.querySelector(`.wc-meaning[data-idx="${idx}"]`); if (next) next.focus(); }
+        });
+    });
+    document.querySelectorAll('.wc-meaning').forEach(inp => {
+        const idx = +inp.dataset.idx;
+        inp.addEventListener('input', () => { cards[idx].meaning = inp.value; scheduleSave(); });
+    });
+    document.querySelectorAll('[data-del]').forEach(btn => {
+        btn.addEventListener('click', () => { removeCard(+btn.dataset.del); });
+    });
+}
+
+async function lookupWord(idx) {
+    const word = (cards[idx].word || '').trim();
+    if (!word) return;
+    if ((cards[idx].meaning || '').trim()) return;   // 직접 쓴 뜻은 보존
+    const wrap = document.querySelector(`.wc-card[data-idx="${idx}"] .wc-meaning-wrap`);
+    if (wrap) wrap.classList.add('loading');
+    try {
+        const r = await fetch(DICT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            credentials: 'same-origin',
+            body: JSON.stringify({ word }),
+        });
+        const d = await r.json();
+        if (d.success && d.meaning && !(cards[idx].meaning || '').trim()) {
+            cards[idx].meaning = d.meaning;
+            const mi = meaningInput(idx);
+            if (mi) mi.value = d.meaning;
+            scheduleSave();
+        }
+    } catch (e) { /* 네트워크 실패 무시 — 직접 입력 가능 */ }
+    if (wrap) wrap.classList.remove('loading');
+}
+
+function setCount(n) {
+    n = Math.max(1, Math.min(300, n | 0));
+    if (n > cards.length) { while (cards.length < n) cards.push({ word: '', meaning: '' }); }
+    else if (n < cards.length) { cards.length = n; }
+    $('wcCount').value = cards.length;
+    syncTitle();
+    renderCards();
+    scheduleSave();
+}
+
+function removeCard(idx) {
+    if (cards.length <= 1) return;
+    cards.splice(idx, 1);
+    $('wcCount').value = cards.length;
+    syncTitle();
+    renderCards();
+    scheduleSave();
+}
+
+// ── 저장 ──
+let saveTimer = null;
+function scheduleSave() {
+    setSaveState('saving');
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => save('draft'), 1000);
+}
+
+function setSaveState(state) {
+    const el = $('wcSaveState');
+    el.className = 'wc-savestate ' + (state || '');
+    el.textContent = state === 'saving' ? '저장 중…' : (state === 'saved' ? '임시저장됨 ✓' : '자동 임시저장');
+}
+
+function payload(status) {
+    return {
+        set_id: SET.id,
+        title: $('wcTitle').value.trim(),
+        description: $('wcDesc').value.trim(),
+        start_index: SET.start_index,
+        status: status,
+        cards: cards.map(c => ({ word: (c.word || '').trim(), meaning: (c.meaning || '').trim() })),
+    };
+}
+
+async function save(status, opts) {
+    opts = opts || {};
+    try {
+        const r = await fetch(SAVE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            credentials: 'same-origin',
+            keepalive: !!opts.keepalive,
+            body: JSON.stringify(payload(status)),
+        });
+        const d = await r.json();
+        if (!d.success) return d;
+        if (status === 'draft') setSaveState('saved');
+        return d;
+    } catch (e) {
+        if (status === 'draft') setSaveState('');
+        return { success: false, error: '네트워크 오류' };
+    }
+}
+
+async function publish() {
+    if (publishing) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    const empties = cards.filter(c => !((c.word || '').trim() && (c.meaning || '').trim())).length;
+    if (cards.every(c => !(c.word || '').trim())) { alert('단어를 입력해주세요.'); return; }
+    if (empties > 0) {
+        if (!confirm(`${empties}개 카드가 비어 있어요. 빈 카드는 빼고 완성할까요?`)) return;
+        // 빈 카드 제거 후 완성
+        cards = cards.filter(c => (c.word || '').trim() && (c.meaning || '').trim());
+        renderCards();
+    }
+    publishing = true;   // beforeunload draft 저장이 완성 상태를 덮어쓰지 않도록 유지
+    const d = await save('published');
+    if (!d.success) { publishing = false; alert(d.error || '완성 실패'); return; }
+    window.location.href = FLASH_URL;   // publishing=true 유지한 채 이동
+}
+
+// 떠날 때 임시저장 (keepalive)
+window.addEventListener('beforeunload', () => {
+    if (publishing) return;
+    save('draft', { keepalive: true });
+});
+
+$('wcCount').addEventListener('change', () => setCount(+$('wcCount').value));
+$('wcAdd').addEventListener('click', () => setCount(cards.length + 1));
+$('wcTitle').addEventListener('input', () => { titleAuto = false; scheduleSave(); });
+$('wcDesc').addEventListener('input', scheduleSave);
+$('wcPublish').addEventListener('click', publish);
+$('wcPublishTop').addEventListener('click', publish);
+
+renderCards();
+syncTitle();
+</script>
+{% endblock %}

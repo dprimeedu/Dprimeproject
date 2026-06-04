@@ -12,6 +12,15 @@ urlpatterns = [
     path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
     path('range/<int:range_test_id>/flashcard/', views.range_flashcard_view, name='range_flashcard'),
 
+    # 학생 — 단어찾기 (낱말카드 만들기)
+    path('cards/', views.wordcard_list, name='wordcard_list'),
+    path('cards/new/', views.wordcard_new, name='wordcard_new'),
+    path('cards/<int:set_id>/edit/', views.wordcard_edit, name='wordcard_edit'),
+    path('cards/<int:set_id>/flashcard/', views.wordcard_flashcard, name='wordcard_flashcard'),
+    path('cards/<int:set_id>/delete/', views.wordcard_delete, name='wordcard_delete'),
+    path('api/cards/save/', views.wordcard_save_api, name='wordcard_save'),
+    path('api/dict/lookup/', views.dict_lookup_api, name='dict_lookup'),
+
     # AJAX API
     path('api/star/toggle/', views.star_toggle_api, name='star_toggle'),
     path('api/test/answer/', views.test_answer_api, name='test_answer'),

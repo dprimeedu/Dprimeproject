@@ -238,6 +238,88 @@ class VocabSession(models.Model):
         return self.percent >= threshold
 
 
+class WordCardSet(models.Model):
+    """학생이 직접 만든 낱말카드 세트 (퀴즈렛식 '낱말카드 만들기').
+
+    영어 단어를 입력하면 영→한 사전(교재 단어DB → 없으면 AI)으로 뜻을 채우고,
+    완성하면 플래시카드로 바로 학습한다. 다 못 만들고 나가면 임시저장(draft).
+    번호(start~end)는 학생별로 이어서 연속 매김 (기존 퀴즈렛 100단어 세트와 동일).
+    """
+    STATUS_DRAFT = 'draft'
+    STATUS_PUBLISHED = 'published'
+    STATUS_CHOICES = [(STATUS_DRAFT, '임시저장'), (STATUS_PUBLISHED, '완성')]
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='word_card_sets', verbose_name='학생',
+    )
+    title = models.CharField(max_length=200, verbose_name='제목')
+    description = models.TextField(blank=True, default='', verbose_name='설명')
+    start_index = models.IntegerField(default=1, verbose_name='시작 번호')
+    end_index = models.IntegerField(default=20, verbose_name='끝 번호')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_DRAFT, verbose_name='상태')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'vocab_word_card_set'
+        verbose_name = '낱말카드 세트'
+        verbose_name_plural = '낱말카드 세트'
+        ordering = ['-updated_at']
+        indexes = [models.Index(fields=['student', 'status'])]
+
+    def __str__(self):
+        return f'{self.student.username} | {self.title} ({self.get_status_display()})'
+
+    @property
+    def filled_count(self):
+        if '_filled_count' in self.__dict__:
+            return self._filled_count
+        return self.cards.exclude(word='').count()
+
+
+class WordCard(models.Model):
+    """낱말카드 세트 안의 한 장 (영어 단어 → 한글 뜻)."""
+    card_set = models.ForeignKey(
+        WordCardSet, on_delete=models.CASCADE,
+        related_name='cards', verbose_name='세트',
+    )
+    index = models.IntegerField(verbose_name='순번')           # 세트 내 1-based
+    word = models.CharField(max_length=200, blank=True, default='', verbose_name='단어')
+    meaning = models.TextField(blank=True, default='', verbose_name='뜻')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'vocab_word_card'
+        verbose_name = '낱말카드'
+        verbose_name_plural = '낱말카드'
+        ordering = ['card_set', 'index']
+        unique_together = [['card_set', 'index']]
+
+    def __str__(self):
+        return f'{self.index}. {self.word} — {self.meaning[:20]}'
+
+
+class DictionaryCache(models.Model):
+    """영→한 사전 조회 캐시 — 같은 단어 반복 조회/AI 재호출 방지."""
+    SRC_DB = 'db'
+    SRC_AI = 'ai'
+    SRC_CHOICES = [(SRC_DB, '교재 단어DB'), (SRC_AI, 'AI')]
+
+    word = models.CharField(max_length=200, unique=True, verbose_name='단어(소문자)')
+    meaning = models.TextField(verbose_name='뜻')
+    source = models.CharField(max_length=10, choices=SRC_CHOICES, default=SRC_DB, verbose_name='출처')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'vocab_dictionary_cache'
+        verbose_name = '사전 캐시'
+        verbose_name_plural = '사전 캐시'
+
+    def __str__(self):
+        return f'{self.word} → {self.meaning[:20]} ({self.source})'
+
+
 class VocabAttempt(models.Model):
     """단어 단위 시도 기록 (1단어 입력/응답 = 1 row)."""
     session = models.ForeignKey(
