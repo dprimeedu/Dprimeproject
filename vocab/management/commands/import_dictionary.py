@@ -25,11 +25,30 @@ class Command(BaseCommand):
         parser.add_argument('--xlsx', default=None, help=f'엑셀 경로 (기본: {DEFAULT_XLSX})')
         parser.add_argument('--sheet', default='출제지', help='시트명 (기본: 출제지)')
         parser.add_argument('--json', default=None, help='사전 JSON([{word,meaning}]) 적재 (운영 전송용)')
+        parser.add_argument('--from-vocab', action='store_true',
+                            help='엑셀 대신 기존 VocabWord(내신단어 등) 전체를 사전에 합치기(없는 것만)')
         parser.add_argument('--export', default=None, help='적재 후 JSON 익스포트 경로')
         parser.add_argument('--replace', action='store_true', help='기존 사전 전체 삭제 후 적재')
         parser.add_argument('--dry-run', action='store_true', help='적재 없이 집계만')
 
     def handle(self, *args, **o):
+        # ── 기존 VocabWord 전체를 사전에 합치기(backfill) ──
+        if o['from_vocab']:
+            from vocab.models import VocabWord
+            from vocab.services import sync_pairs_to_dictionary
+            pairs = list(
+                VocabWord.objects.exclude(meaning='')
+                .values_list('word', 'meaning')
+            )
+            self.stdout.write(f'VocabWord {len(pairs)}개 → 통합 사전 합치는 중...')
+            if o['dry_run']:
+                self.stdout.write('dry-run — 적재 안 함')
+                return
+            added = sync_pairs_to_dictionary(pairs)
+            self.stdout.write(self.style.SUCCESS(
+                f'신규 {added}개 추가 (사전 총 {DictionaryEntry.objects.count()}개)'))
+            return
+
         # ── 원본 읽기 ──
         pairs = []  # [(word, meaning)]
         if o['json']:

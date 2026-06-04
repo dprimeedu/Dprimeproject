@@ -126,3 +126,38 @@ def select_test_words(student, unit, start_index, end_index, count=40, star_rati
 
     random.shuffle(pick)
     return pick[:count]
+
+
+def sync_pairs_to_dictionary(pairs):
+    """[(영어, 한글)] 목록 중 통합 사전(DictionaryEntry)에 없는 단어만 추가.
+
+    내신단어 등 단어 import 시 호출 → 통합 사전이 자동으로 커진다.
+    기존 사전 항목(전체 단어장 모음 등)은 덮어쓰지 않고 '없는 것만' 추가.
+    반환: 새로 추가한 개수.
+    """
+    from .models import DictionaryEntry
+
+    seen = set()
+    cleaned = []  # [(word, key, meaning)]
+    for word, meaning in pairs:
+        word = (str(word) if word is not None else '').strip()[:255]
+        meaning = (str(meaning) if meaning is not None else '').strip()
+        key = word.lower()
+        if not (word and meaning and key) or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append((word, key, meaning))
+    if not cleaned:
+        return 0
+
+    keys = [k for _, k, _ in cleaned]
+    existing = set(
+        DictionaryEntry.objects.filter(key__in=keys).values_list('key', flat=True)
+    )
+    objs = [
+        DictionaryEntry(word=w, key=k, meaning=m)
+        for w, k, m in cleaned if k not in existing
+    ]
+    if objs:
+        DictionaryEntry.objects.bulk_create(objs, batch_size=2000, ignore_conflicts=True)
+    return len(objs)

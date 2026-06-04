@@ -19,6 +19,7 @@ from django.db import transaction
 import openpyxl
 
 from vocab.models import VocabUnit, VocabWord
+from vocab.services import sync_pairs_to_dictionary
 
 SHEET_NAME = '내신단어'
 # 헤더명 → 내부 키 (헤더 순서가 달라도 이름으로 매핑)
@@ -52,6 +53,7 @@ class Command(BaseCommand):
         parser.add_argument('--sheet', default=SHEET_NAME, help=f'시트명 (기본: {SHEET_NAME})')
         parser.add_argument('--replace', action='store_true', help='기존 단어를 전부 지우고 다시 넣기')
         parser.add_argument('--dry-run', action='store_true', help='DB 저장 없이 미리보기만')
+        parser.add_argument('--no-dict', action='store_true', help='통합 사전(DictionaryEntry) 자동 동기화 건너뛰기')
 
     def handle(self, *args, **opts):
         # Windows 콘솔(cp949)에서도 한글/특수문자 출력이 깨지지 않게 utf-8 강제
@@ -130,6 +132,11 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"완료 — 단원 {verb}: '{unit.title}' (id={unit.id}) · 신규 {len(to_create)} / 수정 {len(to_update)}"
         ))
+
+        # 통합 사전(DictionaryEntry)에 자동 합치기 — 사전에 없는 단어만 추가
+        if not opts['no_dict']:
+            added = sync_pairs_to_dictionary([(r['word'], r['meaning']) for r in rows])
+            self.stdout.write(self.style.SUCCESS(f"통합 사전 동기화 — 신규 {added}개 추가"))
 
     def _read_sheet(self, path, sheet):
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
