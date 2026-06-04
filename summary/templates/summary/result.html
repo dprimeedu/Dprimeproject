@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap" style="max-width:640px;">
+    <div class="card text-center my-4">
+        <div class="card-body py-5">
+            {% if session.status == 'graded' %}
+                <div style="font-size:3rem;">✅</div>
+                <h3 class="mt-2 mb-1">채점 완료</h3>
+                <p class="text-muted mb-3">{{ session.unit.title }}</p>
+                <div class="my-3">
+                    <span style="font-size:2.4rem;font-weight:800;color:var(--primary-color);">{{ session.percent }}</span>
+                    <span class="text-muted">점</span>
+                    <div class="text-muted small">{{ session.correct_count }} / {{ session.total_blanks }} 칸 정답</div>
+                </div>
+            {% else %}
+                <div style="font-size:3rem;">📨</div>
+                <h3 class="mt-2 mb-1">제출 완료</h3>
+                <p class="text-muted mb-3">{{ session.unit.title }}</p>
+                <p class="mb-0">선생님이 채점할 때까지 기다려 주세요.<br>채점이 끝나면 점수가 표시됩니다.</p>
+            {% endif %}
+
+            <div class="d-flex justify-content-center gap-2 mt-4">
+                <a href="{% url 'summary:home' %}" class="btn btn-primary"><i class="fas fa-list me-1"></i>단원 목록</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

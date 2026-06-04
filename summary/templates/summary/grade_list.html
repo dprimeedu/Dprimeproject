@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'summary:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>요약문완성훈련 홈</a>
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="mb-0"><i class="fas fa-user-check me-2"></i>요약문 채점</h3>
+        <div class="btn-group btn-group-sm">
+            <a href="?show=pending" class="btn btn-{% if show == 'pending' %}primary{% else %}outline-primary{% endif %}">채점 대기</a>
+            <a href="?show=all" class="btn btn-{% if show == 'all' %}primary{% else %}outline-primary{% endif %}">전체</a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>학생</th><th>학교/단원</th><th>제출</th>
+                    <th class="text-center">점수</th><th class="text-center">상태</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sessions %}
+                <tr>
+                    <td>{{ s.student.username }} <small class="text-muted">{{ s.student.login_id }}</small></td>
+                    <td>{{ s.unit.school }}{% if s.unit.unit %} · {{ s.unit.unit }}{% endif %}</td>
+                    <td><small>{{ s.submitted_at|date:"m/d H:i" }}</small></td>
+                    <td class="text-center">
+                        {% if s.status == 'graded' %}<b>{{ s.percent }}</b>{% else %}<span class="text-muted">-</span>{% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if s.status == 'graded' %}
+                            <span class="badge bg-success">채점 완료</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">채점 대기</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'summary:grade_detail' s.id %}" class="btn btn-sm btn-primary">채점</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">
+                    {% if show == 'pending' %}채점할 제출이 없습니다.{% else %}제출된 세션이 없습니다.{% endif %}
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

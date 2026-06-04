@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.sum-wrap { max-width: 860px; margin: 0 auto; }
+.sum-card { border:1px solid #e5e7eb; border-radius:14px; padding:1.1rem 1.3rem; margin-bottom:1rem; background:#fff; }
+.sum-card .qno { font-weight:700; color:var(--primary-color); margin-bottom:.5rem; }
+.sum-sent { font-size:1.02rem; line-height:2.1; color:#1f2937; }
+.sum-blank-wrap { display:inline-flex; flex-direction:column; vertical-align:middle; margin:0 .15rem; }
+.sum-blank { width:140px; border:0; border-bottom:2px solid #9ca3af; background:#f9fafb;
+             text-align:center; font-size:1rem; padding:.15rem .3rem; border-radius:4px 4px 0 0; }
+.sum-blank:focus { outline:none; border-bottom-color:var(--primary-color); background:#eef2ff; }
+.sum-blank.correct { border-bottom-color:#16a34a; background:#f0fdf4; color:#15803d; font-weight:700; }
+.sum-blank.sealed  { border-bottom-color:#6366f1; background:#eef2ff; color:#3730a3; font-weight:600; }
+.sum-fb { min-height:1.1rem; font-size:.78rem; text-align:center; margin-top:1px; }
+.sum-fb.korean { color:#b45309; font-weight:600; }
+.sum-fb.ok { color:#16a34a; font-weight:600; }
+.sum-fb.sealed { color:#6366f1; }
+.sum-badge { display:inline-block; min-width:1.4rem; text-align:center; color:#c0392b; font-weight:700; }
+.sum-sticky { position:sticky; bottom:0; background:#fff; padding:.8rem 0; border-top:1px solid #e5e7eb; text-align:center; }
+</style>
+
+<div class="home-wrap sum-wrap">
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-align-left me-2"></i>{{ unit.title }}</h3>
+        <p class="section-desc mb-0">요약문 빈칸 ⓐ·ⓑ 를 채우세요. 처음 틀리면 한글뜻이 한 번 표시됩니다. 다 풀면 <b>제출하기</b>.</p>
+    </div>
+
+    <div id="sumList"></div>
+
+    <div class="sum-sticky">
+        <span id="sumProgress" class="me-3 text-muted small"></span>
+        <button id="sumSubmit" class="btn btn-success btn-lg px-4">
+            <i class="fas fa-paper-plane me-1"></i>제출하기
+        </button>
+    </div>
+</div>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<script>
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+const SESSION_ID = {{ session.id }};
+const CHECK_URL = '{% url "summary:check_blank" %}';
+const SUBMIT_URL = '{% url "summary:submit" %}';
+const PROBLEMS = {{ problems_json|safe }};
+
+const blanks = {};  // key `${pid}-${b}` → {stage, done}
+
+async function api(url, body) {
+    const r = await fetch(url, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+        credentials:'same-origin', body:JSON.stringify(body)
+    });
+    return r.json();
+}
+
+function makeBlank(pid, b, label) {
+    const wrap = document.createElement('span');
+    wrap.className = 'sum-blank-wrap';
+    const badge = document.createElement('span');
+    badge.className = 'sum-badge';
+    badge.textContent = label;
+    const inp = document.createElement('input');
+    inp.className = 'sum-blank';
+    inp.type = 'text';
+    inp.autocomplete = 'off';
+    inp.dataset.pid = pid;
+    inp.dataset.blank = b;
+    const fb = document.createElement('div');
+    fb.className = 'sum-fb';
+    fb.id = `fb-${pid}-${b}`;
+    const key = `${pid}-${b}`;
+    blanks[key] = { stage: 1, done: false, input: inp };
+
+    const handle = () => checkBlank(pid, b, inp, fb);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); handle(); } });
+    inp.addEventListener('blur', () => { if (!blanks[key].done && inp.value.trim()) handle(); });
+
+    const row = document.createElement('span');
+    row.appendChild(badge);
+    row.appendChild(inp);
+    wrap.appendChild(row);
+    wrap.appendChild(fb);
+    return wrap;
+}
+
+// 문장 템플릿(마커 ⓐ/ⓑ 포함)을 텍스트+입력칸 조각으로 렌더
+function renderSentence(container, pid, template, marker, blankKey, label) {
+    const parts = String(template).split(marker);
+    parts.forEach((seg, i) => {
+        container.appendChild(document.createTextNode(seg));
+        if (i < parts.length - 1) {
+            container.appendChild(makeBlank(pid, blankKey, label));
+        }
+    });
+    // 마커가 템플릿에 없으면 문장 끝에 빈칸 부착(안전장치)
+    if (parts.length === 1) {
+        container.appendChild(document.createTextNode(' '));
+        container.appendChild(makeBlank(pid, blankKey, label));
+    }
+}
+
+function build() {
+    const list = document.getElementById('sumList');
+    PROBLEMS.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'sum-card';
+        const qno = document.createElement('div');
+        qno.className = 'qno';
+        qno.textContent = `문항 ${p.index}`;
+        card.appendChild(qno);
+
+        const s1 = document.createElement('div');
+        s1.className = 'sum-sent';
+        renderSentence(s1, p.id, p.sentence1_template, 'ⓐ', 'a', 'ⓐ');
+        card.appendChild(s1);
+
+        const s2 = document.createElement('div');
+        s2.className = 'sum-sent';
+        renderSentence(s2, p.id, p.sentence2_template, 'ⓑ', 'b', 'ⓑ');
+        card.appendChild(s2);
+
+        list.appendChild(card);
+    });
+    updateProgress();
+}
+
+async function checkBlank(pid, b, inp, fb) {
+    const key = `${pid}-${b}`;
+    const st = blanks[key];
+    if (st.done) return;
+    const val = inp.value.trim();
+    if (!val) return;
+
+    let d;
+    try {
+        d = await api(CHECK_URL, {
+            session_id: SESSION_ID, problem_id: pid, blank: b,
+            input: val, attempt: st.stage,
+        });
+    } catch (e) { return; }
+    if (!d || !d.success) return;
+
+    if (st.stage <= 1) {
+        if (d.correct) {
+            inp.classList.add('correct'); inp.readOnly = true;
+            fb.className = 'sum-fb ok'; fb.textContent = '정답!';
+            st.done = true;
+        } else {
+            // 첫 오답 → 한글뜻 1회 노출, 재입력
+            fb.className = 'sum-fb korean';
+            fb.textContent = '뜻: ' + (d.korean || '');
+            inp.value = '';
+            inp.focus();
+            st.stage = 2;
+        }
+    } else {
+        // 2차 입력 봉인 (정오 숨김 — 관리자 채점)
+        inp.classList.add('sealed'); inp.readOnly = true;
+        fb.className = 'sum-fb sealed'; fb.textContent = '제출됨 (채점 대기)';
+        st.done = true;
+    }
+    updateProgress();
+}
+
+function updateProgress() {
+    const keys = Object.keys(blanks);
+    const done = keys.filter(k => blanks[k].done).length;
+    document.getElementById('sumProgress').textContent = `${done} / ${keys.length} 칸 완료`;
+}
+
+document.getElementById('sumSubmit').addEventListener('click', async () => {
+    // 입력했지만 아직 확인 안 한 칸 마무리
+    for (const key of Object.keys(blanks)) {
+        const st = blanks[key];
+        if (!st.done && st.input.value.trim()) {
+            const [pid, b] = key.split('-');
+            await checkBlank(parseInt(pid,10), b, st.input, document.getElementById(`fb-${pid}-${b}`));
+        }
+    }
+    const remaining = Object.values(blanks).filter(s => !s.done).length;
+    if (remaining > 0) {
+        if (!confirm(`아직 입력하지 않은 빈칸이 ${remaining}개 있습니다. 그래도 제출할까요?`)) return;
+    }
+    const btn = document.getElementById('sumSubmit');
+    btn.disabled = true;
+    let d;
+    try { d = await api(SUBMIT_URL, { session_id: SESSION_ID }); }
+    catch (e) { alert('제출 실패: ' + e.message); btn.disabled = false; return; }
+    if (!d || !d.success) { alert((d && d.error) || '제출 실패'); btn.disabled = false; return; }
+    location.href = d.redirect_url;
+});
+
+build();
+</script>
+{% endblock %}

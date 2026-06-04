@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.rv-toggle { display:inline-flex; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }
+.rv-toggle button { border:0; background:#fff; padding:.3rem .8rem; cursor:pointer; font-weight:700; color:#9ca3af; }
+.rv-toggle button.o.on { background:#16a34a; color:#fff; }
+.rv-toggle button.x.on { background:#dc2626; color:#fff; }
+tr.wrong td { background:#fef2f2; }
+.rv-input { color:#374151; }
+.rv-input.empty { color:#d1d5db; font-style:italic; }
+.rv-2nd { color:#6366f1; }
+</style>
+
+<div class="home-wrap">
+    <a href="{% url 'summary:grade_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>채점 목록</a>
+
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-user-check me-2"></i>{{ session.student.username }} 채점</h3>
+        <p class="section-desc mb-0">
+            {{ session.unit.school }}{% if session.unit.unit %} · {{ session.unit.unit }}{% endif %}
+            · 제출 {{ session.submitted_at|date:"Y-m-d H:i" }}
+        </p>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-3" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
+        <div>
+            점수 <b id="rvPct" style="font-size:1.4rem;color:var(--primary-color);">{{ session.percent }}</b>점
+            (<span id="rvCorrect">{{ session.correct_count }}</span>/<span id="rvTotal">{{ session.total_blanks }}</span>)
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead class="table-light">
+                <tr><th>#</th><th>빈칸</th><th>학생 입력</th><th>정답</th><th>한글뜻</th><th class="text-center">판정</th></tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr data-aid="{{ r.ba.id }}" class="{% if not r.default_o %}wrong{% endif %}">
+                    <td class="text-muted">{{ r.ba.problem.index }}</td>
+                    <td><b>{{ r.label }}</b></td>
+                    <td>
+                        <span class="rv-input {% if not r.ba.first_input %}empty{% endif %}">{{ r.ba.first_input|default:"(미입력)" }}</span>
+                        {% if r.ba.korean_shown %}
+                            <span class="rv-2nd">→ {{ r.ba.second_input|default:"(재입력 없음)" }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-success"><b>{{ r.ba.correct_answer }}</b></td>
+                    <td class="text-muted small">{% if r.ba.blank == 'a' %}{{ r.ba.problem.korean1 }}{% else %}{{ r.ba.problem.korean2 }}{% endif %}</td>
+                    <td class="text-center">
+                        <span class="rv-toggle">
+                            <button type="button" class="o {% if r.default_o %}on{% endif %}" data-v="1">O</button>
+                            <button type="button" class="x {% if not r.default_o %}on{% endif %}" data-v="0">X</button>
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="text-center my-3">
+        <button class="btn btn-success btn-lg px-4" id="rvSave">
+            <i class="fas fa-check-double me-1"></i>채점 완료 저장
+        </button>
+        {% if session.status == 'graded' %}<span class="ms-2 badge bg-success">채점 완료됨 (재저장 가능)</span>{% endif %}
+    </div>
+</div>
+
+<form style="display:none">{% csrf_token %}</form>
+
+<script>
+const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
+const UPDATE_URL = '{% url "summary:grade_update" session.id %}';
+const LIST_URL = '{% url "summary:grade_list" %}';
+const $ = id => document.getElementById(id);
+
+document.querySelectorAll('tr[data-aid]').forEach(tr => {
+    tr.querySelectorAll('.rv-toggle button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const correct = btn.dataset.v === '1';
+            tr.querySelector('.o').classList.toggle('on', correct);
+            tr.querySelector('.x').classList.toggle('on', !correct);
+            tr.classList.toggle('wrong', !correct);
+            recalc();
+        });
+    });
+});
+
+function collectVerdicts() {
+    const v = {};
+    document.querySelectorAll('tr[data-aid]').forEach(tr => {
+        v[tr.dataset.aid] = tr.querySelector('.o').classList.contains('on') ? 'O' : 'X';
+    });
+    return v;
+}
+
+function recalc() {
+    const v = collectVerdicts();
+    const total = Object.keys(v).length;
+    const correct = Object.values(v).filter(x => x === 'O').length;
+    const pct = total ? Math.round(correct/total*100) : 0;
+    $('rvPct').textContent = pct;
+    $('rvCorrect').textContent = correct;
+    $('rvTotal').textContent = total;
+}
+
+async function api(url, body) {
+    const r = await fetch(url, {method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+        credentials:'same-origin', body:JSON.stringify(body)});
+    return r.json();
+}
+
+$('rvSave').addEventListener('click', async () => {
+    $('rvSave').disabled = true;
+    let d;
+    try { d = await api(UPDATE_URL, { verdicts: collectVerdicts(), finalize: true }); }
+    catch(e){ alert('저장 실패: '+e.message); $('rvSave').disabled=false; return; }
+    if (!d.success){ alert(d.error||'저장 실패'); $('rvSave').disabled=false; return; }
+    alert(`채점 완료! ${d.percent}점 (${d.correct}/${d.total})`);
+    location.href = LIST_URL;
+});
+
+recalc();
+</script>
+{% endblock %}

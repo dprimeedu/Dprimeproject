@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'common',
     'writing',
     'vocab',
+    'summary',
     'academy_tools',
 
 ]
@@ -174,3 +175,6 @@ PEDU_HMAC_KEY = os.getenv('PEDU_HMAC_KEY', '')
 
 # 내신단어TEST 자동화 API 토큰 (개별단어장생성.py 연동)
 VOCAB_IMPORT_TOKEN = os.getenv('VOCAB_IMPORT_TOKEN', 'pedu-vocab-2026')
+
+# 요약문완성 자동화 API 토큰 (AI 자동화 요약문 생성 → 요약문웹동기화 연동)
+SUMMARY_IMPORT_TOKEN = os.getenv('SUMMARY_IMPORT_TOKEN', 'pedu-summary-2026')

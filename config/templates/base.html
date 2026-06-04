@@ -79,6 +79,8 @@
                 <a class="sidebar-link" href="{% url 'writing:student_admin' %}"><i class="fas fa-user-graduate"></i>학생 관리</a>
                 <a class="sidebar-link" href="{% url 'vocab:unit_list' %}"><i class="fas fa-layer-group"></i>단어 단원 관리</a>
                 <a class="sidebar-link" href="{% url 'vocab:student_admin' %}"><i class="fas fa-book"></i>단어 학생 배정</a>
+                <a class="sidebar-link" href="{% url 'summary:unit_list' %}"><i class="fas fa-align-left"></i>요약문 단원 관리</a>
+                <a class="sidebar-link" href="{% url 'summary:grade_list' %}"><i class="fas fa-user-check"></i>요약문 채점</a>
                 <a class="sidebar-link" href="{% url 'writing:bug_report_list' %}"><i class="fas fa-bug"></i>버그 신고</a>
                 <a class="sidebar-link" href="{% url 'writing:upload' %}"><i class="fas fa-upload"></i>새 단원 업로드</a>
                 <a class="sidebar-link" href="{% url 'writing:student_upload' %}"><i class="fas fa-file-excel"></i>학생 일괄 등록</a>
@@ -87,6 +89,7 @@
             {% elif user.is_approved %}
                 <div class="sidebar-section-label">재원생</div>
                 <a class="sidebar-link" href="{% url 'writing:home' %}"><i class="fas fa-pen-nib"></i>영작훈련</a>
+                <a class="sidebar-link" href="{% url 'summary:home' %}"><i class="fas fa-align-left"></i>요약문완성훈련</a>
                 <a class="sidebar-link" href="{% url 'vocab:home' %}"><i class="fas fa-layer-group"></i>단어훈련</a>
             {% else %}
                 <div class="sidebar-section-label">계정</div>
