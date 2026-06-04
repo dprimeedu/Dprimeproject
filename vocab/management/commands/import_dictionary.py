@@ -10,65 +10,13 @@
 """
 import json
 import os
-import re
 
 from django.core.management.base import BaseCommand, CommandError
 
 from vocab.models import DictionaryEntry
+from vocab.services import extract_word_pairs as _extract_pairs
 
 DEFAULT_XLSX = r'Z:\home\Drive\교재폴더\어휘\(전체모음)\단어장 전체 영영전체모음.xlsm'
-
-_HANGUL = re.compile(r'[가-힣]')
-_WORD_RE = re.compile(r"^[A-Za-z][A-Za-z'.\-/() ]{0,39}$")
-
-
-def _is_word(v):
-    """영어 단어(짧은 형태)인지 — 예문/문장 컬럼을 배제."""
-    if v is None:
-        return False
-    s = str(v).strip()
-    if not s or _HANGUL.search(s) or not _WORD_RE.match(s):
-        return False
-    return len(s.split()) <= 4
-
-
-def _has_kor(v):
-    return v is not None and bool(_HANGUL.search(str(v)))
-
-
-def _extract_pairs(path, max_cols=12):
-    """단어장 xlsx에서 (영어, 한글) 추출 — 영어/한글 컬럼 자동 감지."""
-    import openpyxl
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    ws = wb[wb.sheetnames[0]]
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
-    if not rows:
-        return []
-    ncol = min(max_cols, max((len(r) for r in rows[:50]), default=0))
-    if not ncol:
-        return []
-    eng_score = [0] * ncol
-    kor_score = [0] * ncol
-    for r in rows[:80]:
-        for ci in range(min(ncol, len(r))):
-            if _is_word(r[ci]):
-                eng_score[ci] += 1
-            if _has_kor(r[ci]):
-                kor_score[ci] += 1
-    eng_col = max(range(ncol), key=lambda c: eng_score[c])
-    kor_col = max(range(ncol), key=lambda c: kor_score[c])
-    if eng_score[eng_col] < 3 or kor_score[kor_col] < 3:
-        return []   # 단어장 형식 아님
-    pairs = []
-    for r in rows:
-        if eng_col >= len(r) or kor_col >= len(r):
-            continue
-        w, m = r[eng_col], r[kor_col]
-        if not _is_word(w) or not _has_kor(m):
-            continue
-        pairs.append((str(w).strip(), str(m).strip()))
-    return pairs
 
 
 class Command(BaseCommand):

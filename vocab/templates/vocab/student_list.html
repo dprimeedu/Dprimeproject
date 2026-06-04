@@ -106,6 +106,7 @@
 
 <script>
 const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 document.getElementById('checkAll')?.addEventListener('change', e => {
     document.querySelectorAll('.rowCheck').forEach(c => {
         if (c.closest('tr').style.display !== 'none') c.checked = e.target.checked;
@@ -129,11 +130,23 @@ async function openStuAssign(sid, name, loginId) {
     saModal.show();
     const r = await fetch(`/training/vocab/admin/api/students/${sid}/assignments/`, {credentials:'same-origin'});
     const d = await r.json();
-    const html = d.units.map(u => `
-        <label class="list-group-item d-flex align-items-center gap-2">
+    const naesin = d.units.filter(u => u.category !== 'wordbook');
+    const books = d.units.filter(u => u.category === 'wordbook');
+    function row(u){
+        const tag = u.category === 'wordbook'
+            ? `<span class="badge bg-primary">교재</span>`
+            : `<span class="badge bg-secondary">${esc(u.school||u.grade)}</span>`;
+        const extra = u.category === 'wordbook'
+            ? ` <span class="badge bg-light text-dark border">100단어 ${u.set_count}세트</span>`
+            : '';
+        return `<label class="list-group-item d-flex align-items-center gap-2">
             <input type="checkbox" class="form-check-input m-0 sa-cb" value="${u.id}" ${u.is_assigned?'checked':''}>
-            <span><span class="badge bg-secondary">${u.school||u.grade}</span> ${u.title} <span class="text-muted">(${u.word_count}단어)</span></span>
-        </label>`).join('');
+            <span>${tag} ${esc(u.title)} <span class="text-muted">(${u.word_count}단어)</span>${extra}</span>
+        </label>`;
+    }
+    let html = '';
+    if (naesin.length) html += `<div class="fw-bold text-muted small mt-1 mb-1">내신 단어</div>` + naesin.map(row).join('');
+    if (books.length) html += `<div class="fw-bold text-primary small mt-3 mb-1">📚 교재 단어장 (배정 시 100단어 퀴즈렛 세트 자동 생성)</div>` + books.map(row).join('');
     document.getElementById('saList').innerHTML = html || '<div class="text-muted p-3">단원이 없습니다.</div>';
     document.getElementById('saStatus').textContent = `현재 ${d.assigned_count}개 배정됨`;
 }

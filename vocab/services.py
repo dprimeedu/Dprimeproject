@@ -161,3 +161,108 @@ def sync_pairs_to_dictionary(pairs):
     if objs:
         DictionaryEntry.objects.bulk_create(objs, batch_size=2000, ignore_conflicts=True)
     return len(objs)
+
+
+# ─────────────────────────────────────────────
+# 단어장 xlsx 파싱 (영어/한글 컬럼 자동감지) — 사전·단어장 import 공용
+# ─────────────────────────────────────────────
+import re as _re
+
+_HANGUL_RE = _re.compile(r'[가-힣]')
+_ENG_WORD_RE = _re.compile(r"^[A-Za-z][A-Za-z'.\-/() ]{0,39}$")
+
+
+def _cell_is_word(v):
+    """영어 단어(짧은 형태)인지 — 예문/문장 컬럼 배제."""
+    if v is None:
+        return False
+    s = str(v).strip()
+    if not s or _HANGUL_RE.search(s) or not _ENG_WORD_RE.match(s):
+        return False
+    return len(s.split()) <= 4
+
+
+def _cell_has_kor(v):
+    return v is not None and bool(_HANGUL_RE.search(str(v)))
+
+
+def extract_word_pairs(path, max_cols=12):
+    """단어장 xlsx 첫 시트에서 (영어, 한글) 목록 추출. 영어/한글 컬럼 자동감지."""
+    import openpyxl
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        return []
+    ncol = min(max_cols, max((len(r) for r in rows[:50]), default=0))
+    if not ncol:
+        return []
+    eng_score = [0] * ncol
+    kor_score = [0] * ncol
+    for r in rows[:80]:
+        for ci in range(min(ncol, len(r))):
+            if _cell_is_word(r[ci]):
+                eng_score[ci] += 1
+            if _cell_has_kor(r[ci]):
+                kor_score[ci] += 1
+    eng_col = max(range(ncol), key=lambda c: eng_score[c])
+    kor_col = max(range(ncol), key=lambda c: kor_score[c])
+    if eng_score[eng_col] < 3 or kor_score[kor_col] < 3:
+        return []
+    pairs = []
+    for r in rows:
+        if eng_col >= len(r) or kor_col >= len(r):
+            continue
+        w, m = r[eng_col], r[kor_col]
+        if not _cell_is_word(w) or not _cell_has_kor(m):
+            continue
+        pairs.append((str(w).strip(), str(m).strip()))
+    return pairs
+
+
+# ─────────────────────────────────────────────
+# 교재 단어장 배정 → 100단어 퀴즈렛 범위 자동 생성
+# ─────────────────────────────────────────────
+QUIZLET_SOURCE = '퀴즈렛'
+QUIZLET_SIZE = 100
+
+
+def ensure_quizlet_ranges(student, unit, size=QUIZLET_SIZE, assigned_by=None):
+    """교재 단어장을 학생에게 배정할 때 100단어 단위 퀴즈렛 범위 생성.
+
+    이미 활성 퀴즈렛 범위가 있으면 스킵(중복 방지). 반환: 생성한 세트 수.
+    """
+    from django.db.models import Count, Max
+    from .models import VocabWord, VocabRangeTest
+
+    agg = VocabWord.objects.filter(unit=unit).aggregate(mx=Max('index'), c=Count('id'))
+    total = agg['mx'] or agg['c'] or 0
+    if not total:
+        return 0
+    if VocabRangeTest.objects.filter(
+        student=student, unit=unit, source_label__startswith=QUIZLET_SOURCE, is_active=True,
+    ).exists():
+        return 0
+
+    rows = []
+    start = 1
+    while start <= total:
+        end = min(start + size - 1, total)
+        rows.append(VocabRangeTest(
+            student=student, unit=unit, start_index=start, end_index=end,
+            source_label=QUIZLET_SOURCE, question_count=min(40, end - start + 1),
+            time_limit_seconds=1200, pass_threshold=90, assigned_by=assigned_by,
+        ))
+        start = end + 1
+    VocabRangeTest.objects.bulk_create(rows)
+    return len(rows)
+
+
+def remove_quizlet_ranges(student, unit):
+    """교재 단어장 배정 해제 시 그 단원의 퀴즈렛 범위 삭제. 반환: 삭제 수."""
+    from .models import VocabRangeTest
+    deleted, _ = VocabRangeTest.objects.filter(
+        student=student, unit=unit, source_label__startswith=QUIZLET_SOURCE,
+    ).delete()
+    return deleted

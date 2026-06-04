@@ -16,7 +16,15 @@ class VocabUnit(models.Model):
         ('기타', '기타'),
     ]
 
+    CATEGORY_NAESIN = 'naesin'
+    CATEGORY_WORDBOOK = 'wordbook'
+    CATEGORY_CHOICES = [(CATEGORY_NAESIN, '내신 단어'), (CATEGORY_WORDBOOK, '교재 단어장')]
+
     title = models.CharField(max_length=200, verbose_name='단원명')
+    category = models.CharField(
+        max_length=12, choices=CATEGORY_CHOICES, default=CATEGORY_NAESIN,
+        db_index=True, verbose_name='분류',
+    )
     school = models.CharField(max_length=100, blank=True, default='', verbose_name='학교')
     exam = models.CharField(max_length=100, blank=True, default='', verbose_name='시험')
     grade = models.CharField(max_length=10, choices=GRADE_CHOICES, default='기타', verbose_name='학년')

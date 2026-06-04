@@ -25,7 +25,10 @@ from .models import (
     VocabSession, VocabAttempt, VocabRangeTest,
     WordCardSet, WordCard, DictionaryCache, DictionaryEntry,
 )
-from .services import grade_meaning, select_test_words
+from .services import (
+    grade_meaning, select_test_words,
+    ensure_quizlet_ranges, remove_quizlet_ranges,
+)
 
 
 # ─────────────────────────────────────────────
@@ -715,10 +718,15 @@ def student_assignments(request, student_id):
         VocabAssignment.objects.filter(student=student).values_list('unit_id', flat=True)
     )
     units = []
-    for u in VocabUnit.objects.filter(is_active=True).order_by('school', 'title'):
+    for u in (VocabUnit.objects.filter(is_active=True)
+              .annotate(wc=Count('words')).order_by('category', 'school', 'title')):
+        wc = u.wc
         units.append({
             'id': u.id, 'title': u.title, 'school': u.school, 'grade': u.grade,
-            'word_count': u.words.count(), 'is_assigned': u.id in assigned_ids,
+            'category': u.category,
+            'word_count': wc, 'is_assigned': u.id in assigned_ids,
+            # 교재 단어장이면 100단어 세트 수 미리보기
+            'set_count': ((wc + 99) // 100) if u.category == VocabUnit.CATEGORY_WORDBOOK else 0,
         })
     return JsonResponse({
         'student': {
@@ -756,10 +764,29 @@ def student_assignments_update(request, student_id):
         ], ignore_conflicts=True)
     if to_remove:
         VocabAssignment.objects.filter(student=student, unit_id__in=to_remove).delete()
+
+    # 교재 단어장(category='wordbook')은 배정 시 100단어 퀴즈렛 세트 자동 생성 / 해제 시 제거
+    qz_sets = 0
+    touched = to_add | to_remove
+    if touched:
+        wb_units = {
+            u.id: u for u in VocabUnit.objects.filter(
+                pk__in=touched, category=VocabUnit.CATEGORY_WORDBOOK)
+        }
+        for uid in to_add:
+            u = wb_units.get(uid)
+            if u:
+                qz_sets += ensure_quizlet_ranges(student, u, assigned_by=request.user)
+        for uid in to_remove:
+            u = wb_units.get(uid)
+            if u:
+                remove_quizlet_ranges(student, u)
+
     return JsonResponse({
         'success': True,
         'assigned_count': VocabAssignment.objects.filter(student=student).count(),
         'added': len(to_add), 'removed': len(to_remove),
+        'quizlet_sets_created': qz_sets,
     })
 
 
