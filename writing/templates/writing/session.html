@@ -859,9 +859,26 @@ async function submitWord(wordIdx) {
     }
     const inp = $('w' + wordIdx);
     const val = (inp.value || '').trim();
+    const fb  = $('fb' + wordIdx);
 
+    // ── 무지성 제출 방지 ──────────────────────────────
+    if (val.length === 0) {
+        fb.textContent = '✏️ 먼저 입력하세요';
+        fb.className = 'word-feedback x';
+        inp.focus();
+        return;
+    }
     const startTime = wordTimeStart[wordIdx] || Date.now();
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
+    const MIN_SEC = 5;
+    if (timeTaken < MIN_SEC) {
+        const left = MIN_SEC - timeTaken;
+        fb.textContent = `⏳ ${left}초 후 제출 가능`;
+        fb.className = 'word-feedback x';
+        inp.focus();
+        return;
+    }
+    // ──────────────────────────────────────────────────
 
     try {
         const r = await fetch('{% url "writing:api_check_word" %}', {
