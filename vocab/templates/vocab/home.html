@@ -34,7 +34,15 @@
         <div class="col-md-6 col-lg-4">
             <div class="card h-100">
                 <div class="card-body d-flex flex-column">
-                    <h5 class="card-title mb-1">{{ info.unit.title }}</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0">{{ info.unit.title }}</h5>
+                        {% if is_assigned_view %}
+                        <a href="{% url 'vocab:wordcard_list' %}" class="btn btn-primary ms-2 flex-shrink-0"
+                           style="font-size:0.95rem; font-weight:700; padding:0.45rem 1rem; border-radius:50px;">
+                            <i class="fas fa-magnifying-glass me-1"></i>단어찾기
+                        </a>
+                        {% endif %}
+                    </div>
                     <p class="text-muted small mb-2">
                         {{ info.unit.grade }} · 단어 {{ info.word_count }}개
                         {% if info.unit.school %} · {{ info.unit.school }}{% endif %}
@@ -45,12 +53,6 @@
                     <p class="small text-muted mb-2">아직 별표한 단어가 없어요</p>
                     {% endif %}
                     <div class="mt-auto d-grid gap-2">
-                        {% if is_assigned_view %}
-                        <a href="{% url 'vocab:wordcard_list' %}" class="btn btn-primary"
-                           style="font-size:1rem; font-weight:700; padding:0.6rem 1rem; border-radius:0.6rem;">
-                            <i class="fas fa-magnifying-glass me-2"></i>단어찾기
-                        </a>
-                        {% endif %}
                         {% if not is_assigned_view %}
                         <a href="{% url 'vocab:flashcard' info.unit.id %}" class="btn btn-info text-white">
                             <i class="fas fa-book-open me-1"></i>플래시카드 학습 (관리자)
