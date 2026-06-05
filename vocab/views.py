@@ -23,7 +23,7 @@ from django.urls import reverse
 from .models import (
     VocabUnit, VocabWord, VocabAssignment, StudentWordStar,
     VocabSession, VocabAttempt, VocabRangeTest,
-    WordCardSet, WordCard, DictionaryCache, DictionaryEntry,
+    WordCardSet, WordCard, WordCardStar, DictionaryCache, DictionaryEntry,
 )
 from .services import (
     grade_meaning, select_test_words,
@@ -160,6 +160,27 @@ def star_toggle_api(request):
         StudentWordStar.objects.filter(student=request.user, word=word).delete()
 
     return JsonResponse({'success': True, 'word_id': word_id, 'starred': want_starred})
+
+
+@login_required
+@require_POST
+def wordcard_star_toggle_api(request):
+    """낱말카드 별표 토글 — WordCardStar 생성/삭제. body: {word_id, starred}."""
+    try:
+        data = json.loads(request.body or '{}')
+        card_id = int(data['word_id'])
+        want_starred = bool(data['starred'])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    card = get_object_or_404(WordCard, pk=card_id, card_set__student=request.user)
+
+    if want_starred:
+        WordCardStar.objects.get_or_create(student=request.user, card=card)
+    else:
+        WordCardStar.objects.filter(student=request.user, card=card).delete()
+
+    return JsonResponse({'success': True, 'word_id': card_id, 'starred': want_starred})
 
 
 # ─────────────────────────────────────────────
@@ -1014,38 +1035,54 @@ def wordcard_list(request):
         .annotate(card_total=Count('cards'))
         .order_by('-updated_at')
     )
-    star_count = StudentWordStar.objects.filter(student=request.user).count()
+    vocab_star_count = StudentWordStar.objects.filter(student=request.user).count()
+    wc_star_count = WordCardStar.objects.filter(student=request.user).count()
+    star_count = vocab_star_count + wc_star_count
     return render(request, 'vocab/wordcard_list.html', {'sets': sets, 'star_count': star_count})
 
 
 @login_required
 def star_flashcard(request):
-    """별표 모음 플래시카드 — 모든 단원의 별표 단어를 한 세트로 학습."""
+    """별표 모음 플래시카드 — 단원 별표 + 낱말카드 별표 통합."""
     gate = _student_gate(request)
     if gate:
         return gate
 
-    stars = (StudentWordStar.objects
-             .filter(student=request.user)
-             .select_related('word')
-             .order_by('word__unit_id', 'word__index'))
-    cards = [{
-        'id': s.word.id,
-        'index': s.word.index,
-        'word': s.word.word,
-        'meaning': s.word.meaning,
-        'sub_unit': s.word.sub_unit or '',
-        'starred': True,
-    } for s in stars]
+    vocab_stars = (StudentWordStar.objects
+                   .filter(student=request.user)
+                   .select_related('word')
+                   .order_by('word__unit_id', 'word__index'))
+    wc_stars = (WordCardStar.objects
+                .filter(student=request.user)
+                .select_related('card')
+                .order_by('card__card_set_id', 'card__index'))
+
+    cards = []
+    for s in vocab_stars:
+        cards.append({
+            'id': s.word.id, 'index': s.word.index,
+            'word': s.word.word, 'meaning': s.word.meaning,
+            'sub_unit': s.word.sub_unit or '', 'starred': True,
+            'card_type': 'vocab',
+        })
+    for s in wc_stars:
+        cards.append({
+            'id': s.card.id, 'index': s.card.index,
+            'word': s.card.word, 'meaning': s.card.meaning,
+            'sub_unit': '', 'starred': True,
+            'card_type': 'wordcard',
+        })
+
     return render(request, 'vocab/flashcard.html', {
         'unit': None,
-        'range_title': f'⭐ 내 별표 모음',
+        'range_title': '⭐ 내 별표 모음',
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
         'star_count': len(cards),
         'default_star_only': False,
         'default_shuffle': True,
         'star_enabled': True,
+        'wordcard_star_url': reverse('vocab:wordcard_star_toggle'),
         'back_url': reverse('vocab:wordcard_list'),
         'back_label': '낱말카드',
     })
@@ -1165,26 +1202,32 @@ def wordcard_delete(request, set_id):
 
 @login_required
 def wordcard_flashcard(request, set_id):
-    """완성한 낱말카드 세트를 플래시카드로 학습 — flashcard.html 재사용(별표 비활성)."""
+    """완성한 낱말카드 세트를 플래시카드로 학습 — 별표 활성."""
     gate = _student_gate(request)
     if gate:
         return gate
 
     s = get_object_or_404(WordCardSet, pk=set_id, student=request.user)
+    word_cards = list(s.cards.exclude(word='').exclude(meaning='').order_by('index'))
+    starred_ids = set(
+        WordCardStar.objects.filter(student=request.user, card__in=word_cards)
+        .values_list('card_id', flat=True)
+    )
     cards = [
         {'id': c.id, 'index': c.index, 'word': c.word, 'meaning': c.meaning,
-         'sub_unit': '', 'starred': False}
-        for c in s.cards.exclude(word='').exclude(meaning='').order_by('index')
+         'sub_unit': '', 'starred': c.id in starred_ids, 'card_type': 'wordcard'}
+        for c in word_cards
     ]
     return render(request, 'vocab/flashcard.html', {
-        'unit': s,                       # __str__/title 표시용 (range_title이 우선됨)
+        'unit': s,
         'range_title': s.title,
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
-        'star_count': 0,
+        'star_count': len(starred_ids),
         'default_star_only': False,
         'default_shuffle': False,
-        'star_enabled': False,           # 내 낱말카드엔 별표 기능 비활성
+        'star_enabled': True,
+        'wordcard_star_url': reverse('vocab:wordcard_star_toggle'),
         'back_url': reverse('vocab:wordcard_list'),
         'back_label': '낱말카드',
     })

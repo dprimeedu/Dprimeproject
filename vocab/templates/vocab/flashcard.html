@@ -215,6 +215,7 @@ const DEFAULT_STAR_ONLY = {{ default_star_only|yesno:"true,false" }};
 const DEFAULT_SHUFFLE = {{ default_shuffle|yesno:"true,false" }};
 const STAR_ENABLED = {{ star_enabled|yesno:"true,false" }};
 const STAR_URL = '{% url "vocab:star_toggle" %}';
+const WC_STAR_URL = '{{ wordcard_star_url }}';
 const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
 const CARD_BY_ID = Object.fromEntries(ALL_CARDS.map(c => [c.id, c]));
 
@@ -430,7 +431,8 @@ function markStarLocal(c, want) {
 // 별표 서버 저장 (실패 시 로컬 롤백)
 async function persistStar(c, want) {
     try {
-        const r = await fetch(STAR_URL, {
+        const url = (c.card_type === 'wordcard' && WC_STAR_URL) ? WC_STAR_URL : STAR_URL;
+        const r = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
             credentials: 'same-origin',

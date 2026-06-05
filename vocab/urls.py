@@ -26,6 +26,7 @@ urlpatterns = [
 
     # AJAX API
     path('api/star/toggle/', views.star_toggle_api, name='star_toggle'),
+    path('api/wordcard-star/toggle/', views.wordcard_star_toggle_api, name='wordcard_star_toggle'),
     path('api/test/answer/', views.test_answer_api, name='test_answer'),
     path('api/test/finish/', views.test_finish_api, name='test_finish'),
     path('api/range/start/', views.range_test_start_api, name='range_start'),

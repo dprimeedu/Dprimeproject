@@ -246,6 +246,31 @@ class VocabSession(models.Model):
         return self.percent >= threshold
 
 
+class WordCardStar(models.Model):
+    """학생 × 낱말카드 별표. 개별 단어장(WordCard) 플래시카드에서 별표한 카드."""
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='wordcard_stars',
+        verbose_name='학생',
+    )
+    card = models.ForeignKey(
+        'WordCard', on_delete=models.CASCADE,
+        related_name='stars', verbose_name='낱말카드',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'vocab_wordcard_star'
+        verbose_name = '낱말카드 별표'
+        verbose_name_plural = '낱말카드 별표'
+        unique_together = [['student', 'card']]
+        indexes = [models.Index(fields=['student', 'card'])]
+
+    def __str__(self):
+        return f'⭐ {self.student.username} — {self.card.word}'
+
+
 class WordCardSet(models.Model):
     """학생이 직접 만든 낱말카드 세트 (퀴즈렛식 '낱말카드 만들기').
 
