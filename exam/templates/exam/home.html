@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-file-alt me-2"></i>시험</h3>
+        {% if is_teacher %}
+        <p class="section-desc">(관리자) 모의고사·내신 시험지. 학생에게 배정하거나 직접 풀어볼 수 있습니다.</p>
+        <div class="d-flex gap-2 flex-wrap mt-2">
+            <a href="{% url 'exam:result_list' %}" class="btn btn-sm btn-primary"><i class="fas fa-list-check me-1"></i>응시 결과</a>
+        </div>
+        {% else %}
+        <p class="section-desc">배정받은 시험을 골라 답(1~5)을 입력하세요. 제출하면 즉시 채점됩니다.</p>
+        {% endif %}
+    </div>
+
+    {% if is_teacher %}
+        <h5 class="mt-3"><i class="fas fa-bookmark me-1 text-danger"></i>내신 시험지</h5>
+        {% if naesin_papers %}
+        <div class="table-responsive mb-4">
+            <table class="table table-hover align-middle">
+                <thead><tr><th>학교학년</th><th>시험</th><th>카테고리</th><th class="text-end">관리</th></tr></thead>
+                <tbody>
+                {% for p in naesin_papers %}
+                    <tr>
+                        <td>{{ p.school_grade }}</td>
+                        <td>{{ p.season }}</td>
+                        <td><span class="badge bg-secondary">{{ p.category }}</span></td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'exam:assign' p.id %}">배정</a>
+                            <a class="btn btn-sm btn-primary" href="{% url 'exam:start_paper' p.id %}">풀어보기</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">아직 import된 내신 시험지가 없습니다. (내신웹업로드 스크립트로 푸시)</p>
+        {% endif %}
+
+        <h5 class="mt-3"><i class="fas fa-graduation-cap me-1"></i>모의고사</h5>
+        {% if mock_exams %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead><tr><th>연도</th><th>학년</th><th>강</th><th>문항</th><th class="text-end">관리</th></tr></thead>
+                <tbody>
+                {% for e in mock_exams %}
+                    <tr>
+                        <td>{{ e.year }}</td><td>{{ e.grade }}</td><td>{{ e.month }}</td><td>{{ e.count }}</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'exam:mock_assign' %}?grade={{ e.grade|urlencode }}&year={{ e.year|urlencode }}&month={{ e.month|urlencode }}">배정</a>
+                            <a class="btn btn-sm btn-primary" href="{% url 'exam:start_mock' %}?grade={{ e.grade|urlencode }}&year={{ e.year|urlencode }}&month={{ e.month|urlencode }}">풀어보기</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">모의고사 데이터(QuestionData)가 없습니다.</p>
+        {% endif %}
+    {% else %}
+        {% if assignments %}
+        <div class="row g-3">
+            {% for a in assignments %}
+            <div class="col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">{{ a.paper.resolved_title }}</h5>
+                        <p class="text-muted small mb-3">
+                            {% if a.paper.source == 'naesin' %}내신 · {{ a.paper.category }}{% else %}모의고사{% endif %}
+                        </p>
+                        <div class="mt-auto d-grid gap-2">
+                            <a href="{% url 'exam:start_paper' a.paper.id %}" class="btn btn-primary"><i class="fas fa-pen me-1"></i>응시 시작</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">배정받은 시험이 없습니다. 선생님께 문의하세요.</p>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

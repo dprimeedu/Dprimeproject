@@ -24,6 +24,8 @@ urlpatterns = [
     path('training/writing/', include('writing.urls')),
     path('training/vocab/', include('vocab.urls')),
     path('training/summary/', include('summary.urls')),
+    path('training/exam/', include('exam.urls')),
+    path('report/', include('report.urls')),
     path('tools/', include('academy_tools.urls')),
 ]
 
@@ -32,6 +34,7 @@ handler500 = 'config.views.custom_500'
 handler403 = 'config.views.custom_403'
 handler400 = 'config.views.custom_400'
 
-# 개발 환경에서 정적 파일 제공
+# 개발 환경에서 정적/미디어 파일 제공
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

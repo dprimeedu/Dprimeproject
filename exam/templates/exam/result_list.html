@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'exam:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>모의고사</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-list-check me-2"></i>모의고사 응시 결과</h3>
+        <p class="section-desc">제출된 세션 (최근 300건)</p>
+    </div>
+
+    {% if sessions %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr><th>학생</th><th>회차</th><th>점수</th><th>맞음/전체</th><th>제출 시각</th><th></th></tr>
+            </thead>
+            <tbody>
+            {% for s in sessions %}
+                <tr>
+                    <td>{{ s.student.username }}</td>
+                    <td>{{ s.title }}</td>
+                    <td class="fw-bold">{{ s.percent }}점</td>
+                    <td>{{ s.correct_count }} / {{ s.total_questions }}</td>
+                    <td class="small text-muted">{{ s.submitted_at|date:"Y-m-d H:i" }}</td>
+                    <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'exam:result' s.id %}">상세</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">아직 제출된 세션이 없습니다.</p>
+    {% endif %}
+</div>
+{% endblock %}

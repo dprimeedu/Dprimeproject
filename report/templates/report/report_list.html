@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="mb-0"><i class="fas fa-image me-2"></i>일일 리포트</h3>
+            <p class="section-desc mb-0">{{ date|date:'Y-m-d' }} · 생성된 리포트 미리보기</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <form method="get" class="d-flex gap-1">
+                <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="form-control form-control-sm">
+                <button class="btn btn-sm btn-outline-secondary">이동</button>
+            </form>
+            <a href="{% url 'report:input' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">입력 그리드</a>
+            <form method="post" action="{% url 'report:generate_date' %}">
+                {% csrf_token %}
+                <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+                <button class="btn btn-sm btn-primary"><i class="fas fa-bolt me-1"></i>전체 리포트 생성</button>
+            </form>
+        </div>
+    </div>
+
+    {% if records %}
+    <div class="row g-3">
+        {% for r in records %}
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100">
+                {% if r.report_image %}
+                <a href="{{ r.report_image.url }}" target="_blank">
+                    <img src="{{ r.report_image.url }}" class="card-img-top" alt="{{ r.student.username }} 리포트">
+                </a>
+                {% else %}
+                <div class="card-img-top d-flex align-items-center justify-content-center text-muted" style="height:120px;">미생성</div>
+                {% endif %}
+                <div class="card-body p-2">
+                    <div class="fw-semibold">{{ r.student.username }}</div>
+                    <div class="small text-muted">{{ r.attendance|default:'-' }}</div>
+                    <form method="post" action="{% url 'report:generate_one' r.id %}" class="mt-1">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-primary w-100">{% if r.report_image %}재생성{% else %}생성{% endif %}</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">이 날짜의 일일기록이 없습니다. <a href="{% url 'report:input' %}?date={{ date|date:'Y-m-d' }}">입력하러 가기</a></p>
+    {% endif %}
+</div>
+{% endblock %}

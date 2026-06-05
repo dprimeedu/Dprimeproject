@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap" style="max-width:860px;">
+    {% csrf_token %}
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="mb-0"><i class="fas fa-file-alt me-2"></i>{{ session.title }}</h3>
+            <p class="section-desc mb-0">번호별로 답(1~5)을 선택한 뒤 제출하세요.</p>
+        </div>
+        <span class="badge bg-secondary fs-6" id="answeredBadge">0 / {{ total_questions }}</span>
+    </div>
+
+    <div id="questionList">
+        {% for q in questions %}
+        <div class="card mb-3 exam-q" data-number="{{ q.number }}">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary">{{ q.number }}번</span>
+                    {% if q.qtype %}<span class="badge bg-light text-dark">{{ q.qtype }}</span>{% endif %}
+                </div>
+                {% if q.passage %}<div class="text-muted small mb-2" style="white-space:pre-wrap;">{{ q.passage }}</div>{% endif %}
+                {% if q.question %}<div class="mb-2" style="white-space:pre-wrap;">{{ q.question }}</div>{% endif %}
+                {% if q.choices %}<div class="small mb-3" style="white-space:pre-wrap;">{{ q.choices }}</div>{% endif %}
+                <div class="btn-group choice-group" role="group" aria-label="답 선택">
+                    {% for n in "12345" %}
+                    <button type="button" class="btn btn-outline-secondary choice-btn" data-value="{{ n }}">{{ n }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="d-grid gap-2 my-4">
+        <button id="submitBtn" class="btn btn-success btn-lg"><i class="fas fa-paper-plane me-1"></i>제출하고 채점</button>
+    </div>
+</div>
+
+<script>
+(function () {
+    const SESSION_ID = {{ session.id }};
+    const SUBMIT_URL = '{% url "exam:submit" %}';
+    const TOTAL = {{ total_questions }};
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const answers = {};
+
+    document.querySelectorAll('.exam-q').forEach(function (card) {
+        const number = card.dataset.number;
+        card.querySelectorAll('.choice-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                card.querySelectorAll('.choice-btn').forEach(b => {
+                    b.classList.remove('btn-primary'); b.classList.add('btn-outline-secondary');
+                });
+                btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-primary');
+                answers[number] = btn.dataset.value;
+                updateBadge();
+            });
+        });
+    });
+
+    function updateBadge() {
+        document.getElementById('answeredBadge').textContent =
+            Object.keys(answers).length + ' / ' + TOTAL;
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.addEventListener('click', function () {
+        const unanswered = TOTAL - Object.keys(answers).length;
+        let msg = '제출하면 즉시 채점됩니다. 제출할까요?';
+        if (unanswered > 0) msg = '아직 ' + unanswered + '문항이 비어 있습니다. 그래도 제출할까요?';
+        if (!confirm(msg)) return;
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>채점 중...';
+        fetch(SUBMIT_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+            body: JSON.stringify({session_id: SESSION_ID, answers: answers})
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success && d.redirect_url) { window.location.href = d.redirect_url; }
+            else { alert('제출 실패. 다시 시도해주세요.'); submitBtn.disabled = false;
+                   submitBtn.innerHTML = '제출하고 채점'; }
+        })
+        .catch(() => { alert('네트워크 오류. 다시 시도해주세요.'); submitBtn.disabled = false;
+                       submitBtn.innerHTML = '제출하고 채점'; });
+    });
+})();
+</script>
+{% endblock %}

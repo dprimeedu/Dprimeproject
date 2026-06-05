@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap" style="max-width:860px;">
+    <a href="{% url 'exam:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>모의고사 목록</a>
+
+    <div class="section-header text-center">
+        <h3><i class="fas fa-clipboard-check me-2"></i>{{ session.title }} 채점 결과</h3>
+        <div class="display-5 fw-bold my-2">{{ session.percent }}점</div>
+        <p class="section-desc">맞은 개수 {{ session.correct_count }} / {{ session.total_questions }}
+            · 응시자 {{ session.student.username }}</p>
+    </div>
+
+    {% if wrong %}
+    <div class="card mb-3">
+        <div class="card-header bg-danger text-white"><i class="fas fa-times me-1"></i>오답 ({{ wrong|length }}개)</div>
+        <div class="table-responsive">
+            <table class="table mb-0 align-middle text-center">
+                <thead><tr><th>번호</th><th>유형</th><th>내 답</th><th>정답</th></tr></thead>
+                <tbody>
+                {% for a in wrong %}
+                    <tr>
+                        <td>{{ a.number }}</td>
+                        <td class="small text-muted">{{ a.qtype }}</td>
+                        <td class="text-danger fw-bold">{{ a.student_choice|default:"-" }}</td>
+                        <td class="text-success fw-bold">{{ a.correct_answer }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-success text-center">전부 정답입니다! 🎉</div>
+    {% endif %}
+
+    <details class="mb-4">
+        <summary class="mb-2">전체 문항 보기 ({{ answers|length }})</summary>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle text-center">
+                <thead><tr><th>번호</th><th>내 답</th><th>정답</th><th>채점</th></tr></thead>
+                <tbody>
+                {% for a in answers %}
+                    <tr>
+                        <td>{{ a.number }}</td>
+                        <td>{{ a.student_choice|default:"-" }}</td>
+                        <td>{{ a.correct_answer }}</td>
+                        <td>{% if a.is_correct %}<span class="text-success fw-bold">O</span>{% else %}<span class="text-danger fw-bold">X</span>{% endif %}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+</div>
+{% endblock %}
