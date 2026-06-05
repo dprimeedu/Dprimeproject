@@ -1014,7 +1014,41 @@ def wordcard_list(request):
         .annotate(card_total=Count('cards'))
         .order_by('-updated_at')
     )
-    return render(request, 'vocab/wordcard_list.html', {'sets': sets})
+    star_count = StudentWordStar.objects.filter(student=request.user).count()
+    return render(request, 'vocab/wordcard_list.html', {'sets': sets, 'star_count': star_count})
+
+
+@login_required
+def star_flashcard(request):
+    """별표 모음 플래시카드 — 모든 단원의 별표 단어를 한 세트로 학습."""
+    gate = _student_gate(request)
+    if gate:
+        return gate
+
+    stars = (StudentWordStar.objects
+             .filter(student=request.user)
+             .select_related('word')
+             .order_by('word__unit_id', 'word__index'))
+    cards = [{
+        'id': s.word.id,
+        'index': s.word.index,
+        'word': s.word.word,
+        'meaning': s.word.meaning,
+        'sub_unit': s.word.sub_unit or '',
+        'starred': True,
+    } for s in stars]
+    return render(request, 'vocab/flashcard.html', {
+        'unit': None,
+        'range_title': f'⭐ 내 별표 모음',
+        'cards_json': json.dumps(cards, ensure_ascii=False),
+        'total': len(cards),
+        'star_count': len(cards),
+        'default_star_only': False,
+        'default_shuffle': True,
+        'star_enabled': True,
+        'back_url': reverse('vocab:wordcard_list'),
+        'back_label': '낱말카드',
+    })
 
 
 @login_required
