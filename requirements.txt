@@ -12,3 +12,4 @@ openpyxl
 google-generativeai
 google-genai
 weasyprint==68.1
+matplotlib
