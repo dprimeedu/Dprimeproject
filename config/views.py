@@ -17,6 +17,7 @@ class MockExamView(generic.TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context['grades'] = ['고1', '고2', '고3']
         context['years'] = ['2024', '2023', '2022', '2021', '2020', '2019']
         context['months'] = ['3', '6', '9', '11']
         return context

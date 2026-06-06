@@ -10,9 +10,16 @@
         <p class="section-desc">학년/연도/월을 선택해 모의고사 문제를 조회·다운로드합니다.</p>
     </div>
 
-    <form action="{% url 'academy:academy_list_result' %}" method="get" class="quick-search">
-        <input type="hidden" name="grade" value="고1">
+    <form action="{% url 'academy:academy_list_result' %}" method="get" class="quick-search" id="searchForm">
         <div class="row g-2 align-items-center">
+            <div class="col-auto"><label>학년</label></div>
+            <div class="col-auto">
+                <select name="grade" class="form-select form-select-sm" required>
+                    {% for g in grades %}
+                        <option value="{{ g }}" {% if g == '고1' %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="col-auto"><label>연도</label></div>
             <div class="col-auto">
                 <select name="year" class="form-select form-select-sm" required>
@@ -24,7 +31,7 @@
             </div>
             <div class="col-auto"><label>월</label></div>
             <div class="col-auto">
-                <select name="month" class="form-select form-select-sm">
+                <select name="month" id="monthSelect" class="form-select form-select-sm">
                     <option value="">전체</option>
                     {% for m in months %}
                         <option value="{{ m }}">{{ m }}월</option>
@@ -44,6 +51,7 @@
             <thead>
                 <tr>
                     <th>연도</th>
+                    <th>학년</th>
                     {% for m in months %}
                         <th>{{ m }}월</th>
                     {% endfor %}
@@ -52,20 +60,37 @@
             </thead>
             <tbody>
                 {% for y in years %}
-                <tr>
-                    <td>{{ y }}년</td>
-                    {% for m in months %}
-                    <td>
-                        <a href="{% url 'academy:academy_list_result' %}?grade=고1&year={{ y }}&month={{ m }}" class="btn-exam">조회</a>
-                    </td>
+                    {% for g in grades %}
+                    <tr>
+                        {% if forloop.first %}
+                        <td rowspan="{{ grades|length }}" style="font-weight:600; vertical-align:middle;">{{ y }}년</td>
+                        {% endif %}
+                        <td class="grade-cell">{{ g }}</td>
+                        {% for m in months %}
+                        <td>
+                            <a href="{% url 'academy:academy_list_result' %}?grade={{ g }}&year={{ y }}&month={{ m }}" class="btn-exam">조회</a>
+                        </td>
+                        {% endfor %}
+                        <td>
+                            <a href="{% url 'academy:academy_list_result' %}?grade={{ g }}&year={{ y }}" class="btn-exam btn-exam-all">전체</a>
+                        </td>
+                    </tr>
                     {% endfor %}
-                    <td>
-                        <a href="{% url 'academy:academy_list_result' %}?grade=고1&year={{ y }}" class="btn-exam btn-exam-all">전체</a>
-                    </td>
-                </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<script>
+(function () {
+    const form = document.getElementById('searchForm');
+    const monthSelect = document.getElementById('monthSelect');
+    form.addEventListener('submit', function () {
+        if (!monthSelect.value) {
+            monthSelect.disabled = true;
+        }
+    });
+})();
+</script>
 {% endblock %}
