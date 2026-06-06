@@ -35,9 +35,8 @@ import zipfile
 # === 자동 주입용 스타일 정의 ===
 # header.xml 에 해당 ID 가 없을 때 주입한다. 참조하는 하위 ID
 # (fontRef=1, borderFillIDRef=2, tabPrIDRef=0 등)는 양식 header 에 이미 존재.
+# charPr 11/12/15/16/17 은 빌드 시 양식 charPr 8 에서 동적 파생 (_derive_charpr_styles)
 _STYLE_DEFS = {
-    'charPr11': ('<hh:charPr id="11" height="950" textColor="#0000FF" shadeColor="#FFFFFF" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2"><hh:fontRef hangul="1" latin="1" hanja="1" japanese="1" other="1" symbol="1" user="1"/><hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:bold/><hh:underline type="NONE" shape="SOLID" color="#000000"/><hh:strikeout shape="NONE" color="#000000"/><hh:outline type="NONE"/><hh:shadow type="NONE" color="#C0C0C0" offsetX="10" offsetY="10"/></hh:charPr>'),
-    'charPr12': ('<hh:charPr id="12" height="950" textColor="#000000" shadeColor="#FFFFFF" useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2"><hh:fontRef hangul="1" latin="1" hanja="1" japanese="1" other="1" symbol="1" user="1"/><hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/><hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/><hh:bold/><hh:underline type="NONE" shape="SOLID" color="#000000"/><hh:strikeout shape="NONE" color="#000000"/><hh:outline type="NONE"/><hh:shadow type="NONE" color="#C0C0C0" offsetX="10" offsetY="10"/></hh:charPr>'),
     'paraPr13': ('<hh:paraPr id="13" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1" suppressLineNumbers="0" checked="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="3" offsetLeft="283" offsetRight="283" offsetTop="283" offsetBottom="283" connect="0" ignoreMargin="0"/></hh:paraPr>'),
     'paraPr14': ('<hh:paraPr id="14" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1" suppressLineNumbers="0" checked="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="4" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/></hh:paraPr>'),
     'borderFill3': ('<hh:borderFill id="3" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0"><hh:slash type="NONE" Crooked="0" isCounter="0"/><hh:backSlash type="NONE" Crooked="0" isCounter="0"/><hh:leftBorder type="SOLID" width="0.5 mm" color="#FF0000"/><hh:rightBorder type="SOLID" width="0.5 mm" color="#FF0000"/><hh:topBorder type="SOLID" width="0.5 mm" color="#FF0000"/><hh:bottomBorder type="SOLID" width="0.5 mm" color="#FF0000"/><hh:diagonal type="SOLID" width="0.1 mm" color="#000000"/><hc:fillBrush><hc:winBrush faceColor="none" hatchColor="#FF000000" alpha="0"/></hc:fillBrush></hh:borderFill>'),
@@ -77,8 +76,34 @@ def _esc(text):
 # ---------------------------------------------------------------------------
 # 단락(문단) 생성기
 # ---------------------------------------------------------------------------
+# charPr → 밑줄 charPr 매핑
+# 한/글은 bold+underline 을 한 charPr 에 합치면 글꼴 폴백이 발생한다.
+# 따라서 밑줄 run 은 항상 charPr 15(밑줄만, bold 없음)를 사용한다.
+
+_UNDERLINE_MAP = {8: 15, 12: 16, 11: 17}
+
+
 def _run(text, char_pr):
-    return f'<hp:run charPrIDRef="{char_pr}"><hp:t>{_esc(text)}</hp:t></hp:run>'
+    """텍스트를 run 으로 만든다.
+    U+FFF0 으로 감싸진 구간이 있으면 밑줄 run 으로 분리한다.
+    예: "normal \ufff0underlined\ufff0 text"
+        → normal(charPr) + underlined(밑줄 charPr) + text(charPr)
+    """
+    MARKER = "\ufff0"
+    if MARKER not in text:
+        return (f'<hp:run charPrIDRef="{char_pr}">'
+                f'<hp:t>{_esc(text)}</hp:t></hp:run>')
+
+    ul_pr = _UNDERLINE_MAP.get(char_pr, 15)   # 매핑 없으면 기본 밑줄
+    parts = text.split(MARKER)
+    runs = []
+    for i, seg in enumerate(parts):
+        if not seg:
+            continue
+        cp = ul_pr if (i % 2 == 1) else char_pr   # 홀수 구간 = 밑줄
+        runs.append(f'<hp:run charPrIDRef="{cp}">'
+                    f'<hp:t>{_esc(seg)}</hp:t></hp:run>')
+    return "".join(runs)
 
 
 def _para(runs_xml, para_pr=1, char_pr_for_seg=8, column_break=False,
@@ -258,7 +283,8 @@ def build_hwpx(template_path, output_path, header_text, questions,
 
     def _has_required(h):
         return ('borderFill id="3"' in h and 'charPr id="11"' in h
-                and 'charPr id="12"' in h and 'paraPr id="13"' in h)
+                and 'charPr id="12"' in h and 'paraPr id="13"' in h
+                and 'charPr id="15"' in h)
 
     if not _has_required(header_xml) and reference_path:
         with zipfile.ZipFile(reference_path) as z2:
@@ -266,12 +292,11 @@ def build_hwpx(template_path, output_path, header_text, questions,
         if _has_required(ref_header):
             header_xml = ref_header
 
-    if not _has_required(header_xml):
-        # 내장 정의를 주입한다 (reference 가 없거나 부족한 경우의 안전망)
-        header_xml = _inject_styles(header_xml)
+    # 항상 _inject_styles 실행: charPr 11/12/15/16/17 을 양식 charPr 8 에서
+    # 동적 파생하므로, 부족한 스타일이 있으면 어떤 경우든 보충된다.
+    header_xml = _inject_styles(header_xml)
 
-    # 최종적으로도 스타일이 없으면 명확히 실패시킨다(조용한 검은화면 방지)
-    if not _has_required(header_xml):
+    if not ('charPr id="12"' in header_xml and 'paraPr id="13"' in header_xml):
         raise RuntimeError(
             "필수 스타일(charPr 11/12, paraPr 13, borderFill 3)을 "
             "header.xml 에 확보하지 못했습니다. reference_path 를 지정하세요.")
@@ -363,20 +388,61 @@ def _replace_header(sec, old_text, new_text):
     return sec[:p_start] + new_para + sec[p_end:]
 
 
+def _derive_charpr_from_base(header_xml):
+    """
+    양식 header 의 charPr 8(본문 기본) 을 읽어, 거기서 파생한
+    charPr 11/12/15/16/17 정의를 dict 로 돌려준다.
+    양식의 fontRef·shadeColor 등이 정확히 일치하여 글꼴 불일치가 없다.
+
+    파생 규칙:
+      11 = 8 + bold + textColor 파랑(#0000FF)           (날짜)
+      12 = 8 + bold                                     (발문)
+      15 = 8 + underline BOTTOM                         (밑줄)
+      16 = 8 + bold + underline BOTTOM                  (굵게+밑줄)
+      17 = 8 + bold + textColor 파랑 + underline BOTTOM (날짜+밑줄)
+    """
+    m = re.search(r'<hh:charPr id="8".*?</hh:charPr>', header_xml, re.S)
+    if not m:
+        return {}
+    base = m.group(0)
+    defs = {}
+
+    def make(new_id, bold=False, blue=False, underline=False):
+        s = base.replace('id="8"', f'id="{new_id}"')
+        if blue:
+            s = s.replace('textColor="#000000"', 'textColor="#0000FF"')
+        if bold and '<hh:bold/>' not in s:
+            s = s.replace('<hh:underline', '<hh:bold/><hh:underline')
+        if underline:
+            s = s.replace('underline type="NONE"', 'underline type="BOTTOM"')
+        return s
+
+    defs['charPr11'] = make(11, bold=True, blue=True)
+    defs['charPr12'] = make(12, bold=True)
+    defs['charPr15'] = make(15, underline=True)
+    defs['charPr16'] = make(16, bold=True, underline=True)
+    defs['charPr17'] = make(17, bold=True, blue=True, underline=True)
+    return defs
+
+
 def _inject_styles(header_xml):
     """
-    header.xml 에 박스/굵게 스타일이 없으면 내장 정의(_STYLE_DEFS)를
-    각 컨테이너(borderFills/charProperties/paraProperties)에 주입하고
-    itemCnt 를 갱신한다.
-    주입 스타일이 참조하는 하위 ID(fontRef=1, borderFillIDRef=2,
-    tabPrIDRef=0 등)는 양식 header 에 이미 존재하므로 안전하다.
+    header.xml 에 필요한 스타일이 없으면 주입하고 itemCnt 를 갱신한다.
+    charPr 11/12/15/16/17 은 양식 charPr 8 에서 동적 파생한다(글꼴 일치 보장).
+    paraPr, borderFill 은 _STYLE_DEFS 에서 가져온다.
     """
+    # charPr 을 charPr 8 에서 파생
+    derived = _derive_charpr_from_base(header_xml)
+    # _STYLE_DEFS + derived 를 합친다
+    all_defs = dict(_STYLE_DEFS)
+    all_defs.update(derived)
+
     plans = [
-        # (컨테이너, 항목 태그명, [(정의키, id), ...])
         ("borderFills", "borderFill",
          [("borderFill3", "3"), ("borderFill4", "4")]),
         ("charProperties", "charPr",
-         [("charPr11", "11"), ("charPr12", "12")]),
+         [("charPr11", "11"), ("charPr12", "12"),
+          ("charPr15", "15"), ("charPr16", "16"), ("charPr17", "17")]),
         ("paraProperties", "paraPr",
          [("paraPr13", "13"), ("paraPr14", "14")]),
     ]
@@ -386,17 +452,14 @@ def _inject_styles(header_xml):
         ci = header_xml.find(close)
         if not open_m or ci == -1:
             continue
-        # 이 컨테이너의 내부 구간
         inner = header_xml[open_m.end():ci]
-
         add_xml = ""
         added = 0
         for key, idv in items:
-            # 정확히 '이 컨테이너 안'에 해당 태그+id 가 있는지 검사
             exists = re.search(r'<hh:' + item_tag + r' id="' + idv + r'"',
                                inner) is not None
-            if not exists and _STYLE_DEFS.get(key):
-                add_xml += _STYLE_DEFS[key]
+            if not exists and all_defs.get(key):
+                add_xml += all_defs[key]
                 added += 1
         if add_xml:
             header_xml = header_xml[:ci] + add_xml + header_xml[ci:]

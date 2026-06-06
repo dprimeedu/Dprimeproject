@@ -434,7 +434,7 @@ def _hwpx_clean(text):
     if not text:
         return ""
     text = str(text).replace('\\r\\n', '\n').replace('\t', ' ')
-    text = re.sub(r'￰(.*?)￰', r'\1', text)
+    #text = re.sub(r'￰(.*?)￰', r'\1', text)
     return text
 
 
@@ -442,7 +442,7 @@ def _hwpx_choices(option_str):
     """선택지 문자열(\\r\\n 구분)을 리스트로 분리."""
     if not option_str:
         return []
-    return [c for c in _hwpx_clean(option_str).replace('\t', ' ').split('\n') if c.strip()]
+    return [c for c in _hwpx_clean(option_str).split('\n') if c.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +450,7 @@ def _hwpx_choices(option_str):
 # ---------------------------------------------------------------------------
 @login_required(login_url='/accounts/login/')
 def download_modified_hwpx(request):
-    from common.hwpx import TEMPLATE_PATH, REF_PATH
+    from common.hwpx import TEMPLATE_PATH
     from common.hwpx.hwpx_builder import build_hwpx_bytes
 
     selected_year = request.GET.getlist('year', [])
@@ -494,11 +494,11 @@ def download_modified_hwpx(request):
     data = build_hwpx_bytes(TEMPLATE_PATH, header_text, questions)
 
     import urllib.parse
-    filename = f"변형문제_{year_str}_{grade_str}_{month_str}.hwpx"
+    filename = f"[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_변형문제.hwpx"
     encoded_filename = urllib.parse.quote(filename, safe='')
     response = HttpResponse(data, content_type='application/hwp+zip')
     response['Content-Disposition'] = (
         f"attachment; filename=\"exam.hwpx\"; filename*=UTF-8''{encoded_filename}"
     )
-    print(questions)
+
     return response
