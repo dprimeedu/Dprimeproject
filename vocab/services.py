@@ -228,6 +228,25 @@ QUIZLET_SOURCE = '퀴즈렛'
 QUIZLET_SIZE = 100
 
 
+def split_range_into_chunks(start, end, size=QUIZLET_SIZE):
+    """[start,end] 정수 범위를 100-경계에 맞춰 분할.
+
+    101~300 → [(101,200),(201,300)]; 1~100 → [(1,100)]; 150~300 → [(150,200),(201,300)].
+    내신단어TEST 범위를 퀴즈렛(1-100, 101-200…)과 같은 100단위 시험으로 쪼개는 데 사용.
+    """
+    start, end = int(start), int(end)
+    if end < start:
+        return [(start, end)]
+    chunks = []
+    s = start
+    while s <= end:
+        boundary = ((s + size - 1) // size) * size   # s 이상에서 가장 가까운 size 배수
+        e = min(boundary, end)
+        chunks.append((s, e))
+        s = e + 1
+    return chunks
+
+
 def ensure_quizlet_ranges(student, unit, size=QUIZLET_SIZE, assigned_by=None):
     """교재 단어장을 학생에게 배정할 때 100단어 단위 퀴즈렛 범위 생성.
 

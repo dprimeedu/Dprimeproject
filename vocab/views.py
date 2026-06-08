@@ -28,6 +28,7 @@ from .models import (
 from .services import (
     grade_meaning, select_test_words,
     ensure_quizlet_ranges, remove_quizlet_ranges,
+    split_range_into_chunks,
 )
 
 
@@ -931,18 +932,25 @@ def range_import_api(request):
         # 배정도 보장 (학생 홈/접근권한)
         VocabAssignment.objects.get_or_create(student=student, unit=unit)
 
-        # 같은 학생·source 기존 활성 범위 비활성화 후 새로 생성
+        # 같은 학생·source 기존 활성 범위 비활성화 후, 100단위로 쪼개 새로 생성
+        # (예: 101~300 → 101~200 · 201~300 두 개의 시험으로 분리)
         VocabRangeTest.objects.filter(
             student=student, source_label=source, is_active=True,
         ).update(is_active=False)
-        rt = VocabRangeTest.objects.create(
-            student=student, unit=unit, start_index=start, end_index=end,
-            source_label=source,
-            question_count=int(it.get('question_count', 40)),
-            time_limit_seconds=int(it.get('time_limit_seconds', 1200)),
-            pass_threshold=int(it.get('threshold', 90)),
-        )
-        created += 1
+        qc = int(it.get('question_count', 40))
+        tl = int(it.get('time_limit_seconds', 1200))
+        th = int(it.get('threshold', 90))
+        chunks = split_range_into_chunks(start, end)
+        VocabRangeTest.objects.bulk_create([
+            VocabRangeTest(
+                student=student, unit=unit, start_index=cs, end_index=ce,
+                source_label=source,
+                question_count=min(qc, ce - cs + 1),
+                time_limit_seconds=tl, pass_threshold=th,
+            )
+            for cs, ce in chunks
+        ])
+        created += len(chunks)
     return JsonResponse({
         'success': True, 'created': created,
         'skipped': skipped, 'skipped_count': len(skipped),
