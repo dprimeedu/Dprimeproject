@@ -870,14 +870,6 @@ async function submitWord(wordIdx) {
     }
     const startTime = wordTimeStart[wordIdx] || Date.now();
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
-    const MIN_SEC = 5;
-    if (timeTaken < MIN_SEC) {
-        const left = MIN_SEC - timeTaken;
-        fb.textContent = `⏳ ${left}초 후 제출 가능`;
-        fb.className = 'word-feedback x';
-        inp.focus();
-        return;
-    }
     // ──────────────────────────────────────────────────
 
     try {
