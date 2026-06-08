@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'vocab:student_admin' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>단어 학생 배정</a>
+
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3><i class="fas fa-clipboard-check me-2"></i>오늘 단어 TEST</h3>
+            <p class="section-desc mb-0">학생관리자료에 입력된 <strong>내신단어TEST</strong> 범위만 모아 보여줍니다. (활성 범위 = 그날 볼 시험)</p>
+        </div>
+        <a href="{% url 'vocab:student_admin' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-users me-1"></i>전체 학생 배정</a>
+    </div>
+
+    {% if rows %}
+    <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+        <input type="text" id="testSearch" class="form-control form-control-sm w-auto" placeholder="이름/ID/학교 검색">
+        <span class="text-muted small ms-auto">총 {{ total }}명</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th><th>이름</th><th>학교</th>
+                    <th>시험 범위</th>
+                    <th class="text-end">최근 결과</th>
+                    <th class="text-end">점검</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rows %}
+                <tr class="test-row" data-key="{{ r.login_id|lower }} {{ r.name|lower }} {{ r.school|lower }}">
+                    <td><code>{{ r.login_id|default:'—' }}</code></td>
+                    <td>{{ r.name }}</td>
+                    <td><span class="badge bg-secondary">{{ r.school|default:'—' }}</span></td>
+                    <td>
+                        <span class="badge bg-info text-white">{{ r.label }}</span>
+                        <strong>{{ r.start }}~{{ r.end }}</strong>
+                        <span class="text-muted small">({{ r.count }}단어 / {{ r.question_count }}문제)</span>
+                    </td>
+                    <td class="text-end">
+                        {% if r.percent is not None %}
+                            <span class="badge {% if r.passed %}bg-success{% else %}bg-danger{% endif %}">{{ r.percent }}점</span>
+                            {% if not r.reviewed %}<span class="badge bg-warning text-dark">검수전</span>{% endif %}
+                            <div class="text-muted small">{{ r.tested_at }}</div>
+                        {% else %}
+                            <span class="text-muted small">미응시</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'vocab:range_flashcard' r.range_id %}" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-info text-white" title="새 탭에서 이 범위를 플래시카드로 실행">
+                            <i class="fas fa-clone me-1"></i>플래시카드
+                        </a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        오늘 볼 <strong>내신단어TEST</strong> 범위가 없습니다.<br>
+        학생관리자료에 내신단어TEST를 입력한 뒤 동기화하면 여기에 표시됩니다.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.getElementById('testSearch')?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.test-row').forEach(r => {
+        r.style.display = r.dataset.key.includes(q) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

@@ -634,6 +634,44 @@ def student_admin(request):
 
 
 @teacher_required
+def test_today(request):
+    """오늘 단어 TEST — 활성 '내신단어TEST' 범위가 있는 학생만 모아 보여줌.
+
+    학생관리자료의 '내신단어TEST' 가 동기화될 때마다 range_import_api 가 같은 (학생,
+    source) 의 기존 활성 범위를 비활성화하고 새로 만든다. 따라서 '활성 내신단어TEST 범위'
+    = '그날 봐야 할 시험'. 전체 배정/퀴즈렛 세트가 섞인 student_admin 과 달리 시험 볼 것만.
+    """
+    rts = (VocabRangeTest.objects
+           .filter(is_active=True, source_label='내신단어TEST')
+           .select_related('student', 'unit')
+           .order_by('unit__school', 'student__username', '-created_at'))
+    rows = []
+    for rt in rts:
+        sess = (rt.sessions
+                .filter(mode=VocabSession.MODE_TEST, finished_at__isnull=False)
+                .order_by('-finished_at').first())
+        rows.append({
+            'range_id': rt.id,
+            'name': rt.student.username,
+            'login_id': getattr(rt.student, 'login_id', '') or '',
+            'school': rt.unit.school,
+            'label': rt.source_label,
+            'start': rt.start_index,
+            'end': rt.end_index,
+            'count': rt.end_index - rt.start_index + 1,
+            'question_count': rt.question_count,
+            'percent': sess.percent if sess else None,
+            'passed': sess.passed if sess else None,
+            'reviewed': sess.is_reviewed if sess else False,
+            'tested_at': sess.finished_at.strftime('%m/%d %H:%M') if sess else None,
+        })
+    return render(request, 'vocab/test_today.html', {
+        'rows': rows,
+        'total': len(rows),
+    })
+
+
+@teacher_required
 def student_upload(request):
     """엑셀로 학생 일괄 등록 (writing과 동일 계정 풀). 컬럼: 1열 색인 · 2열 ID · 3열 이름."""
     if request.method != 'POST':

@@ -10,6 +10,7 @@
             <p class="section-desc mb-0">학생 계정은 영작훈련과 공유됩니다. 여기서는 <strong>단어 단원 배정</strong>을 관리합니다.</p>
         </div>
         <div class="d-flex gap-2">
+            <a href="{% url 'vocab:test_today' %}" class="btn btn-info text-white btn-sm"><i class="fas fa-clipboard-check me-1"></i>오늘 단어 TEST</a>
             <a href="{% url 'vocab:unit_list' %}" class="btn btn-outline-primary btn-sm"><i class="fas fa-layer-group me-1"></i>단원 관리</a>
             <a href="{% url 'vocab:student_upload' %}" class="btn btn-success btn-sm"><i class="fas fa-file-excel me-1"></i>학생 일괄 등록</a>
         </div>

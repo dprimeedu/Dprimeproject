@@ -48,6 +48,9 @@ urlpatterns = [
     path('admin/units/<int:unit_id>/assignments/', views.assignment_list, name='assignment_list'),
     path('admin/units/<int:unit_id>/assignments/update/', views.assignment_update, name='assignment_update'),
 
+    # 선생님 / 관리자 — 오늘 단어 TEST (활성 '내신단어TEST' 범위만)
+    path('admin/test/', views.test_today, name='test_today'),
+
     # 선생님 / 관리자 — 학생 관리 + 배정
     path('admin/students/', views.student_admin, name='student_admin'),
     path('admin/students/upload/', views.student_upload, name='student_upload'),
