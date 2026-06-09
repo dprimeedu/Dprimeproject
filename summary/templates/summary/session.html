@@ -15,6 +15,7 @@
 .sum-blank.sealed  { border-bottom-color:#6366f1; background:#eef2ff; color:#3730a3; font-weight:600; }
 .sum-fb { min-height:1.1rem; font-size:.78rem; text-align:center; margin-top:1px; }
 .sum-fb.korean { color:#b45309; font-weight:600; }
+.sum-fb.hint { color:#2563eb; font-weight:600; letter-spacing:.05em; }
 .sum-fb.ok { color:#16a34a; font-weight:600; }
 .sum-fb.sealed { color:#6366f1; }
 .sum-badge { display:inline-block; min-width:1.4rem; text-align:center; color:#c0392b; font-weight:700; }
@@ -150,21 +151,34 @@ async function checkBlank(pid, b, inp, fb) {
     } catch (e) { return; }
     if (!d || !d.success) return;
 
-    if (st.stage <= 1) {
+    if (st.stage === 1) {
         if (d.correct) {
             inp.classList.add('correct'); inp.readOnly = true;
             fb.className = 'sum-fb ok'; fb.textContent = '정답!';
             st.done = true;
         } else {
-            // 첫 오답 → 한글뜻 1회 노출, 재입력
+            // 1차 오답 → 한글뜻 노출, 재입력
             fb.className = 'sum-fb korean';
             fb.textContent = '뜻: ' + (d.korean || '');
             inp.value = '';
             inp.focus();
             st.stage = 2;
         }
+    } else if (st.stage === 2) {
+        if (d.correct) {
+            inp.classList.add('correct'); inp.readOnly = true;
+            fb.className = 'sum-fb ok'; fb.textContent = '정답!';
+            st.done = true;
+        } else {
+            // 2차 오답 → 영어 첫 글자 힌트, 재입력
+            fb.className = 'sum-fb hint';
+            fb.textContent = '힌트: ' + (d.first_letter || '');
+            inp.value = '';
+            inp.focus();
+            st.stage = 3;
+        }
     } else {
-        // 2차 입력 봉인 (정오 숨김 — 관리자 채점)
+        // 3차 입력 봉인 (정오 숨김 — 정답일치 시 관리자 판정 O 자동)
         inp.classList.add('sealed'); inp.readOnly = true;
         fb.className = 'sum-fb sealed'; fb.textContent = '제출됨 (채점 대기)';
         st.done = true;

@@ -175,9 +175,12 @@ def check_blank_api(request):
     if not ba.correct_answer:
         ba.correct_answer = answer
 
+    norm_ans = _norm(answer)
+
     if attempt <= 1:
+        # 1차 입력 — 자동 판정. 정답이면 O 확정, 오답이면 한글뜻 힌트.
         ba.first_input = value
-        ba.first_auto_correct = bool(_norm(value)) and _norm(value) == _norm(answer)
+        ba.first_auto_correct = bool(_norm(value)) and _norm(value) == norm_ans
         if ba.first_auto_correct:
             ba.save()
             return JsonResponse({'success': True, 'correct': True, 'locked': True},
@@ -185,11 +188,25 @@ def check_blank_api(request):
         ba.korean_shown = True
         ba.save()
         return JsonResponse({
-            'success': True, 'correct': False, 'show_korean': True,
+            'success': True, 'correct': False, 'hint_type': 'korean',
             'korean': korean or '(뜻 정보 없음)',
         }, json_dumps_params={'ensure_ascii': False})
 
-    # attempt 2 — 봉인 (정오 숨김)
+    if attempt == 2:
+        # 2차 입력 — 자동 판정. 정답이면 O 확정, 오답이면 영어 첫 글자 힌트.
+        ba.second_input = value
+        is_ok = bool(_norm(value)) and _norm(value) == norm_ans
+        ba.save()
+        if is_ok:
+            return JsonResponse({'success': True, 'correct': True, 'locked': True},
+                                json_dumps_params={'ensure_ascii': False})
+        first_letter = (answer[0] + '_' * (len(answer) - 1)) if answer else ''
+        return JsonResponse({
+            'success': True, 'correct': False, 'hint_type': 'first_letter',
+            'first_letter': first_letter,
+        }, json_dumps_params={'ensure_ascii': False})
+
+    # attempt 3 — 최종 입력 봉인. 정답 일치 시 제출 단계에서 관리자 판정 O 자동.
     ba.second_input = value
     ba.save()
     return JsonResponse({'success': True, 'recorded': True},
@@ -236,8 +253,10 @@ def submit_session_api(request):
                 else:
                     if not ba.correct_answer:
                         ba.correct_answer = ans
-                    # 자동 1차 정답이면 관리자 판정 기본값 O 로 선반영
-                    if ba.admin_verdict is None and ba.first_auto_correct:
+                    # 학생 최종입력이 정답과 같으면 관리자 판정 기본값 O 로 선반영
+                    # (1차 자동정답 + 한글뜻/첫글자 힌트 후 맞힌 재입력 모두 포함)
+                    final_val = _norm(ba.second_input or ba.first_input)
+                    if ba.admin_verdict is None and final_val and final_val == _norm(ans):
                         ba.admin_verdict = 'O'
                     to_update.append(ba)
         if to_create:
@@ -291,8 +310,12 @@ def grade_detail(request, session_id):
     )
     rows = []
     for ba in answers:
-        # 기본 판정값: 이미 판정됐으면 그것, 아니면 자동 1차 정답 여부
-        default_o = ba.admin_verdict == 'O' if ba.admin_verdict else ba.first_auto_correct
+        # 기본 판정값: 이미 판정됐으면 그것, 아니면 학생 최종입력==정답 여부
+        if ba.admin_verdict:
+            default_o = ba.admin_verdict == 'O'
+        else:
+            final_val = _norm(ba.second_input or ba.first_input)
+            default_o = bool(final_val) and final_val == _norm(ba.correct_answer)
         rows.append({
             'ba': ba,
             'label': BLANK_LABEL.get(ba.blank, ba.blank),
