@@ -513,16 +513,36 @@ def _grade_from_school(school):
     return '기타'
 
 
+def _find_student_for_assign(name, login_id):
+    """이름(username) 또는 login_id 로 학생 1명 찾기. 모호하면 (None, 사유)."""
+    User = get_user_model()
+    base = User.objects.exclude(is_staff=True).exclude(is_superuser=True)
+    login_id = (login_id or '').strip()
+    name = (name or '').strip()
+    if login_id:
+        u = base.filter(login_id=login_id).first()
+        if u:
+            return u, ''
+    if name:
+        qs = list(base.filter(username=name)[:2])
+        if len(qs) == 1:
+            return qs[0], ''
+        if len(qs) > 1:
+            return None, f'동명이인 {len(qs)}명 (login_id 필요)'
+    return None, '학생 없음'
+
+
 @csrf_exempt
 @require_POST
 def import_api(request):
     """요약문완성 문항 일괄 등록 (AI 자동화 요약문 생성 푸시).
 
-    body: {token, school, unit?, items: [
-        {idx, unit?, sentence1_template, sentence1_answer, korean1,
+    body: {token, school, unit?, assign_to?, assign_login_id?, items: [
+        {idx, unit?, sub_unit?, sentence1_template, sentence1_answer, korean1,
          sentence2_template, sentence2_answer, korean2}, ...]}
 
     (school, unit) 별로 그룹핑하여 SummaryUnit upsert + 기존 SummaryProblem 교체(replace-on-reimport).
+    assign_to(학생 이름) 또는 assign_login_id 지정 시 등록된 단원을 그 학생에게 배정.
     """
     ok, reason = _check_api_token(request)
     if not ok:
@@ -532,6 +552,8 @@ def import_api(request):
         items = data.get('items') or []
         school = str(data.get('school', '')).strip()
         top_unit = str(data.get('unit', '')).strip()
+        assign_to = str(data.get('assign_to', '') or '').strip()
+        assign_login_id = str(data.get('assign_login_id', '') or '').strip()
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -546,6 +568,7 @@ def import_api(request):
 
     results = []
     created_total = 0
+    created_units = []
     grade = _grade_from_school(school)
     with transaction.atomic():
         for unit_name, group in groups.items():
@@ -557,6 +580,7 @@ def import_api(request):
                     'is_active': True,
                 },
             )
+            created_units.append(unit_obj)
             SummaryProblem.objects.filter(unit=unit_obj).delete()
             rows = []
             for it in group:
@@ -579,10 +603,25 @@ def import_api(request):
             created_total += len(rows)
             results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'created': len(rows)})
 
+    # 학생 배정 (assign_to / assign_login_id)
+    assigned = None
+    if assign_to or assign_login_id:
+        student, why = _find_student_for_assign(assign_to, assign_login_id)
+        if student is None:
+            assigned = {'ok': False, 'reason': why, 'name': assign_to or assign_login_id}
+        else:
+            n = 0
+            for u in created_units:
+                _, made = SummaryAssignment.objects.get_or_create(student=student, unit=u)
+                if made:
+                    n += 1
+            assigned = {'ok': True, 'student': student.username, 'units': len(created_units), 'newly': n}
+
     return JsonResponse({
         'success': True,
         'school': school,
         'units': results,
         'created': created_total,
+        'assigned': assigned,
         'skipped': [], 'skipped_count': 0,
     }, json_dumps_params={'ensure_ascii': False})
