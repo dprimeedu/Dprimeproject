@@ -799,9 +799,9 @@ function loadProblem(idx) {
                     submitWord(i);
                     return;
                 }
-                // Enter: PC에서는 직접 제출, Android에서는 compositionend가 처리
                 if (e.key === 'Enter') {
-                    if (e.isComposing || _composing) return;
+                    // Android: e.isComposing 신뢰 불가 → 무조건 제출 (submitting 잠금이 중복 차단)
+                    if (!_isAndroid && (e.isComposing || _composing)) return;
                     e.preventDefault();
                     submitWord(i);
                 }
