@@ -778,6 +778,10 @@ function loadProblem(idx) {
             inp.addEventListener('focus', () => {
                 if (!wordTimeStart[i]) wordTimeStart[i] = Date.now();
             });
+            // Android 소프트 키보드는 keyCode를 항상 229로 보내므로 compositionstart/end로 직접 추적
+            let _composing = false;
+            inp.addEventListener('compositionstart', () => { _composing = true; });
+            inp.addEventListener('compositionend', () => { _composing = false; });
             inp.addEventListener('keydown', (e) => {
                 // Tab은 IME 합성과 무관 → 항상 제출 (Enter가 한국어 IME에 막혀도 Tab으로 진행 가능)
                 if (e.key === 'Tab') {
@@ -787,7 +791,7 @@ function loadProblem(idx) {
                 }
                 // Enter는 IME 합성 중이면 합성 확정으로만 사용 → 다음 Enter에서 제출
                 if (e.key === 'Enter') {
-                    if (e.isComposing || e.keyCode === 229) return;
+                    if (e.isComposing || _composing) return;
                     e.preventDefault();
                     submitWord(i);
                 }

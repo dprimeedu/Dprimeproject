@@ -539,6 +539,13 @@ document.addEventListener('keydown', e => {
     });
 })();
 
+// 모바일에서 touchend가 버튼 바깥에서 끝나면 click이 합성 안 됨 → touchend 직접 바인딩
+$('fcStar').addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    e.preventDefault();   // 이후 합성 click 이벤트 방지 (중복 호출 차단)
+    toggleStar(e);
+});
+
 updateStarCount();
 autoShuffle = DEFAULT_SHUFFLE;            // 시험 진입 시 카드 섞기
 if (DEFAULT_STAR_ONLY) {                  // 시험 진입 시 별표만 기본
