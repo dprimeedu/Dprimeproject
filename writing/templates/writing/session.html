@@ -194,6 +194,29 @@
         100% { opacity: 0; transform: translate(-50%, -30px); }
     }
 
+    /* 소프트 키보드용 제출 버튼 (터치 기기에서만 표시) */
+    .word-input-wrap { display: inline-flex; align-items: center; gap: 4px; }
+    .word-submit-btn { display: none; }
+    @media (pointer: coarse) {
+        .word-submit-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            background: var(--primary-color);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            touch-action: manipulation;
+            flex-shrink: 0;
+        }
+        .word-submit-btn:active { opacity: .7; }
+        .word-submit-btn.is-done { display: none; }
+    }
+
     /* 자동 채우기 단어 (관사 등) */
     .word-input.is-auto {
         color: #6b7280;
@@ -762,8 +785,20 @@ function loadProblem(idx) {
         inp.autocomplete = 'off';
         inp.spellcheck = false;
 
+        const wrap = document.createElement('div');
+        wrap.className = 'word-input-wrap';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'word-submit-btn';
+        btn.id = 'btn' + i;
+        btn.textContent = '→';
+        btn.addEventListener('click', () => submitWord(i));
+
+        wrap.appendChild(inp);
+        wrap.appendChild(btn);
         cell.appendChild(fb);
-        cell.appendChild(inp);
+        cell.appendChild(wrap);
         row.appendChild(cell);
 
         if (meta.auto) {
@@ -916,8 +951,10 @@ function applyWordResponse(wordIdx, data) {
     const inp = $('w' + wordIdx);
     const fb  = $('fb' + wordIdx);
     const state = wordStates[wordIdx];
+    const btn = $('btn' + wordIdx);
 
     if (data.is_correct) {
+        if (btn) btn.classList.add('is-done');
         inp.disabled = true;
         inp.classList.remove('is-wrong');
         inp.classList.add('is-correct');
