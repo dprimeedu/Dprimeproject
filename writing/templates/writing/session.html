@@ -778,18 +778,28 @@ function loadProblem(idx) {
             inp.addEventListener('focus', () => {
                 if (!wordTimeStart[i]) wordTimeStart[i] = Date.now();
             });
-            // Android 소프트 키보드는 keyCode를 항상 229로 보내므로 compositionstart/end로 직접 추적
+            // Android 소프트 키보드: 모든 키 isComposing=true로 옴 → compositionend에서 직접 제출
+            const _isAndroid = /Android/i.test(navigator.userAgent);
             let _composing = false;
             inp.addEventListener('compositionstart', () => { _composing = true; });
-            inp.addEventListener('compositionend', () => { _composing = false; });
+            inp.addEventListener('compositionend', () => {
+                _composing = false;
+                // Android에서 Enter키가 compositionend를 트리거 → 다음 틱에 제출
+                if (_isAndroid) {
+                    setTimeout(() => {
+                        const st = wordStates[i];
+                        if (st && !st.done && !st.submitting && inp.value.trim()) submitWord(i);
+                    }, 0);
+                }
+            });
             inp.addEventListener('keydown', (e) => {
-                // Tab은 IME 합성과 무관 → 항상 제출 (Enter가 한국어 IME에 막혀도 Tab으로 진행 가능)
+                // Tab은 IME 합성과 무관 → 항상 제출
                 if (e.key === 'Tab') {
                     e.preventDefault();
                     submitWord(i);
                     return;
                 }
-                // Enter는 IME 합성 중이면 합성 확정으로만 사용 → 다음 Enter에서 제출
+                // Enter: PC에서는 직접 제출, Android에서는 compositionend가 처리
                 if (e.key === 'Enter') {
                     if (e.isComposing || _composing) return;
                     e.preventDefault();
@@ -857,16 +867,18 @@ async function autoSubmitWord(wordIdx, value) {
 
 async function submitWord(wordIdx) {
     const state = wordStates[wordIdx];
-    if (!state || state.done) {
-        focusNext(wordIdx);
+    if (!state || state.done || state.submitting) {
+        if (state && state.done) focusNext(wordIdx);
         return;
     }
+    state.submitting = true;
+
     const inp = $('w' + wordIdx);
     const val = (inp.value || '').trim();
     const fb  = $('fb' + wordIdx);
 
-    // ── 무지성 제출 방지 ──────────────────────────────
     if (val.length === 0) {
+        state.submitting = false;
         fb.textContent = '✏️ 먼저 입력하세요';
         fb.className = 'word-feedback x';
         inp.focus();
@@ -874,7 +886,6 @@ async function submitWord(wordIdx) {
     }
     const startTime = wordTimeStart[wordIdx] || Date.now();
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
-    // ──────────────────────────────────────────────────
 
     try {
         const r = await fetch('{% url "writing:api_check_word" %}', {
@@ -896,6 +907,8 @@ async function submitWord(wordIdx) {
         applyWordResponse(wordIdx, data);
     } catch (e) {
         console.error(e);
+    } finally {
+        state.submitting = false;
     }
 }
 
