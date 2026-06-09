@@ -251,9 +251,14 @@ def _should_auto_fill(word, position):
     """
     if not word:
         return False
+    # 순수 구두점 단어(―, —, …, - 등): 정규화하면 빈 문자열이라 학생이 타이핑으로
+    # 맞출 수 없음(빈 입력은 프론트에서 차단됨) → 자동 채우기로 빈칸 막힘 방지.
+    # 문장 분할 시 절 경계에 대시가 단독 토큰으로 남는 케이스 포함.
+    if not scoring.normalize(word):
+        return True
     cleaned = word.strip(_PUNCT)
     if not cleaned:
-        return False
+        return True
 
     # 관사
     if cleaned.lower() in IGNORED_WORDS:
