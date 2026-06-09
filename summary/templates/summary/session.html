@@ -4,6 +4,8 @@
 .sum-wrap { max-width: 860px; margin: 0 auto; }
 .sum-card { border:1px solid #e5e7eb; border-radius:14px; padding:1.1rem 1.3rem; margin-bottom:1rem; background:#fff; }
 .sum-card .qno { font-weight:700; color:var(--primary-color); margin-bottom:.5rem; }
+.sum-card .qno .sub-unit { display:inline-block; margin-left:.5rem; padding:.05rem .5rem;
+             background:#eef2ff; color:#3730a3; border-radius:8px; font-size:.85rem; font-weight:700; }
 .sum-sent { font-size:1.02rem; line-height:2.1; color:#1f2937; }
 .sum-blank-wrap { display:inline-flex; flex-direction:column; vertical-align:middle; margin:0 .15rem; }
 .sum-blank { width:140px; border:0; border-bottom:2px solid #9ca3af; background:#f9fafb;
@@ -109,6 +111,12 @@ function build() {
         const qno = document.createElement('div');
         qno.className = 'qno';
         qno.textContent = `문항 ${p.index}`;
+        if (p.sub_unit) {
+            const su = document.createElement('span');
+            su.className = 'sub-unit';
+            su.textContent = `원문 ${p.sub_unit}`;
+            qno.appendChild(su);
+        }
         card.appendChild(qno);
 
         const s1 = document.createElement('div');

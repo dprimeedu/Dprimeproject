@@ -108,6 +108,7 @@ def session_view(request, session_id):
     problems_data = [{
         'id': p.id,
         'index': p.index,
+        'sub_unit': p.sub_unit,
         'sentence1_template': p.sentence1_template,
         'sentence2_template': p.sentence2_template,
     } for p in problems]
