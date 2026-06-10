@@ -71,10 +71,10 @@ class CustomLoginView(LoginView):
         if user.is_academy:
             return redirect('acad:academy_dashboard')
 
-        # 학원에서 승인한 재원생은 바로 재원생 메뉴로
+        # 학원에서 승인한 재원생은 바로 재원생 메뉴(/training/)로
         is_admin = user.is_superuser or user.is_staff
         if not is_admin and getattr(user, 'is_approved', False):
-            return redirect('writing:home')
+            return redirect('training')
 
         return redirect('index')
 
