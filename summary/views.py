@@ -592,6 +592,7 @@ def import_api(request):
 
     (school, unit) 별로 그룹핑하여 SummaryUnit upsert + 기존 SummaryProblem 교체(replace-on-reimport).
     assign_to(학생 이름) 또는 assign_login_id 지정 시 등록된 단원을 그 학생에게 배정.
+    assign_to_list(이름 리스트) 지정 시 여러 학생에게 한꺼번에 배정(학교단위 단원 1개 → 학생 전원).
     """
     ok, reason = _check_api_token(request)
     if not ok:
@@ -603,6 +604,7 @@ def import_api(request):
         top_unit = str(data.get('unit', '')).strip()
         assign_to = str(data.get('assign_to', '') or '').strip()
         assign_login_id = str(data.get('assign_login_id', '') or '').strip()
+        assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -652,8 +654,9 @@ def import_api(request):
             created_total += len(rows)
             results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'created': len(rows)})
 
-    # 학생 배정 (assign_to / assign_login_id)
+    # 학생 배정 — 단일(assign_to/assign_login_id) + 다수(assign_to_list)
     assigned = None
+    assigned_many = None
     if assign_to or assign_login_id:
         student, why = _find_student_for_assign(assign_to, assign_login_id)
         if student is None:
@@ -666,11 +669,24 @@ def import_api(request):
                     n += 1
             assigned = {'ok': True, 'student': student.username, 'units': len(created_units), 'newly': n}
 
+    if assign_to_list:
+        ok_names, fail = [], []
+        for nm in assign_to_list:
+            student, why = _find_student_for_assign(nm, '')
+            if student is None:
+                fail.append({'name': nm, 'reason': why})
+                continue
+            for u in created_units:
+                SummaryAssignment.objects.get_or_create(student=student, unit=u)
+            ok_names.append(student.username)
+        assigned_many = {'assigned': ok_names, 'failed': fail, 'units': len(created_units)}
+
     return JsonResponse({
         'success': True,
         'school': school,
         'units': results,
         'created': created_total,
         'assigned': assigned,
+        'assigned_many': assigned_many,
         'skipped': [], 'skipped_count': 0,
     }, json_dumps_params={'ensure_ascii': False})
