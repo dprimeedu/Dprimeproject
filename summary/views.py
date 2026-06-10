@@ -39,6 +39,36 @@ def _norm(s):
 
 BLANK_LABEL = {'a': 'ⓐ', 'b': 'ⓑ'}
 
+# 시험은 10문제 단위 청크로 끊어 본다 (전체 업로드 후 10개씩).
+CHUNK_SIZE = 10
+
+
+def _chunks_from_indices(idxs):
+    """정렬된 문항 index 리스트 → 10개 단위 청크 메타.
+
+    [{num, start, end, count}] — start/end 는 실제 문항 index 경계(연속 아니어도 안전).
+    """
+    chunks = []
+    for i in range(0, len(idxs), CHUNK_SIZE):
+        seg = idxs[i:i + CHUNK_SIZE]
+        if not seg:
+            continue
+        chunks.append({
+            'num': i // CHUNK_SIZE + 1,
+            'start': seg[0], 'end': seg[-1], 'count': len(seg),
+        })
+    return chunks
+
+
+def _ranged_problems(session):
+    """세션의 시험 범위에 해당하는 문항 queryset (범위 없으면 단원 전체)."""
+    qs = session.unit.problems.all().order_by('index')
+    if session.start_index is not None:
+        qs = qs.filter(index__gte=session.start_index)
+    if session.end_index is not None:
+        qs = qs.filter(index__lte=session.end_index)
+    return qs
+
 
 # ─────────────────────────────────────────────
 # 학생 화면
@@ -61,13 +91,15 @@ def student_home(request):
         is_assigned_view = True
 
     unit_ids = [u.id for u in units]
-    prob_count_map = {
-        row['unit_id']: row['c']
-        for row in SummaryProblem.objects.filter(unit_id__in=unit_ids)
-        .values('unit_id').annotate(c=Count('id'))
-    }
+    # 단원별 문항 index 모음 (1쿼리) → 문항 수 + 10개 단위 청크 버튼
+    from collections import defaultdict
+    idx_map = defaultdict(list)
+    for uid, idx in (SummaryProblem.objects.filter(unit_id__in=unit_ids)
+                     .order_by('index').values_list('unit_id', 'index')):
+        idx_map[uid].append(idx)
     for u in units:
-        u._problem_count = prob_count_map.get(u.id, 0)
+        u._problem_count = len(idx_map.get(u.id, []))
+        u.chunks = _chunks_from_indices(idx_map.get(u.id, []))
 
     return render(request, 'summary/home.html', {
         'units': units,
@@ -85,11 +117,28 @@ def start_session(request, unit_id):
             messages.error(request, '이 단원은 배정되지 않았습니다. 선생님께 문의하세요.')
             return redirect('summary:home')
 
-    if not unit.problems.exists():
+    idxs = list(unit.problems.order_by('index').values_list('index', flat=True))
+    if not idxs:
         messages.error(request, '이 단원에 문제가 없습니다.')
         return redirect('summary:home')
 
-    session = SummarySession.objects.create(student=request.user, unit=unit)
+    # chunk=N 이면 그 10문제 범위만, 없으면 단원 전체.
+    start_i = end_i = None
+    chunk = request.GET.get('chunk')
+    if chunk:
+        try:
+            c = int(chunk)
+        except (TypeError, ValueError):
+            c = 1
+        seg = idxs[(c - 1) * CHUNK_SIZE: c * CHUNK_SIZE]
+        if not seg:
+            messages.error(request, '해당 시험 범위가 없습니다.')
+            return redirect('summary:home')
+        start_i, end_i = seg[0], seg[-1]
+
+    session = SummarySession.objects.create(
+        student=request.user, unit=unit, start_index=start_i, end_index=end_i,
+    )
     return redirect('summary:session', session_id=session.id)
 
 
@@ -103,7 +152,7 @@ def session_view(request, session_id):
     if session.status != SummarySession.STATUS_IN_PROGRESS:
         return redirect('summary:result', session_id=session.id)
 
-    problems = list(session.unit.problems.all().order_by('index'))
+    problems = list(_ranged_problems(session))
     # 클라이언트엔 정답/한글뜻을 보내지 않음 (check-blank API 로만 노출)
     problems_data = [{
         'id': p.id,
@@ -231,7 +280,7 @@ def submit_session_api(request):
         SummarySession, pk=session_id, student=request.user,
         status=SummarySession.STATUS_IN_PROGRESS,
     )
-    problems = list(session.unit.problems.all().order_by('index'))
+    problems = list(_ranged_problems(session))
     existing = {
         (ba.problem_id, ba.blank): ba
         for ba in session.blank_answers.all()

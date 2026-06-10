@@ -24,7 +24,8 @@
 
 <div class="home-wrap sum-wrap">
     <div class="section-header">
-        <h3 class="mb-1"><i class="fas fa-align-left me-2"></i>{{ unit.title }}</h3>
+        <h3 class="mb-1"><i class="fas fa-align-left me-2"></i>{{ unit.title }}
+            {% if session.start_index %}<span class="badge bg-primary align-middle">{{ session.range_label }}번</span>{% endif %}</h3>
         <p class="section-desc mb-0">요약문 빈칸 ⓐ·ⓑ 를 채우세요. 처음 틀리면 한글뜻이 한 번 표시됩니다. 다 풀면 <b>제출하기</b>.</p>
     </div>
 

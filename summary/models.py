@@ -136,6 +136,9 @@ class SummarySession(models.Model):
         related_name='summary_sessions',
     )
     unit = models.ForeignKey(SummaryUnit, on_delete=models.CASCADE, related_name='sessions')
+    # 시험 범위(10문제 단위 청크). 둘 다 None 이면 단원 전체.
+    start_index = models.IntegerField(null=True, blank=True, verbose_name='시작 문항')
+    end_index = models.IntegerField(null=True, blank=True, verbose_name='끝 문항')
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_IN_PROGRESS,
         db_index=True, verbose_name='상태',
@@ -164,6 +167,13 @@ class SummarySession(models.Model):
     @property
     def percent(self):
         return round(self.correct_count / self.total_blanks * 100) if self.total_blanks else 0
+
+    @property
+    def range_label(self):
+        """시험 범위 표기 — 청크면 'start~end', 전체면 '전체'."""
+        if self.start_index and self.end_index:
+            return f'{self.start_index}~{self.end_index}'
+        return '전체'
 
 
 class SummaryBlankAnswer(models.Model):
