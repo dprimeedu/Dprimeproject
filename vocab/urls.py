@@ -50,6 +50,11 @@ urlpatterns = [
 
     # 선생님 / 관리자 — 오늘 단어 TEST (활성 '내신단어TEST' 범위만)
     path('admin/test/', views.test_today, name='test_today'),
+    # 오늘 단어 TEST — 학생별 플래시카드 시험 (전체 범위 / 개인 단어 / 별표)
+    path('admin/test/student/<int:student_id>/ranges/', views.student_ranges, name='student_ranges'),
+    path('admin/test/student/<int:student_id>/cards/', views.student_cards, name='student_cards'),
+    path('admin/test/student/<int:student_id>/stars/', views.student_star_flashcard, name='student_star_flashcard'),
+    path('admin/test/cards/<int:set_id>/flashcard/', views.student_cardset_flashcard, name='student_cardset_flashcard'),
 
     # 선생님 / 관리자 — 학생 관리 + 배정
     path('admin/students/', views.student_admin, name='student_admin'),

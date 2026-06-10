@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'vocab:test_today' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>오늘 단어 TEST</a>
+
+    <div class="section-header">
+        <h3><i class="fas fa-user-edit me-2"></i>{{ student.username }} — 개인 단어</h3>
+        <p class="section-desc mb-0">학생이 직접 만든 낱말카드 세트입니다. 클릭하면 플래시카드 시험으로 열립니다.</p>
+    </div>
+
+    {% if sets %}
+    <div class="d-flex flex-wrap gap-2">
+        {% for s in sets %}
+        <a href="{% url 'vocab:student_cardset_flashcard' s.id %}" target="_blank" rel="noopener"
+           class="btn btn-outline-success" title="{{ s.title }} 플래시카드 시험">
+            <i class="fas fa-clone me-1"></i>{{ s.title }}
+            <span class="text-muted small">({{ s.card_total }}개)</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        이 학생이 만든 개인 단어(완성된 낱말카드 세트)가 없습니다.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -653,6 +653,7 @@ def test_today(request):
                 .order_by('-finished_at').first())
         rows.append({
             'range_id': rt.id,
+            'student_id': rt.student_id,
             'name': rt.student.username,
             'login_id': getattr(rt.student, 'login_id', '') or '',
             'school': rt.unit.school,
@@ -669,6 +670,116 @@ def test_today(request):
     return render(request, 'vocab/test_today.html', {
         'rows': rows,
         'total': len(rows),
+    })
+
+
+# ─────────────────────────────────────────────
+# 선생님 — 오늘 단어 TEST: 학생별 플래시카드 시험
+#   영한 주관식 시험 폐지 → 전부 '플래시카드로 직접 시험'.
+#   오늘 시험범위 / 배정 전체 범위 / 개인 단어 / 별표 모음 모두 플래시카드로.
+# ─────────────────────────────────────────────
+
+@teacher_required
+def student_ranges(request, student_id):
+    """[교사] 한 학생에게 배정된 모든 시험 범위(내신단어TEST·퀴즈렛 등).
+
+    오늘 시험범위(예: 201~300)와 학생이 실제로 외워온 범위(예: 101~200)가 다를 때,
+    여기서 학생이 외워온 범위를 골라 플래시카드로 바로 시험을 본다.
+    """
+    student = get_object_or_404(get_user_model(), pk=student_id)
+    rts = (VocabRangeTest.objects
+           .filter(student=student, is_active=True)
+           .select_related('unit')
+           .order_by('unit__title', 'start_index'))
+    units = []
+    cur = None
+    for rt in rts:
+        if cur is None or cur['unit'].id != rt.unit_id:
+            cur = {'unit': rt.unit, 'ranges': []}
+            units.append(cur)
+        cur['ranges'].append(rt)
+    return render(request, 'vocab/student_ranges.html', {
+        'student': student, 'units': units,
+    })
+
+
+@teacher_required
+def student_cards(request, student_id):
+    """[교사] 한 학생이 개인적으로 모은 낱말카드 세트 → 플래시카드로 시험."""
+    student = get_object_or_404(get_user_model(), pk=student_id)
+    sets = (WordCardSet.objects
+            .filter(student=student, status=WordCardSet.STATUS_PUBLISHED)
+            .annotate(card_total=Count('cards'))
+            .order_by('-updated_at'))
+    return render(request, 'vocab/student_cards.html', {
+        'student': student, 'sets': sets,
+    })
+
+
+@teacher_required
+def student_cardset_flashcard(request, set_id):
+    """[교사] 학생 개인 낱말카드 세트를 플래시카드로 시험 — flashcard.html 재사용."""
+    s = get_object_or_404(WordCardSet, pk=set_id)
+    word_cards = list(s.cards.exclude(word='').exclude(meaning='').order_by('index'))
+    starred_ids = set(
+        WordCardStar.objects.filter(student=s.student, card__in=word_cards)
+        .values_list('card_id', flat=True)
+    )
+    cards = [
+        {'id': c.id, 'index': c.index, 'word': c.word, 'meaning': c.meaning,
+         'sub_unit': '', 'starred': c.id in starred_ids, 'card_type': 'wordcard'}
+        for c in word_cards
+    ]
+    return render(request, 'vocab/flashcard.html', {
+        'unit': s,
+        'range_title': s.title,
+        'viewing_student': s.student.username,
+        'cards_json': json.dumps(cards, ensure_ascii=False),
+        'total': len(cards),
+        'star_count': len(starred_ids),
+        'default_star_only': False,
+        'default_shuffle': False,
+        'star_enabled': False,  # 교사 점검용 — 별표는 학생 것만 표시(토글 X)
+        'back_url': reverse('vocab:student_cards', args=[s.student_id]),
+        'back_label': '개인 단어',
+    })
+
+
+@teacher_required
+def student_star_flashcard(request, student_id):
+    """[교사] 한 학생이 별표(모르는 단어)한 것만 모아 플래시카드로 시험."""
+    student = get_object_or_404(get_user_model(), pk=student_id)
+    vocab_stars = (StudentWordStar.objects
+                   .filter(student=student).select_related('word')
+                   .order_by('word__unit_id', 'word__index'))
+    wc_stars = (WordCardStar.objects
+                .filter(student=student).select_related('card')
+                .order_by('card__card_set_id', 'card__index'))
+    cards = []
+    for st in vocab_stars:
+        cards.append({
+            'id': st.word.id, 'index': st.word.index,
+            'word': st.word.word, 'meaning': st.word.meaning,
+            'sub_unit': st.word.sub_unit or '', 'starred': True, 'card_type': 'vocab',
+        })
+    for st in wc_stars:
+        cards.append({
+            'id': st.card.id, 'index': st.card.index,
+            'word': st.card.word, 'meaning': st.card.meaning,
+            'sub_unit': '', 'starred': True, 'card_type': 'wordcard',
+        })
+    return render(request, 'vocab/flashcard.html', {
+        'unit': None,
+        'range_title': f'⭐ {student.username} 별표 모음',
+        'viewing_student': student.username,
+        'cards_json': json.dumps(cards, ensure_ascii=False),
+        'total': len(cards),
+        'star_count': len(cards),
+        'default_star_only': False,
+        'default_shuffle': True,
+        'star_enabled': False,  # 교사 점검용 — 토글 비활성
+        'back_url': reverse('vocab:test_today'),
+        'back_label': '오늘 단어 TEST',
     })
 
 
