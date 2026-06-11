@@ -9,10 +9,14 @@ USE_TZ=False 환경이라 DB 저장값이 naive datetime → started_at__date �
 from collections import defaultdict
 from datetime import timedelta
 
-from vocab.models import VocabSession, VocabRangeTest, VocabAssignment
-from summary.models import SummarySession, SummaryRangeTest, SummaryAssignment
+from vocab.models import (
+    VocabSession, VocabAttempt, VocabRangeTest, VocabAssignment, StudentWordStar,
+)
+from summary.models import (
+    SummarySession, SummaryBlankAnswer, SummaryRangeTest, SummaryAssignment,
+)
 from writing.models import WritingSession, WritingAttempt, DailyStudyGoal
-from exam.models import ExamSession, ExamAssignment
+from exam.models import ExamSession, ExamAnswer, ExamAssignment
 
 
 # (key, 라벨, 학생 홈 URL)
@@ -283,8 +287,183 @@ def _next_actions(student, date):
     return out
 
 
+# ─────────────────────────────────────────────
+# 심층 분석 — 시도 단위(오답/약점) 파고들기
+# ─────────────────────────────────────────────
+
+def _vocab_analysis(student, date):
+    """오늘 단어 오답·반복오답·망설인 단어."""
+    sess_ids = list(VocabSession.objects
+                    .filter(student=student, started_at__date=date)
+                    .values_list('id', flat=True))
+    attempts = list(VocabAttempt.objects.filter(session_id__in=sess_ids)
+                    .select_related('word'))
+    if not attempts:
+        return None
+
+    by_word = {}
+    for a in attempts:
+        w = by_word.setdefault(a.word_id, {
+            'word': a.word.word, 'meaning': a.word.meaning,
+            'wrong': 0, 'total': 0, 'inputs': []})
+        w['total'] += 1
+        if not a.is_correct:
+            w['wrong'] += 1
+            if a.input_value and a.input_value not in w['inputs']:
+                w['inputs'].append(a.input_value)
+    wrong_words = [w for w in by_word.values() if w['wrong'] > 0]
+    wrong_words.sort(key=lambda x: (-x['wrong'], x['word']))
+    for w in wrong_words:
+        w['input_text'] = ', '.join(w['inputs'][:3]) if w['inputs'] else '(무응답)'
+        w['repeat'] = w['wrong'] >= 2
+
+    timed = [(a.time_taken_seconds, a.word.word, a.word.meaning)
+             for a in attempts if a.time_taken_seconds and a.time_taken_seconds > 0]
+    timed.sort(key=lambda x: -x[0])
+    slowest = [{'word': w, 'meaning': m, 'sec': t} for t, w, m in timed[:5]]
+    avg_time = round(sum(t for t, _, _ in timed) / len(timed), 1) if timed else None
+
+    return {
+        'wrong_words': wrong_words[:30],
+        'wrong_total': len(wrong_words),
+        'repeat_total': sum(1 for w in wrong_words if w['repeat']),
+        'attempt_count': len(attempts),
+        'slowest': slowest,
+        'avg_time': avg_time,
+        'star_count': StudentWordStar.objects.filter(student=student).count(),
+    }
+
+
+def _summary_analysis(student, date):
+    """오늘 요약문 빈칸 오답 + 한글뜻 의존도/1차 자동정답률."""
+    sess_ids = list(SummarySession.objects
+                    .filter(student=student, started_at__date=date)
+                    .values_list('id', flat=True))
+    answers = list(SummaryBlankAnswer.objects.filter(session_id__in=sess_ids)
+                   .select_related('problem'))
+    if not answers:
+        return None
+
+    wrong, auto_first, korean_used, graded = [], 0, 0, 0
+    for a in answers:
+        if a.first_auto_correct:
+            auto_first += 1
+        if a.korean_shown:
+            korean_used += 1
+        if a.admin_verdict:
+            graded += 1
+            if a.admin_verdict == 'X':
+                wrong.append({
+                    'index': a.problem.index,
+                    'blank': a.get_blank_display(),
+                    'correct': a.correct_answer or a.problem.answer_for(a.blank),
+                    'student': a.final_input or '(무응답)',
+                    'korean': a.problem.korean_for(a.blank),
+                })
+    wrong.sort(key=lambda x: (x['index'], x['blank']))
+    total = len(answers)
+    return {
+        'wrong': wrong[:30],
+        'wrong_total': len(wrong),
+        'graded': graded,
+        'auto_first_pct': round(auto_first / total * 100) if total else 0,
+        'korean_pct': round(korean_used / total * 100) if total else 0,
+        'total_blanks': total,
+    }
+
+
+def _writing_analysis(student, date):
+    """오늘 영작 첫시도 정답률·힌트 의존도 (상세는 영작 리포트 링크)."""
+    sess_ids = list(WritingSession.objects
+                    .filter(student=student, started_at__date=date)
+                    .values_list('id', flat=True))
+    attempts = list(WritingAttempt.objects.filter(session_id__in=sess_ids))
+    if not attempts:
+        return None
+
+    # 단어칸 단위 1차 시도
+    first_by_word = {}
+    for a in attempts:
+        key = (a.session_id, a.problem_id, a.word_index)
+        cur = first_by_word.get(key)
+        if cur is None or a.attempt_num < cur.attempt_num:
+            first_by_word[key] = a
+    firsts = list(first_by_word.values())
+    n = len(firsts)
+    first_perfect = sum(1 for a in firsts
+                        if a.attempt_num == 1 and a.hint_level == 0 and a.is_correct)
+    used_hint = sum(1 for a in attempts if a.hint_level and a.hint_level > 0)
+    return {
+        'word_blanks': n,
+        'first_perfect_pct': round(first_perfect / n * 100) if n else 0,
+        'hint_pct': round(used_hint / len(attempts) * 100) if attempts else 0,
+        'attempt_count': len(attempts),
+    }
+
+
+def _exam_analysis(student, date):
+    """오늘 시험 오답 문항 + 유형별 정답률(약한 유형 진단)."""
+    sess_ids = list(ExamSession.objects
+                    .filter(student=student, started_at__date=date,
+                            status=ExamSession.STATUS_GRADED)
+                    .values_list('id', flat=True))
+    answers = list(ExamAnswer.objects.filter(session_id__in=sess_ids))
+    if not answers:
+        return None
+
+    wrong = [{
+        'number': a.number, 'qtype': a.qtype or '-',
+        'student': a.student_choice or '(무응답)', 'correct': a.correct_answer,
+    } for a in answers if not a.is_correct]
+    wrong.sort(key=lambda x: x['number'])
+
+    by_type = {}
+    for a in answers:
+        t = a.qtype or '기타'
+        bt = by_type.setdefault(t, {'qtype': t, 'correct': 0, 'total': 0})
+        bt['total'] += 1
+        if a.is_correct:
+            bt['correct'] += 1
+    type_stats = []
+    for bt in by_type.values():
+        bt['pct'] = round(bt['correct'] / bt['total'] * 100) if bt['total'] else 0
+        type_stats.append(bt)
+    type_stats.sort(key=lambda x: (x['pct'], -x['total']))  # 약한 유형 먼저
+
+    return {
+        'wrong': wrong[:40], 'wrong_total': len(wrong),
+        'type_stats': type_stats, 'total': len(answers),
+    }
+
+
+def _diagnosis(v, s, w, e):
+    """과목 분석들을 묶어 '오늘의 약점' 한 줄 진단 + 추천."""
+    weak, tips = [], []
+    if v and v['wrong_total']:
+        weak.append(f"단어 오답 {v['wrong_total']}개"
+                    + (f" (반복 {v['repeat_total']})" if v['repeat_total'] else ''))
+        tips.append('틀린 단어 ⭐별표 후 별표 집중훈련')
+    if s and s['wrong_total']:
+        weak.append(f"요약문 빈칸 오답 {s['wrong_total']}개")
+        tips.append('틀린 요약문 범위 재시험')
+    if s and s['total_blanks'] and s['korean_pct'] >= 50:
+        weak.append(f"요약문 한글뜻 의존 {s['korean_pct']}%")
+    if w and w['word_blanks'] and w['first_perfect_pct'] < 60:
+        weak.append(f"영작 첫시도 정답률 {w['first_perfect_pct']}%")
+    if e and e['type_stats']:
+        worst = e['type_stats'][0]
+        if worst['pct'] < 70 and worst['total'] >= 2:
+            weak.append(f"시험 '{worst['qtype']}' {worst['pct']}%")
+            tips.append(f"'{worst['qtype']}' 유형 보강")
+    return {'weak': weak, 'tips': tips}
+
+
 def student_day(student, date):
     """학생 1명의 그날 종합 리포트 데이터."""
+    va = _vocab_analysis(student, date)
+    sa = _summary_analysis(student, date)
+    wa = _writing_analysis(student, date)
+    ea = _exam_analysis(student, date)
     return {
         'vocab': _vocab_today(student, date),
         'summary': _summary_today(student, date),
@@ -292,4 +471,8 @@ def student_day(student, date):
         'exam': _exam_today(student, date),
         'week': _week_trend(student, date),
         'next': _next_actions(student, date),
+        'analysis': {
+            'vocab': va, 'summary': sa, 'writing': wa, 'exam': ea,
+            'diagnosis': _diagnosis(va, sa, wa, ea),
+        },
     }

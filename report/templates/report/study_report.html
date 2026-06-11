@@ -19,6 +19,21 @@
         </div>
     </div>
 
+    {# ── 0. 오늘의 약점 진단 ── #}
+    {% with diag=data.analysis.diagnosis %}
+    {% if diag.weak %}
+    <div class="alert alert-warning d-flex flex-wrap gap-2 align-items-center">
+        <span class="fw-semibold"><i class="fas fa-stethoscope me-1"></i>오늘의 약점</span>
+        {% for w in diag.weak %}<span class="badge bg-danger-subtle text-danger-emphasis">{{ w }}</span>{% endfor %}
+        {% if diag.tips %}
+        <span class="ms-2 text-muted small"><i class="fas fa-lightbulb me-1"></i>{{ diag.tips|join:' · ' }}</span>
+        {% endif %}
+    </div>
+    {% elif data.vocab.cell.did or data.summary.cell.did or data.writing.cell.did or data.exam.cell.did %}
+    <div class="alert alert-success py-2"><i class="fas fa-circle-check me-1"></i>오늘은 큰 약점 없이 잘 했어요.</div>
+    {% endif %}
+    {% endwith %}
+
     {# ── 1. 오늘 무엇을 했나 (과목별) ── #}
     <div class="row g-3">
         {# 단어 #}
@@ -126,6 +141,126 @@
             </div>
         </div>
     </div>
+
+    {# ── 1.5. 심층 분석 (오답·약점 파고들기) ── #}
+    {% with an=data.analysis %}
+    {% if an.vocab or an.summary or an.writing or an.exam %}
+    <div class="card mt-3">
+        <div class="card-header fw-semibold"><i class="fas fa-magnifying-glass-chart me-1"></i>심층 분석 — 오답·약점</div>
+        <div class="card-body">
+            <div class="row g-3">
+
+                {# 단어 오답 #}
+                {% if an.vocab %}
+                <div class="col-lg-6">
+                    <div class="border rounded p-2 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-semibold text-primary"><i class="fas fa-spell-check me-1"></i>단어 오답</span>
+                            <span class="small text-muted">
+                                {{ an.vocab.attempt_count }}시도 · 오답 {{ an.vocab.wrong_total }}{% if an.vocab.repeat_total %} (반복 {{ an.vocab.repeat_total }}){% endif %}
+                                {% if an.vocab.avg_time %} · 평균 {{ an.vocab.avg_time }}초{% endif %}
+                            </span>
+                        </div>
+                        {% if an.vocab.wrong_words %}
+                        <table class="table table-sm mb-2">
+                            <thead class="table-light"><tr><th>단어</th><th>뜻</th><th>학생 답</th></tr></thead>
+                            <tbody>
+                            {% for w in an.vocab.wrong_words %}
+                            <tr>
+                                <td class="fw-semibold">{{ w.word }}{% if w.repeat %} <span class="badge bg-danger text-white">×{{ w.wrong }}</span>{% endif %}</td>
+                                <td class="small">{{ w.meaning|truncatechars:24 }}</td>
+                                <td class="small text-danger">{{ w.input_text }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}<p class="small text-success mb-2"><i class="fas fa-check me-1"></i>오답 없음 — 다 맞혔어요.</p>{% endif %}
+                        {% if an.vocab.slowest %}
+                        <div class="small text-muted">⏱ 오래 망설인 단어:
+                            {% for s in an.vocab.slowest %}{{ s.word }}({{ s.sec }}s){% if not forloop.last %}, {% endif %}{% endfor %}
+                        </div>{% endif %}
+                        {% if an.vocab.star_count %}<div class="small text-muted">⭐ 모르는 단어 표시 누적 {{ an.vocab.star_count }}개</div>{% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {# 요약문 빈칸 오답 #}
+                {% if an.summary %}
+                <div class="col-lg-6">
+                    <div class="border rounded p-2 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-semibold text-success"><i class="fas fa-align-left me-1"></i>요약문 빈칸</span>
+                            <span class="small text-muted">
+                                빈칸 {{ an.summary.total_blanks }} · 오답 {{ an.summary.wrong_total }} · 한글뜻 의존 {{ an.summary.korean_pct }}%
+                            </span>
+                        </div>
+                        {% if an.summary.wrong %}
+                        <table class="table table-sm mb-2">
+                            <thead class="table-light"><tr><th>문항</th><th>정답</th><th>학생 답</th></tr></thead>
+                            <tbody>
+                            {% for w in an.summary.wrong %}
+                            <tr>
+                                <td class="small">#{{ w.index }}{{ w.blank }}</td>
+                                <td class="small fw-semibold">{{ w.correct }}{% if w.korean %}<div class="text-muted">{{ w.korean|truncatechars:20 }}</div>{% endif %}</td>
+                                <td class="small text-danger">{{ w.student }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        {% elif an.summary.graded %}<p class="small text-success mb-2"><i class="fas fa-check me-1"></i>채점된 빈칸 모두 정답.</p>
+                        {% else %}<p class="small text-muted mb-2">아직 채점 대기 — 채점 후 오답이 보여요.</p>{% endif %}
+                        <div class="small text-muted">한글뜻 안 보고 1차 정답률 {{ an.summary.auto_first_pct }}%</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {# 시험 오답 + 유형별 #}
+                {% if an.exam %}
+                <div class="col-lg-6">
+                    <div class="border rounded p-2 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-semibold text-secondary"><i class="fas fa-file-pen me-1"></i>시험 오답</span>
+                            <span class="small text-muted">{{ an.exam.total }}문항 · 오답 {{ an.exam.wrong_total }}</span>
+                        </div>
+                        {% if an.exam.type_stats %}
+                        <div class="mb-2">
+                            {% for t in an.exam.type_stats %}
+                            <span class="badge {% if t.pct < 60 %}bg-danger-subtle text-danger-emphasis{% elif t.pct < 80 %}bg-warning-subtle text-warning-emphasis{% else %}bg-success-subtle text-success-emphasis{% endif %} me-1 mb-1">
+                                {{ t.qtype }} {{ t.correct }}/{{ t.total }} ({{ t.pct }}%)
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if an.exam.wrong %}
+                        <div class="small">틀린 문항:
+                            {% for w in an.exam.wrong %}<span class="text-danger">{{ w.number }}번({{ w.student }}→{{ w.correct }})</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+                        </div>
+                        {% else %}<p class="small text-success mb-0"><i class="fas fa-check me-1"></i>전부 정답.</p>{% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {# 영작 요약 분석 #}
+                {% if an.writing %}
+                <div class="col-lg-6">
+                    <div class="border rounded p-2 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-semibold text-info"><i class="fas fa-pen-nib me-1"></i>영작 습관</span>
+                            <span class="small text-muted">{{ an.writing.word_blanks }}칸 · {{ an.writing.attempt_count }}시도</span>
+                        </div>
+                        <div class="small">힌트 없이 첫시도 정답률 <strong>{{ an.writing.first_perfect_pct }}%</strong></div>
+                        <div class="small">힌트 사용 비율 {{ an.writing.hint_pct }}%</div>
+                        <a href="/training/writing/admin/students/{{ student.id }}/report/?date={{ date|date:'Y-m-d' }}"
+                           class="small">문장별 상세 분석 →</a>
+                    </div>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endwith %}
 
     {# ── 2. 다음에 할 것 ── #}
     <div class="card mt-3">
