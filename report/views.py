@@ -18,6 +18,7 @@ from writing.views import is_teacher, teacher_required
 
 from .models import DailyRecord, StudentInfo
 from .services import generate_for_record, generate_for_date, autofill_results
+from . import study
 
 
 # 일일 입력 그리드 필드 (키, 라벨, 타입)
@@ -48,12 +49,13 @@ ATT_CHOICES = ['', '출석', '지각', '결석']
 
 
 def _parse_date(s):
+    # USE_TZ=False 환경 — timezone.localdate()는 naive 에서 예외 → now().date() 사용
     if not s:
-        return timezone.localdate()
+        return timezone.now().date()
     try:
         return datetime.datetime.strptime(s, '%Y-%m-%d').date()
     except ValueError:
-        return timezone.localdate()
+        return timezone.now().date()
 
 
 def _roster():
@@ -168,6 +170,79 @@ def report_list(request):
     date = _parse_date(request.GET.get('date'))
     records = list(DailyRecord.objects.filter(date=date).select_related('student').order_by('student__username'))
     return render(request, 'report/report_list.html', {'date': date, 'records': records})
+
+
+# ─────────────────────────────────────────────
+# 종합 학습 현황 (4과목 세션 자동 집계, read-only)
+# ─────────────────────────────────────────────
+
+@teacher_required
+def study_board(request):
+    """전체 학생 현황판 — 그날 단어/요약문/영작/시험을 한 표에."""
+    date = _parse_date(request.GET.get('date'))
+    users, infos = _roster()
+    data = study.board(date)
+
+    rows = []
+    active_count = 0
+    for u in users:
+        cells = data.get(u.id)
+        si = infos.get(u.id)
+        if cells and cells['active']:
+            active_count += 1
+        rows.append({
+            'student': u,
+            'school_grade': si.school_grade if si else '',
+            'cells': cells,                       # None 이면 그날 미접속
+            'active': bool(cells and cells['active']),
+        })
+    # 활동한 학생 먼저, 그 안에서 푼 과목 많은 순
+    rows.sort(key=lambda r: (
+        not r['active'],
+        -(r['cells']['subjects_done'] if r['cells'] else 0),
+        r['school_grade'], r['student'].username or '',
+    ))
+
+    return render(request, 'report/study_board.html', {
+        'date': date,
+        'prev_date': date - datetime.timedelta(days=1),
+        'next_date': date + datetime.timedelta(days=1),
+        'today': timezone.now().date(),
+        'rows': rows,
+        'subjects': study.SUBJECT_META,
+        'active_count': active_count,
+        'total_count': len(users),
+    })
+
+
+@teacher_required
+def study_report(request, student_id):
+    """학생 1명 종합 리포트 — 그날 4과목 상세 + 주간 추이 + 다음 할 것."""
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True),
+        pk=student_id,
+    )
+    date = _parse_date(request.GET.get('date'))
+    data = study.student_day(student, date)
+
+    try:
+        school_grade = student.report_info.school_grade
+    except StudentInfo.DoesNotExist:
+        school_grade = ''
+
+    return render(request, 'report/study_report.html', {
+        'student': student,
+        'student_name': student.username or getattr(student, 'login_id', '') or '학생',
+        'school_grade': school_grade,
+        'date': date,
+        'prev_date': date - datetime.timedelta(days=1),
+        'next_date': date + datetime.timedelta(days=1),
+        'today': timezone.now().date(),
+        'is_today': date == timezone.now().date(),
+        'subjects': study.SUBJECT_META,
+        'data': data,
+    })
 
 
 # ─────────────────────────────────────────────

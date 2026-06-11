@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="mb-0"><i class="fas fa-table-list me-2"></i>오늘의 학습 현황판</h3>
+            <p class="section-desc mb-0">
+                {{ date|date:'Y-m-d (D)' }} · 접속 <strong>{{ active_count }}</strong>명 / 재원 {{ total_count }}명
+            </p>
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">‹ 어제</a>
+            <form method="get" class="d-flex gap-1">
+                <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="form-control form-control-sm">
+                <button class="btn btn-sm btn-outline-secondary">이동</button>
+            </form>
+            <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">내일 ›</a>
+            <a href="{% url 'report:input' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">입력 그리드</a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th style="min-width:130px;">학생</th>
+                    {% for key, label, url in subjects %}
+                    <th class="text-center" style="min-width:150px;">{{ label }}</th>
+                    {% endfor %}
+                    <th class="text-center" style="min-width:80px;">상세</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr {% if not row.active %}class="text-muted"{% endif %}>
+                    <td>
+                        <div class="fw-semibold">{{ row.student.username }}</div>
+                        {% if row.school_grade %}<div class="small text-muted">{{ row.school_grade }}</div>{% endif %}
+                    </td>
+                    {% for key, label, url in subjects %}
+                    <td class="text-center">
+                        {% if row.cells %}
+                            {% if key == 'vocab' and row.cells.vocab.did %}
+                                <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
+                            {% elif key == 'summary' and row.cells.summary.did %}
+                                <span class="badge rounded-pill bg-success-subtle text-success-emphasis">{{ row.cells.summary.label }}</span>
+                                {% if row.cells.summary.pending %}<span class="badge bg-warning text-dark">채점</span>{% endif %}
+                            {% elif key == 'writing' and row.cells.writing.did %}
+                                <span class="badge rounded-pill bg-info-subtle text-info-emphasis">{{ row.cells.writing.label }}</span>
+                            {% elif key == 'exam' and row.cells.exam.did %}
+                                <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">{{ row.cells.exam.label }}</span>
+                                {% if row.cells.exam.pending %}<span class="badge bg-warning text-dark">채점</span>{% endif %}
+                            {% else %}
+                                <span class="text-muted">·</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">·</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-center">
+                        <a href="{% url 'report:study_report' row.student.id %}?date={{ date|date:'Y-m-d' }}"
+                           class="btn btn-sm btn-outline-primary">보기</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">재원생이 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="small text-muted">학생을 클릭하면 그날 한 단어·요약문·영작·시험 상세와 다음에 할 것을 볼 수 있어요.</p>
+</div>
+{% endblock %}

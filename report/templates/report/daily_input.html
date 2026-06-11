@@ -17,6 +17,7 @@
                 <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
                 <button class="btn btn-sm btn-outline-success"><i class="fas fa-magic me-1"></i>시험결과 자동 채움</button>
             </form>
+            <a href="{% url 'report:study_board' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-table-list me-1"></i>학습 현황판</a>
             <a href="{% url 'report:list' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-sm btn-primary">리포트 목록</a>
         </div>
     </div>

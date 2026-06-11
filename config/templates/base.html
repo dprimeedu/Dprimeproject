@@ -75,6 +75,7 @@
         {% if user.is_authenticated %}
             {% if user.is_staff or user.is_superuser or user.is_academy %}
                 <div class="sidebar-section-label">관리자</div>
+                <a class="sidebar-link" href="{% url 'report:study_board' %}"><i class="fas fa-table-list"></i>오늘의 학습 현황판</a>
                 <a class="sidebar-link" href="{% url 'writing:unit_list' %}"><i class="fas fa-book"></i>영작 단원 관리</a>
                 <a class="sidebar-link" href="{% url 'writing:student_admin' %}"><i class="fas fa-user-graduate"></i>학생 관리</a>
                 <a class="sidebar-link" href="{% url 'vocab:unit_list' %}"><i class="fas fa-layer-group"></i>단어 단원 관리</a>

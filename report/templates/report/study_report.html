@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="mb-0"><i class="fas fa-user-graduate me-2"></i>{{ student_name }} 학습 리포트</h3>
+            <p class="section-desc mb-0">
+                {% if school_grade %}{{ school_grade }} · {% endif %}{{ date|date:'Y-m-d (D)' }}{% if is_today %} · 오늘{% endif %}
+            </p>
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">‹ 어제</a>
+            <form method="get" class="d-flex gap-1">
+                <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="form-control form-control-sm">
+                <button class="btn btn-sm btn-outline-secondary">이동</button>
+            </form>
+            <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">내일 ›</a>
+            <a href="{% url 'report:study_board' %}?date={{ date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">현황판</a>
+        </div>
+    </div>
+
+    {# ── 1. 오늘 무엇을 했나 (과목별) ── #}
+    <div class="row g-3">
+        {# 단어 #}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold"><i class="fas fa-spell-check me-1 text-primary"></i>단어</span>
+                    {% if data.vocab.cell.did %}<span class="small text-muted">{{ data.vocab.cell.label }}</span>{% endif %}
+                </div>
+                <div class="card-body p-2">
+                    {% if data.vocab.rows %}
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                        {% for r in data.vocab.rows %}
+                        <tr>
+                            <td class="text-muted small" style="width:48px;">{{ r.time }}</td>
+                            <td>{{ r.title }}{% if r.is_test %} <span class="badge bg-danger-subtle text-danger-emphasis">시험</span>{% endif %}{% if r.star_only %} <span class="badge bg-warning-subtle text-warning-emphasis">별표</span>{% endif %}</td>
+                            <td class="text-end {% if r.percent != None and r.percent < 60 %}text-danger fw-semibold{% endif %}">{{ r.score_text }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted small mb-0">기록 없음</p>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# 요약문 #}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold"><i class="fas fa-align-left me-1 text-success"></i>요약문</span>
+                    {% if data.summary.cell.did %}<span class="small text-muted">{{ data.summary.cell.label }}</span>{% endif %}
+                </div>
+                <div class="card-body p-2">
+                    {% if data.summary.rows %}
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                        {% for r in data.summary.rows %}
+                        <tr>
+                            <td class="text-muted small" style="width:48px;">{{ r.time }}</td>
+                            <td>{{ r.title }}{% if r.pending %} <span class="badge bg-warning text-dark">채점대기</span>{% endif %}</td>
+                            <td class="text-end {% if r.percent != None and r.percent < 60 %}text-danger fw-semibold{% endif %}">{{ r.score_text }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted small mb-0">기록 없음</p>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# 영작 #}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold"><i class="fas fa-pen-nib me-1 text-info"></i>영작</span>
+                    <span class="small text-muted">
+                        {% if data.writing.attempts %}정답률 {{ data.writing.accuracy }}% · {% endif %}
+                        {% if data.writing.cell.did %}{{ data.writing.cell.label }}{% endif %}
+                    </span>
+                </div>
+                <div class="card-body p-2">
+                    {% if data.writing.rows %}
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                        {% for r in data.writing.rows %}
+                        <tr>
+                            <td class="text-muted small" style="width:48px;">{{ r.time }}</td>
+                            <td>{{ r.title }}{% if not r.done %} <span class="badge bg-secondary-subtle text-secondary-emphasis">진행중</span>{% endif %}</td>
+                            <td class="text-end small">{{ r.score_text }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    <a href="/training/writing/admin/students/{{ student.id }}/report/?date={{ date|date:'Y-m-d' }}"
+                       class="btn btn-sm btn-outline-info w-100 mt-2">영작 상세 리포트 (문장별 분석) →</a>
+                    {% else %}<p class="text-muted small mb-0">기록 없음</p>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# 시험 #}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold"><i class="fas fa-file-pen me-1 text-secondary"></i>시험</span>
+                    {% if data.exam.cell.did %}<span class="small text-muted">{{ data.exam.cell.label }}</span>{% endif %}
+                </div>
+                <div class="card-body p-2">
+                    {% if data.exam.rows %}
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                        {% for r in data.exam.rows %}
+                        <tr>
+                            <td class="text-muted small" style="width:48px;">{{ r.time }}</td>
+                            <td>{{ r.title }}{% if r.pending %} <span class="badge bg-warning text-dark">채점대기</span>{% endif %}</td>
+                            <td class="text-end {% if r.percent != None and r.percent < 60 %}text-danger fw-semibold{% endif %}">{{ r.score_text }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted small mb-0">기록 없음</p>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── 2. 다음에 할 것 ── #}
+    <div class="card mt-3">
+        <div class="card-header fw-semibold"><i class="fas fa-arrow-right-long me-1"></i>다음에 할 것</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="small text-muted mb-1">오늘 볼 단어 TEST</div>
+                    {% for t in data.next.vocab_tests %}
+                    <div class="d-flex justify-content-between border-bottom py-1">
+                        <span>{{ t.label }}</span>
+                        <span class="{% if t.ok %}text-success{% else %}text-danger{% endif %} small fw-semibold">{{ t.status }}</span>
+                    </div>
+                    {% empty %}<div class="text-muted small">지정된 단어 TEST 없음</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <div class="small text-muted mb-1">오늘 볼 요약문 TEST</div>
+                    {% for t in data.next.summary_tests %}
+                    <div class="d-flex justify-content-between border-bottom py-1">
+                        <span>{{ t.label }}</span>
+                        <span class="{% if t.ok %}text-success{% else %}text-danger{% endif %} small fw-semibold">{{ t.status }}</span>
+                    </div>
+                    {% empty %}<div class="text-muted small">지정된 요약문 TEST 없음</div>{% endfor %}
+                </div>
+            </div>
+            <div class="mt-2 small">
+                {% if data.next.exam_pending %}<span class="badge bg-secondary-subtle text-secondary-emphasis">미응시 배정 시험 {{ data.next.exam_pending }}개</span>{% endif %}
+                {% if data.next.goal %}<span class="badge bg-info-subtle text-info-emphasis">영작 목표: {{ data.next.goal.target_problems }}문제 / {{ data.next.goal.target_minutes }}분{% if data.next.goal.note %} — {{ data.next.goal.note }}{% endif %}</span>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ── 3. 최근 7일 추이 ── #}
+    <div class="card mt-3">
+        <div class="card-header fw-semibold"><i class="fas fa-chart-simple me-1"></i>최근 7일 학습량 (세션 수)</div>
+        <div class="card-body p-2">
+            <table class="table table-sm text-center mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-start">날짜</th>
+                        {% for key, label, url in subjects %}<th>{{ label }}</th>{% endfor %}
+                        <th>합계</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in data.week %}
+                    <tr {% if d.is_target %}class="table-primary"{% endif %}>
+                        <td class="text-start small">{{ d.date|date:'m/d (D)' }}</td>
+                        {% for n in d.per %}
+                        <td>{% if n %}{{ n }}{% else %}<span class="text-muted">·</span>{% endif %}</td>
+                        {% endfor %}
+                        <td class="fw-semibold">{% if d.total %}{{ d.total }}{% else %}<span class="text-muted">·</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
