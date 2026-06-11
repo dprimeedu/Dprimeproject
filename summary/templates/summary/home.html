@@ -33,6 +33,13 @@
                         {% if u.unit %} · {{ u.unit }}{% endif %}
                     </p>
                     <div class="mt-auto">
+                        {% if u.range_test %}
+                        <a href="{% url 'summary:start_session' u.id %}?rt={{ u.range_test.id }}"
+                           class="btn btn-danger w-100 mb-2 fw-bold"
+                           title="선생님이 정한 오늘 시험 범위 {{ u.range_test.range_label }}번">
+                            <i class="fas fa-bolt me-1"></i>오늘 볼 TEST ({{ u.range_test.range_label }})
+                        </a>
+                        {% endif %}
                         <div class="text-muted small mb-1"><i class="fas fa-pen me-1"></i>시험 범위 (10문제씩)</div>
                         <div class="d-flex flex-wrap gap-2">
                             {% for ch in u.chunks %}

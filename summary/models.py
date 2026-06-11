@@ -215,3 +215,43 @@ class SummaryBlankAnswer(models.Model):
     def final_input(self):
         """관리자 채점 대상 = 2차 입력 우선, 없으면 1차."""
         return self.second_input or self.first_input
+
+
+class SummaryRangeTest(models.Model):
+    """개인별 '오늘 볼 요약문 TEST' 범위 (학생관리표 '요약문완성' 기반).
+
+    단어TEST(VocabRangeTest)와 동일 개념 — 선생님이 학생관리표에 정한 오늘 범위를
+    홈페이지에 '오늘 볼 TEST' 로 띄운다. 시험은 기존 SummarySession(start/end) 재사용.
+    """
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='summary_range_tests', verbose_name='학생',
+    )
+    unit = models.ForeignKey(
+        SummaryUnit, on_delete=models.CASCADE,
+        related_name='range_tests', verbose_name='단원(요약문)',
+    )
+    start_index = models.IntegerField(verbose_name='시작 번호')
+    end_index = models.IntegerField(verbose_name='끝 번호')
+    source_label = models.CharField(max_length=100, default='요약문완성', verbose_name='라벨')
+    is_active = models.BooleanField(default=True, verbose_name='활성화')
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='summary_range_tests_made', verbose_name='배정자',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'summary_range_test'
+        verbose_name = '요약문 시험 범위'
+        verbose_name_plural = '요약문 시험 범위'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['student', 'is_active'])]
+
+    def __str__(self):
+        return f'{self.student.username} | {self.unit.title} {self.start_index}~{self.end_index}'
+
+    @property
+    def range_label(self):
+        return f'{self.start_index}~{self.end_index}'

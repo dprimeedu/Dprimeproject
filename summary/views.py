@@ -18,7 +18,7 @@ from writing.views import is_teacher, teacher_required
 
 from .models import (
     SummaryUnit, SummaryProblem, SummaryAssignment,
-    SummarySession, SummaryBlankAnswer,
+    SummarySession, SummaryBlankAnswer, SummaryRangeTest,
 )
 
 
@@ -113,9 +113,18 @@ def student_home(request):
     for uid, idx in (SummaryProblem.objects.filter(unit_id__in=unit_ids)
                      .order_by('index').values_list('unit_id', 'index')):
         idx_map[uid].append(idx)
+    # 오늘 볼 TEST (활성 SummaryRangeTest) — 단원별 최신 1건
+    rt_map = {}
+    if is_assigned_view:
+        for rt in (SummaryRangeTest.objects
+                   .filter(student=request.user, is_active=True, unit_id__in=unit_ids)
+                   .order_by('unit_id', '-created_at')):
+            rt_map.setdefault(rt.unit_id, rt)
+
     for u in units:
         u._problem_count = len(idx_map.get(u.id, []))
         u.chunks = _chunks_from_indices(idx_map.get(u.id, []))
+        u.range_test = rt_map.get(u.id)
 
     return render(request, 'summary/home.html', {
         'units': units,
@@ -138,10 +147,16 @@ def start_session(request, unit_id):
         messages.error(request, '이 단원에 문제가 없습니다.')
         return redirect('summary:home')
 
-    # chunk=N 이면 그 10문제 범위만, 없으면 단원 전체.
+    # rt=N 이면 '오늘 볼 TEST' 범위, chunk=N 이면 10문제 청크, 없으면 단원 전체.
     start_i = end_i = None
+    rt_id = request.GET.get('rt')
+    if rt_id:
+        rt = SummaryRangeTest.objects.filter(
+            pk=rt_id, student=request.user, is_active=True).first()
+        if rt:
+            start_i, end_i = rt.start_index, rt.end_index
     chunk = request.GET.get('chunk')
-    if chunk:
+    if start_i is None and chunk:
         try:
             c = int(chunk)
         except (TypeError, ValueError):
@@ -597,6 +612,64 @@ def _find_student_for_assign(name, login_id):
         if len(qs) > 1:
             return None, f'동명이인 {len(qs)}명 (login_id 필요)'
     return None, '학생 없음'
+
+
+@csrf_exempt
+@require_POST
+def range_import_api(request):
+    """요약문 '오늘 볼 TEST' 범위 일괄 등록 (학생관리표 '요약문완성' 행).
+
+    body: {token, items: [{name, login_id?, school, start, end, source?}]}
+    학생은 이름/ID로, 단원은 school(학교학년)로 매칭. 같은 (학생, source) 기존 활성 범위 비활성화 후 생성.
+    (단어TEST range_import 미러. 콘텐츠는 import_api 로 이미 올라가 있다는 전제 — 여기선 범위만.)
+    """
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        items = data.get('items') or []
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+
+    created, skipped = 0, []
+    for it in items:
+        name = str(it.get('name', '')).strip()
+        login_id = str(it.get('login_id', '')).strip()
+        school = str(it.get('school', '')).strip()
+        source = str(it.get('source') or '요약문완성').strip()
+        try:
+            start = int(it['start'])
+            end = int(it['end'])
+        except (KeyError, ValueError, TypeError):
+            skipped.append(f'{name or login_id}: 범위 숫자 오류')
+            continue
+
+        student, why = _find_student_for_assign(name, login_id)
+        if not student:
+            skipped.append(f'{name or login_id}: {why}')
+            continue
+
+        unit = (SummaryUnit.objects.filter(school=school, is_active=True)
+                .order_by('-created_at').first())
+        if not unit:
+            skipped.append(f'{name}: 단원 없음(학교={school})')
+            continue
+
+        # 접근권한 보장 + 기존 활성 범위 비활성화 후 새 범위 1건 생성
+        SummaryAssignment.objects.get_or_create(student=student, unit=unit)
+        SummaryRangeTest.objects.filter(
+            student=student, source_label=source, is_active=True,
+        ).update(is_active=False)
+        SummaryRangeTest.objects.create(
+            student=student, unit=unit, start_index=start, end_index=end, source_label=source,
+        )
+        created += 1
+
+    return JsonResponse({
+        'success': True, 'created': created,
+        'skipped': skipped, 'skipped_count': len(skipped),
+    }, json_dumps_params={'ensure_ascii': False})
 
 
 @csrf_exempt

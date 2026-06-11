@@ -27,4 +27,6 @@ urlpatterns = [
 
     # 외부 자동화(AI 자동화 요약문 생성) 연동 — 토큰 인증
     path('api/import/', views.import_api, name='import'),
+    # 오늘 볼 TEST 범위 등록 (학생관리표 '요약문완성' → 요약문TEST_웹동기화.py)
+    path('api/range/import/', views.range_import_api, name='range_import'),
 ]
