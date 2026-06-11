@@ -39,6 +39,8 @@ urlpatterns = [
 
     # 외부 자동화(개별단어장생성.py) 연동 — 토큰 인증
     path('api/range/import/', views.range_import_api, name='range_import'),
+    # 부교재 출력 → 내신단어 단어 일괄 등록 (단어 import HTTP API)
+    path('api/words/import/', views.words_import_api, name='words_import'),
     path('api/range/results/', views.range_results_api, name='range_results'),
     path('api/unit/word-counts/', views.unit_word_counts_api, name='unit_word_counts'),
 

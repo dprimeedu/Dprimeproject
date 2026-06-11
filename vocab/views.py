@@ -1001,6 +1001,96 @@ def _find_student(User, name, login_id):
 
 @csrf_exempt
 @require_POST
+def words_import_api(request):
+    """내신단어 일괄 등록 (부교재 출력 → 마스터 '내신단어' 시트 푸시).
+
+    body: {token, school, exam?, assign_to?, assign_login_id?, assign_to_list?,
+           items: [{idx, word, meaning, unit?, source?}]}
+    (school, exam) 단위로 category=naesin VocabUnit upsert + 기존 VocabWord 교체(replace).
+    단어 import HTTP API (기존 import_wordbooks 커맨드의 HTTP 버전). assign_* 로 학생 배정.
+    """
+    import re as _re
+    from django.db import transaction as _tx
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        items = data.get('items') or []
+        school = str(data.get('school', '')).strip()
+        exam = str(data.get('exam', '')).strip()
+        assign_to = str(data.get('assign_to', '') or '').strip()
+        assign_login_id = str(data.get('assign_login_id', '') or '').strip()
+        assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+    if not items:
+        return JsonResponse({'success': False, 'error': 'items 비어있음'}, status=400)
+
+    m = _re.search(r'(고|중|초)\s*([1-3])', school or '')
+    grade = (m.group(1) + m.group(2)) if (m and (m.group(1) + m.group(2)) in
+             {c[0] for c in VocabUnit.GRADE_CHOICES}) else '기타'
+    title = (f'{school} {exam}').strip() or school or exam or '내신 단어'
+
+    with _tx.atomic():
+        unit = VocabUnit.objects.filter(
+            school=school, exam=exam, category=VocabUnit.CATEGORY_NAESIN).first()
+        if unit is None:
+            unit = VocabUnit.objects.create(
+                school=school, exam=exam, category=VocabUnit.CATEGORY_NAESIN,
+                title=title, grade=grade, is_active=True)
+        else:
+            unit.title = title
+            unit.grade = grade
+            unit.is_active = True
+            unit.save(update_fields=['title', 'grade', 'is_active', 'updated_at'])
+        VocabWord.objects.filter(unit=unit).delete()
+        rows = []
+        for it in items:
+            w = str(it.get('word', '') or '').strip()
+            if not w:
+                continue
+            try:
+                idx = int(it.get('idx'))
+            except (TypeError, ValueError):
+                idx = len(rows) + 1
+            rows.append(VocabWord(
+                unit=unit, index=idx, word=w,
+                meaning=str(it.get('meaning', '') or '').strip(),
+                sub_unit=str(it.get('unit', '') or '').strip(),
+                source=str(it.get('source', '') or '').strip()))
+        VocabWord.objects.bulk_create(rows)
+        created = len(rows)
+
+    User = get_user_model()
+    assigned = assigned_many = None
+    if assign_to or assign_login_id:
+        student, why = _find_student(User, assign_to, assign_login_id)
+        if student is None:
+            assigned = {'ok': False, 'reason': why, 'name': assign_to or assign_login_id}
+        else:
+            _, made = VocabAssignment.objects.get_or_create(student=student, unit=unit)
+            assigned = {'ok': True, 'student': student.username, 'newly': bool(made)}
+    if assign_to_list:
+        ok_names, fail = [], []
+        for nm in assign_to_list:
+            student, why = _find_student(User, nm, '')
+            if student is None:
+                fail.append({'name': nm, 'reason': why})
+                continue
+            VocabAssignment.objects.get_or_create(student=student, unit=unit)
+            ok_names.append(student.username)
+        assigned_many = {'assigned': ok_names, 'failed': fail}
+
+    return JsonResponse({
+        'success': True, 'school': school, 'exam': exam,
+        'unit_id': unit.id, 'created': created,
+        'assigned': assigned, 'assigned_many': assigned_many,
+    })
+
+
+@csrf_exempt
+@require_POST
 def range_import_api(request):
     """시험범위 일괄 등록 (학생관리표 '내신단어TEST' 행).
 
