@@ -35,6 +35,146 @@ _hint_progress_lock = threading.Lock()
 
 
 # ─────────────────────────────────────────────
+# 외부(부교재 출력 / AI 자동화) 연동 — 토큰 인증 영작 import API
+# 요약문 import API(summary/views.import_api)와 동일 패턴. 모델만 영작용.
+# 새 모델 없음 → migration 불필요(WritingUnit/Problem/Assignment 재사용).
+# ─────────────────────────────────────────────
+from django.conf import settings as _settings
+from django.views.decorators.csrf import csrf_exempt as _csrf_exempt
+
+
+def _w_check_token(request):
+    expected = getattr(_settings, 'WRITING_IMPORT_TOKEN', '')
+    if not expected:
+        return False, '서버에 WRITING_IMPORT_TOKEN 미설정'
+    got = (request.headers.get('X-Writing-Token') or request.GET.get('token') or '')
+    if not got and request.body:
+        try:
+            got = (json.loads(request.body) or {}).get('token', '')
+        except (json.JSONDecodeError, TypeError):
+            got = ''
+    return (got == expected), ('' if got == expected else '토큰 불일치')
+
+
+def _w_grade_from_school(school):
+    m = re.search(r'(고|중|초)\s*([1-3])', school or '')
+    if m:
+        g = m.group(1) + m.group(2)
+        if g in {c[0] for c in WritingUnit.GRADE_CHOICES}:
+            return g
+    return '기타'
+
+
+def _w_find_student(name, login_id):
+    User = get_user_model()
+    base = User.objects.exclude(is_staff=True).exclude(is_superuser=True)
+    login_id = (login_id or '').strip()
+    name = (name or '').strip()
+    if login_id:
+        u = base.filter(login_id=login_id).first()
+        if u:
+            return u, ''
+    if name:
+        qs = list(base.filter(username=name)[:2])
+        if len(qs) == 1:
+            return qs[0], ''
+        if len(qs) > 1:
+            return None, f'동명이인 {len(qs)}명 (login_id 필요)'
+    return None, '학생 없음'
+
+
+@_csrf_exempt
+@require_POST
+def import_api(request):
+    """영작 문항 일괄 등록 (부교재 출력 / AI 자동화 푸시).
+
+    body: {token, school, unit?, assign_to?, assign_login_id?, assign_to_list?,
+           items: [{idx, unit?, korean, english}, ...]}
+    (school, unit) 별 그룹핑 → WritingUnit upsert(title='{school} {unit}') +
+    기존 WritingProblem 교체(replace-on-reimport). assign_* 지정 시 학생 배정.
+    """
+    ok, reason = _w_check_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        items = data.get('items') or []
+        school = str(data.get('school', '')).strip()
+        top_unit = str(data.get('unit', '')).strip()
+        assign_to = str(data.get('assign_to', '') or '').strip()
+        assign_login_id = str(data.get('assign_login_id', '') or '').strip()
+        assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+    if not items:
+        return JsonResponse({'success': False, 'error': 'items 비어있음'}, status=400)
+
+    groups = {}
+    for it in items:
+        u = str(it.get('unit') or top_unit or '').strip()
+        groups.setdefault(u, []).append(it)
+
+    grade = _w_grade_from_school(school)
+    results, created_total, created_units = [], 0, []
+    with transaction.atomic():
+        for unit_name, group in groups.items():
+            title = (f'{school} {unit_name}').strip() or school or unit_name or '영작 단원'
+            # WritingUnit.title 은 unique 가 아니므로 first()+생성으로 업서트(중복 방지).
+            unit_obj = WritingUnit.objects.filter(title=title).first()
+            if unit_obj is None:
+                unit_obj = WritingUnit.objects.create(title=title, grade=grade, is_active=True)
+            else:
+                unit_obj.grade = grade
+                unit_obj.is_active = True
+                unit_obj.save(update_fields=['grade', 'is_active', 'updated_at'])
+            created_units.append(unit_obj)
+            WritingProblem.objects.filter(unit=unit_obj).delete()
+            rows = []
+            for it in group:
+                eng = str(it.get('english', '') or '').strip()
+                kor = str(it.get('korean', '') or '').strip()
+                if not eng:
+                    continue
+                try:
+                    idx = int(it.get('idx'))
+                except (TypeError, ValueError):
+                    idx = len(rows) + 1
+                rows.append(WritingProblem(unit=unit_obj, index=idx, korean=kor, english=eng))
+            WritingProblem.objects.bulk_create(rows)
+            created_total += len(rows)
+            results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'title': title, 'created': len(rows)})
+
+    assigned = assigned_many = None
+    if assign_to or assign_login_id:
+        student, why = _w_find_student(assign_to, assign_login_id)
+        if student is None:
+            assigned = {'ok': False, 'reason': why, 'name': assign_to or assign_login_id}
+        else:
+            n = 0
+            for u in created_units:
+                _, made = UnitAssignment.objects.get_or_create(student=student, unit=u)
+                if made:
+                    n += 1
+            assigned = {'ok': True, 'student': student.username, 'units': len(created_units), 'newly': n}
+    if assign_to_list:
+        ok_names, fail = [], []
+        for nm in assign_to_list:
+            student, why = _w_find_student(nm, '')
+            if student is None:
+                fail.append({'name': nm, 'reason': why})
+                continue
+            for u in created_units:
+                UnitAssignment.objects.get_or_create(student=student, unit=u)
+            ok_names.append(student.username)
+        assigned_many = {'assigned': ok_names, 'failed': fail, 'units': len(created_units)}
+
+    return JsonResponse({
+        'success': True, 'school': school, 'units': results,
+        'created': created_total, 'assigned': assigned, 'assigned_many': assigned_many,
+    })
+
+
+# ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
 

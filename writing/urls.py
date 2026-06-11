@@ -69,6 +69,9 @@ urlpatterns = [
     # 영작 단원 업로드용 양식
     path('admin/template.xlsx', views.writing_template_xlsx, name='writing_template'),
 
+    # 외부(부교재 출력 / AI 자동화) 토큰 import API — /training/writing/api/import/
+    path('api/import/', views.import_api, name='import_api'),
+
     path('admin/units/<int:unit_id>/generate-hints/', views.generate_hints_ajax, name='generate_hints'),
     path('admin/units/<int:unit_id>/generate-hints/status/', views.generate_hints_status, name='generate_hints_status'),
     path('admin/units/<int:unit_id>/assignments/', views.assignment_list, name='assignment_list'),
