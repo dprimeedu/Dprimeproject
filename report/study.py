@@ -458,21 +458,86 @@ def _diagnosis(v, s, w, e):
     return {'weak': weak, 'tips': tips}
 
 
+def _praise_and_focus(day, va, sa, wa, ea):
+    """학생용 보고서 — 오늘 '잘한 점'과 '다음에 더 힘낼 점'을 말로 풀어준다.
+
+    day: 과목별 today dict({'cell','rows',...}). va/sa/wa/ea: 분석 dict(없으면 None).
+    """
+    good, focus = [], []
+    vc, sc, wc, ec = (day['vocab']['cell'], day['summary']['cell'],
+                      day['writing']['cell'], day['exam']['cell'])
+
+    # ── 잘한 점 ──
+    if vc.get('did') and vc.get('best') is not None and vc['best'] >= 80:
+        good.append(f"단어 시험 {vc['best']}점 — 정확해요!")
+    if va and va['attempt_count'] and va['wrong_total'] == 0:
+        good.append("단어를 하나도 안 틀렸어요. 완벽! 💯")
+    if sc.get('did') and sc.get('best') is not None and sc['best'] >= 80:
+        good.append(f"요약문 {sc['best']}점 — 잘했어요!")
+    if sa and sa['total_blanks'] and sa['auto_first_pct'] >= 70:
+        good.append(f"요약문을 한글뜻 없이 {sa['auto_first_pct']}%나 맞혔어요. 실력이 붙었네요!")
+    if wc.get('did') and wc.get('perfect'):
+        good.append(f"영작 완벽 문장 {wc['perfect']}개 작성! ✍️")
+    if wa and wa['word_blanks'] and wa['first_perfect_pct'] >= 70:
+        good.append(f"영작 첫 시도 정답률 {wa['first_perfect_pct']}% — 힌트 없이도 척척!")
+    if ec.get('did') and ec.get('best') is not None and ec['best'] >= 80:
+        good.append(f"시험 {ec['best']}점, 좋아요!")
+    if ea and ea['type_stats']:
+        perfect_types = [t for t in ea['type_stats'] if t['pct'] == 100 and t['total'] >= 2]
+        if perfect_types:
+            good.append(f"시험 '{perfect_types[0]['qtype']}' 유형은 다 맞혔어요!")
+    done = sum(1 for c in (vc, sc, wc, ec) if c.get('did'))
+    if done >= 3:
+        good.append(f"오늘 {done}과목이나 꾸준히 했어요. 성실함이 최고의 무기예요!")
+
+    # ── 다음에 더 힘낼 점 ──
+    if va and va['wrong_total']:
+        msg = f"단어 {va['wrong_total']}개를 더 외워보기"
+        if va['repeat_total']:
+            msg += f" (특히 반복해서 틀린 {va['repeat_total']}개는 ⭐별표!)"
+        focus.append(msg)
+    if sa and sa['wrong_total']:
+        focus.append(f"요약문 빈칸 {sa['wrong_total']}개 다시 보기")
+    if sa and sa['total_blanks'] and sa['korean_pct'] >= 50:
+        focus.append(f"요약문은 한글뜻 보기 전에 영어를 먼저 떠올려보기 (오늘 한글뜻 {sa['korean_pct']}% 사용)")
+    if wa and wa['word_blanks'] and wa['first_perfect_pct'] < 60:
+        focus.append(f"영작은 힌트를 조금씩 줄여보기 (첫 시도 정답률 {wa['first_perfect_pct']}%)")
+    if ea and ea['type_stats']:
+        worst = ea['type_stats'][0]
+        if worst['pct'] < 70 and worst['total'] >= 2:
+            focus.append(f"시험 '{worst['qtype']}' 유형을 집중 연습 (오늘 {worst['pct']}%)")
+    # 오늘 안 한 과목 권유 (분석 데이터 없는 = 미실시)
+    if not vc.get('did'):
+        focus.append("오늘 단어 훈련도 도전해보기")
+    elif not sc.get('did'):
+        focus.append("요약문도 한 세트 풀어보기")
+
+    # 비어있을 때 기본 메시지
+    if not good and done:
+        good.append("오늘도 학습을 시작한 것 자체가 멋져요! 👏")
+    if not focus:
+        focus.append("지금처럼만 꾸준히 하면 충분해요. 내일도 화이팅!")
+
+    return {'good': good[:5], 'focus': focus[:5]}
+
+
 def student_day(student, date):
     """학생 1명의 그날 종합 리포트 데이터."""
     va = _vocab_analysis(student, date)
     sa = _summary_analysis(student, date)
     wa = _writing_analysis(student, date)
     ea = _exam_analysis(student, date)
-    return {
+    day = {
         'vocab': _vocab_today(student, date),
         'summary': _summary_today(student, date),
         'writing': _writing_today(student, date),
         'exam': _exam_today(student, date),
-        'week': _week_trend(student, date),
-        'next': _next_actions(student, date),
-        'analysis': {
-            'vocab': va, 'summary': sa, 'writing': wa, 'exam': ea,
-            'diagnosis': _diagnosis(va, sa, wa, ea),
-        },
     }
+    day['week'] = _week_trend(student, date)
+    day['next'] = _next_actions(student, date)
+    day['analysis'] = {
+        'vocab': va, 'summary': sa, 'writing': wa, 'exam': ea,
+        'diagnosis': _diagnosis(va, sa, wa, ea),
+    }
+    day['feedback'] = _praise_and_focus(day, va, sa, wa, ea)
+    return day

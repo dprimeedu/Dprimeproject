@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap" style="max-width:900px;">
+
+    {# ── 헤로: 인사 + 레벨/연속출석 ── #}
+    <div class="card border-0 shadow-sm mb-3" style="background:linear-gradient(135deg,#6a8dff 0%,#9b6aff 100%);color:#fff;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h3 class="mb-1">{{ student_name }} 님의 학습 리포트</h3>
+                    <div class="opacity-75">{{ date|date:'Y년 m월 d일 (D)' }}{% if is_today %} · 오늘{% endif %}</div>
+                    <div class="mt-2 fs-5">{{ cheer }}</div>
+                </div>
+                <div class="text-end">
+                    {% if profile %}
+                    <div class="fs-4 fw-bold">Lv.{{ profile.level }} <span class="opacity-75 fs-6">{{ profile.title }}</span></div>
+                    {% if profile.login_streak_days %}<div>🔥 연속 출석 {{ profile.login_streak_days }}일</div>{% endif %}
+                    {% endif %}
+                </div>
+            </div>
+            {% if profile and xp_pct != None %}
+            <div class="mt-3">
+                <div class="d-flex justify-content-between small opacity-75">
+                    <span>XP {{ profile.total_xp }}</span>
+                    <span>다음 레벨까지 {{ profile.xp_to_next_level }} XP</span>
+                </div>
+                <div class="progress mt-1" style="height:10px;background:rgba(255,255,255,.25);">
+                    <div class="progress-bar bg-warning" style="width:{{ xp_pct }}%;"></div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# 날짜 이동 #}
+    <div class="d-flex justify-content-center gap-2 mb-3">
+        <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">‹ 어제</a>
+        {% if not is_today %}<a href="{% url 'report:my_report' %}" class="btn btn-sm btn-outline-primary">오늘</a>{% endif %}
+        {% if show_next_nav %}<a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">내일 ›</a>{% endif %}
+    </div>
+
+    {# ── 0. 오늘의 한마디 보고서 (잘한 점 / 더 힘낼 점) ── #}
+    {% with fb=data.feedback %}
+    <div class="row g-2 mb-4">
+        <div class="col-md-6">
+            <div class="card h-100 border-success">
+                <div class="card-header bg-success-subtle text-success-emphasis fw-semibold">
+                    <i class="fas fa-thumbs-up me-1"></i>오늘 잘한 점
+                </div>
+                <ul class="list-group list-group-flush">
+                    {% for g in fb.good %}
+                    <li class="list-group-item"><i class="fas fa-star text-warning me-2"></i>{{ g }}</li>
+                    {% empty %}
+                    <li class="list-group-item text-muted">오늘 학습을 시작하면 여기에 칭찬이 쌓여요!</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100 border-warning">
+                <div class="card-header bg-warning-subtle text-warning-emphasis fw-semibold">
+                    <i class="fas fa-dumbbell me-1"></i>다음에 더 힘낼 점
+                </div>
+                <ul class="list-group list-group-flush">
+                    {% for f in fb.focus %}
+                    <li class="list-group-item"><i class="fas fa-arrow-trend-up text-primary me-2"></i>{{ f }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% endwith %}
+
+    {# ── 1. 오늘 한 것 ── #}
+    <h5 class="mb-2"><i class="fas fa-circle-check text-success me-1"></i>오늘 한 것</h5>
+    <div class="row g-2 mb-4">
+        {% for key, label, url in subjects %}
+        <div class="col-6 col-md-3">
+            {% if key == 'vocab' %}{% with s=data.vocab %}{% include 'report/_my_subject.html' with label='단어' icon='fa-spell-check' color='primary' did=s.cell.did text=s.cell.label url=url %}{% endwith %}
+            {% elif key == 'summary' %}{% with s=data.summary %}{% include 'report/_my_subject.html' with label='요약문' icon='fa-align-left' color='success' did=s.cell.did text=s.cell.label url=url %}{% endwith %}
+            {% elif key == 'writing' %}{% with s=data.writing %}{% include 'report/_my_subject.html' with label='영작' icon='fa-pen-nib' color='info' did=s.cell.did text=s.cell.label url=url %}{% endwith %}
+            {% elif key == 'exam' %}{% with s=data.exam %}{% include 'report/_my_subject.html' with label='시험' icon='fa-file-pen' color='secondary' did=s.cell.did text=s.cell.label url=url %}{% endwith %}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ── 2. 오늘의 미션 (앞으로 할 것) ── #}
+    <h5 class="mb-2">
+        <i class="fas fa-bullseye text-danger me-1"></i>오늘의 미션
+        {% if mission_total %}<span class="badge bg-light text-dark">{{ mission_done }}/{{ mission_total }}</span>{% endif %}
+    </h5>
+    <div class="card mb-4">
+        <div class="list-group list-group-flush">
+            {% for t in data.next.vocab_tests %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{% if t.ok %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="far fa-circle text-muted me-1"></i>{% endif %}단어 TEST — {{ t.label }}</span>
+                {% if t.ok %}<span class="badge bg-success">{{ t.status }}</span>
+                {% else %}<a href="{% url 'vocab:home' %}" class="btn btn-sm btn-primary">하러 가기 →</a>{% endif %}
+            </div>
+            {% endfor %}
+            {% for t in data.next.summary_tests %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{% if t.ok %}<i class="fas fa-check-circle text-success me-1"></i>{% else %}<i class="far fa-circle text-muted me-1"></i>{% endif %}요약문 TEST — {{ t.label }}</span>
+                {% if t.ok %}<span class="badge bg-success">{{ t.status }}</span>
+                {% else %}<a href="{% url 'summary:home' %}" class="btn btn-sm btn-success">하러 가기 →</a>{% endif %}
+            </div>
+            {% endfor %}
+            {% if data.next.exam_pending %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span><i class="far fa-circle text-muted me-1"></i>아직 안 본 시험 {{ data.next.exam_pending }}개</span>
+                <a href="{% url 'exam:home' %}" class="btn btn-sm btn-outline-secondary">보러 가기 →</a>
+            </div>
+            {% endif %}
+            {% if data.next.goal %}
+            <div class="list-group-item">
+                <i class="fas fa-flag-checkered text-info me-1"></i>선생님 목표:
+                {% if data.next.goal.target_problems %}{{ data.next.goal.target_problems }}문제 {% endif %}
+                {% if data.next.goal.target_minutes %}/ {{ data.next.goal.target_minutes }}분{% endif %}
+                {% if data.next.goal.note %}<div class="small text-muted mt-1">“{{ data.next.goal.note }}”</div>{% endif %}
+            </div>
+            {% endif %}
+            {% if not data.next.vocab_tests and not data.next.summary_tests and not data.next.exam_pending and not data.next.goal %}
+            <div class="list-group-item text-muted text-center py-3">오늘 지정된 미션이 없어요. 자유롭게 훈련해도 좋아요! 😊</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ── 3. 복습 포인트 (틀린 것 모아보기) ── #}
+    {% with an=data.analysis %}
+    {% if an.vocab.wrong_words or an.summary.wrong or an.exam.wrong %}
+    <h5 class="mb-2"><i class="fas fa-rotate-left text-warning me-1"></i>복습하면 완벽! <span class="small text-muted">— 오늘 헷갈린 것만 모았어요</span></h5>
+    <div class="row g-2 mb-4">
+        {% if an.vocab.wrong_words %}
+        <div class="col-md-6">
+            <div class="card h-100"><div class="card-body p-2">
+                <div class="fw-semibold text-primary mb-1">단어 {{ an.vocab.wrong_total }}개</div>
+                {% for w in an.vocab.wrong_words %}
+                <div class="d-flex justify-content-between border-bottom py-1 small">
+                    <span><strong>{{ w.word }}</strong> — {{ w.meaning|truncatechars:20 }}</span>
+                    <span class="text-danger">내 답: {{ w.input_text }}</span>
+                </div>
+                {% endfor %}
+            </div></div>
+        </div>
+        {% endif %}
+        {% if an.summary.wrong or an.exam.wrong %}
+        <div class="col-md-6">
+            {% if an.summary.wrong %}
+            <div class="card mb-2"><div class="card-body p-2">
+                <div class="fw-semibold text-success mb-1">요약문 빈칸 {{ an.summary.wrong_total }}개</div>
+                {% for w in an.summary.wrong %}
+                <div class="border-bottom py-1 small">#{{ w.index }}{{ w.blank }} 정답 <strong>{{ w.correct }}</strong> <span class="text-danger">(내 답: {{ w.student }})</span></div>
+                {% endfor %}
+            </div></div>
+            {% endif %}
+            {% if an.exam.wrong %}
+            <div class="card"><div class="card-body p-2">
+                <div class="fw-semibold text-secondary mb-1">시험 오답 {{ an.exam.wrong_total }}개</div>
+                <div class="small">{% for w in an.exam.wrong %}<span class="text-danger">{{ w.number }}번(내답 {{ w.student }}→정답 {{ w.correct }})</span>{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+            </div></div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {# ── 4. 이번 주 꾸준함 ── #}
+    <h5 class="mb-2"><i class="fas fa-fire text-danger me-1"></i>이번 주 꾸준함</h5>
+    <div class="card mb-4"><div class="card-body p-2">
+        <div class="d-flex justify-content-around text-center">
+            {% for d in data.week %}
+            <div>
+                <div class="small text-muted">{{ d.date|date:'D' }}</div>
+                <div class="rounded-circle d-inline-flex align-items-center justify-content-center mt-1
+                            {% if d.total >= 3 %}bg-success text-white{% elif d.total >= 1 %}bg-success-subtle text-success-emphasis{% else %}bg-light text-muted{% endif %}
+                            {% if d.is_target %}border border-2 border-primary{% endif %}"
+                     style="width:38px;height:38px;font-weight:600;">{{ d.total }}</div>
+                <div class="small text-muted mt-1">{{ d.date|date:'m/d' }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="small text-muted text-center mb-0 mt-2">숫자 = 그날 학습한 횟수. 매일 동그라미를 채워봐요!</p>
+    </div></div>
+
+    {# ── 5. 내 배지 ── #}
+    {% if badges %}
+    <h5 class="mb-2"><i class="fas fa-medal text-warning me-1"></i>내 배지 <span class="small text-muted">({{ badge_total }}개)</span></h5>
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        {% for b in badges %}
+        <span class="badge bg-light text-dark border p-2" title="{{ b.achievement.description }}">
+            {{ b.achievement.icon }} {{ b.achievement.name }}
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

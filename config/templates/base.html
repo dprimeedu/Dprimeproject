@@ -90,6 +90,7 @@
                 <a class="sidebar-link" href="/admin/" target="_blank"><i class="fas fa-cog"></i>Django Admin</a>
             {% elif user.is_approved %}
                 <div class="sidebar-section-label">재원생</div>
+                <a class="sidebar-link" href="{% url 'report:my_report' %}"><i class="fas fa-chart-line"></i>나의 학습 리포트</a>
                 <a class="sidebar-link" href="{% url 'writing:home' %}"><i class="fas fa-pen-nib"></i>영작훈련</a>
                 <a class="sidebar-link" href="{% url 'summary:home' %}"><i class="fas fa-align-left"></i>요약문완성훈련</a>
                 <a class="sidebar-link" href="{% url 'vocab:home' %}"><i class="fas fa-layer-group"></i>단어훈련</a>

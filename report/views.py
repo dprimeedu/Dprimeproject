@@ -9,6 +9,7 @@ import datetime
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -242,6 +243,66 @@ def study_report(request, student_id):
         'is_today': date == timezone.now().date(),
         'subjects': study.SUBJECT_META,
         'data': data,
+    })
+
+
+@login_required
+def my_report(request):
+    """학생 본인용 '나의 학습 리포트' — 오늘 한 것 + 앞으로 할 것(동기부여)."""
+    student = request.user
+    today = timezone.now().date()
+    date = _parse_date(request.GET.get('date'))
+    if date > today:          # 미래는 보지 않음
+        date = today
+    data = study.student_day(student, date)
+
+    # 게임화 요소 (영작 프로필 — 레벨/타이틀/XP/연속출석/배지)
+    from writing.models import StudentProfile, StudentAchievement
+    profile = StudentProfile.objects.filter(student=student).first()
+    badges = list(StudentAchievement.objects.filter(student=student)
+                  .select_related('achievement')[:10])
+    badge_total = StudentAchievement.objects.filter(student=student).count()
+
+    xp_pct = None
+    if profile:
+        span = profile.xp_in_current_level + profile.xp_to_next_level
+        xp_pct = round(profile.xp_in_current_level / span * 100) if span else 0
+
+    done_subjects = sum(1 for k, _, _ in study.SUBJECT_META if data[k]['cell'].get('did'))
+
+    # 오늘의 미션 달성 수 (오늘 볼 TEST 합격 + 시험 완료 등)
+    nxt = data['next']
+    mission_total = len(nxt['vocab_tests']) + len(nxt['summary_tests'])
+    mission_done = (sum(1 for t in nxt['vocab_tests'] if t['ok'])
+                    + sum(1 for t in nxt['summary_tests'] if t['ok']))
+
+    # 격려 메시지
+    if done_subjects == 0:
+        cheer = '아직 오늘 학습 기록이 없어요. 한 과목만 시작해볼까요? 💪'
+    elif done_subjects >= 3:
+        cheer = f'오늘 {done_subjects}과목이나 했어요! 최고예요 🔥'
+    else:
+        cheer = f'오늘 {done_subjects}과목 했어요. 좋은 출발이에요! 👍'
+
+    return render(request, 'report/my_report.html', {
+        'student': student,
+        'student_name': student.username or '학생',
+        'date': date,
+        'prev_date': date - datetime.timedelta(days=1),
+        'next_date': date + datetime.timedelta(days=1),
+        'today': today,
+        'is_today': date == today,
+        'show_next_nav': date < today,
+        'subjects': study.SUBJECT_META,
+        'data': data,
+        'profile': profile,
+        'badges': badges,
+        'badge_total': badge_total,
+        'xp_pct': xp_pct,
+        'done_subjects': done_subjects,
+        'mission_total': mission_total,
+        'mission_done': mission_done,
+        'cheer': cheer,
     })
 
 
