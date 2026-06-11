@@ -10,6 +10,7 @@ tr.wrong td { background:#fef2f2; }
 .rv-input.empty { color:#d1d5db; font-style:italic; }
 .rv-2nd { color:#6366f1; }
 .sum-q { max-width:460px; white-space:normal; color:#374151; line-height:1.55; }
+.sum-blank { color:#7c3aed; font-weight:800; letter-spacing:1px; white-space:nowrap; }
 </style>
 
 <div class="home-wrap">
@@ -40,7 +41,7 @@ tr.wrong td { background:#fef2f2; }
                 <tr data-aid="{{ r.ba.id }}" class="{% if not r.default_o %}wrong{% endif %}">
                     <td class="text-muted">{{ r.ba.problem.index }}</td>
                     <td><b>{{ r.label }}</b></td>
-                    <td class="sum-q">{% if r.ba.blank == 'a' %}{{ r.ba.problem.sentence1_template }}{% else %}{{ r.ba.problem.sentence2_template }}{% endif %}</td>
+                    <td class="sum-q">{{ r.sentence_html }}</td>
                     <td>
                         <span class="rv-input {% if not r.ba.first_input %}empty{% endif %}">{{ r.ba.first_input|default:"(미입력)" }}</span>
                         {% if r.ba.korean_shown %}

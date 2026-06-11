@@ -39,6 +39,22 @@ def _norm(s):
 
 BLANK_LABEL = {'a': 'ⓐ', 'b': 'ⓑ'}
 
+# 채점 화면 요약문에서 ⓐ/ⓑ 마커를 보라색 빈칸으로 표시
+from django.utils.html import escape as _escape
+from django.utils.safestring import mark_safe as _mark_safe
+
+_BLANK_HTML = {
+    'a': '<span class="sum-blank">______A______</span>',
+    'b': '<span class="sum-blank">______B______</span>',
+}
+
+
+def _sentence_with_blank(template):
+    """요약문 템플릿의 ⓐ/ⓑ 마커를 보라색 빈칸(______A______)으로 치환(HTML 안전)."""
+    safe = _escape(template or '')
+    safe = safe.replace('ⓐ', _BLANK_HTML['a']).replace('ⓑ', _BLANK_HTML['b'])
+    return _mark_safe(safe)
+
 # 시험은 10문제 단위 청크로 끊어 본다 (전체 업로드 후 10개씩).
 CHUNK_SIZE = 10
 
@@ -365,10 +381,12 @@ def grade_detail(request, session_id):
         else:
             final_val = _norm(ba.second_input or ba.first_input)
             default_o = bool(final_val) and final_val == _norm(ba.correct_answer)
+        raw = ba.problem.sentence1_template if ba.blank == 'a' else ba.problem.sentence2_template
         rows.append({
             'ba': ba,
             'label': BLANK_LABEL.get(ba.blank, ba.blank),
             'default_o': default_o,
+            'sentence_html': _sentence_with_blank(raw),
         })
     return render(request, 'summary/grade_detail.html', {
         'session': session, 'rows': rows,
