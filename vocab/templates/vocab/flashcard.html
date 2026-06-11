@@ -173,6 +173,9 @@
                 <button class="lm-icon-btn" id="lmShuffle" onclick="shuffleRemaining()" title="남은 카드 섞기">
                     <i class="fas fa-shuffle"></i>
                 </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="fcExit()" title="종료하고 목록으로">
+                    <i class="fas fa-right-from-bracket me-1"></i>종료
+                </button>
             </div>
         </div>
     </div>
@@ -188,6 +191,7 @@
                 <i class="fas fa-rotate-right me-1"></i>계속 학습하기 (<span id="rdContN">0</span>개)
             </button>
             <button class="btn btn-outline-secondary" id="lmRestart">처음부터 다시</button>
+            <button class="btn btn-outline-danger" onclick="fcExit()"><i class="fas fa-right-from-bracket me-1"></i>종료</button>
         </div>
     </div>
 
@@ -198,7 +202,7 @@
         <p class="text-muted">이 세트의 단어를 전부 "알아요"로 분류했습니다.</p>
         <div class="d-flex gap-2 justify-content-center mt-3 flex-wrap">
             <button class="btn btn-primary" id="lmRestart2"><i class="fas fa-rotate-right me-1"></i>처음부터 다시</button>
-            <a class="btn btn-outline-secondary" href="{% url 'vocab:home' %}">홈으로</a>
+            <button class="btn btn-outline-secondary" onclick="fcExit()"><i class="fas fa-right-from-bracket me-1"></i>나가기</button>
         </div>
     </div>
 
@@ -210,6 +214,10 @@
 </div>
 
 <script>
+// 종료(나가기) — 도중에 끝내고 원래 목록(범위/낱말카드/홈)으로. 모든 플래시카드 공용.
+const EXIT_URL = "{% if back_url %}{{ back_url|escapejs }}{% elif viewing_student %}{% url 'vocab:student_admin' %}{% else %}{% url 'vocab:home' %}{% endif %}";
+function fcExit(){ location.href = EXIT_URL; }
+
 const ALL_CARDS = {{ cards_json|safe }};
 const DEFAULT_STAR_ONLY = {{ default_star_only|yesno:"true,false" }};
 const DEFAULT_SHUFFLE = {{ default_shuffle|yesno:"true,false" }};
