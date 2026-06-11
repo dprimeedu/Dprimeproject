@@ -104,6 +104,7 @@ def import_api(request):
         assign_to = str(data.get('assign_to', '') or '').strip()
         assign_login_id = str(data.get('assign_login_id', '') or '').strip()
         assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
+        mode = str(data.get('mode', 'replace') or 'replace').strip().lower()   # 'replace' | 'merge'
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
     if not items:
@@ -128,8 +129,8 @@ def import_api(request):
                 unit_obj.is_active = True
                 unit_obj.save(update_fields=['grade', 'is_active', 'updated_at'])
             created_units.append(unit_obj)
-            WritingProblem.objects.filter(unit=unit_obj).delete()
-            rows = []
+            # 입력 파싱(번호 기준)
+            parsed = []
             for it in group:
                 eng = str(it.get('english', '') or '').strip()
                 kor = str(it.get('korean', '') or '').strip()
@@ -138,11 +139,33 @@ def import_api(request):
                 try:
                     idx = int(it.get('idx'))
                 except (TypeError, ValueError):
-                    idx = len(rows) + 1
-                rows.append(WritingProblem(unit=unit_obj, index=idx, korean=kor, english=eng))
-            WritingProblem.objects.bulk_create(rows)
-            created_total += len(rows)
-            results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'title': title, 'created': len(rows)})
+                    idx = len(parsed) + 1
+                parsed.append({'index': idx, 'korean': kor, 'english': eng})
+
+            if mode == 'merge':
+                # 통합 — 번호 기준 upsert: 기존 갱신·신규 추가·나머지 보존
+                existing = {x.index: x for x in WritingProblem.objects.filter(unit=unit_obj)}
+                to_create, to_update = [], []
+                for p in parsed:
+                    x = existing.get(p['index'])
+                    if x is None:
+                        to_create.append(WritingProblem(unit=unit_obj, index=p['index'], korean=p['korean'], english=p['english']))
+                    else:
+                        x.korean, x.english = p['korean'], p['english']
+                        to_update.append(x)
+                if to_create:
+                    WritingProblem.objects.bulk_create(to_create)
+                if to_update:
+                    WritingProblem.objects.bulk_update(to_update, ['korean', 'english'])
+                n = len(to_create) + len(to_update)
+            else:
+                # 삭제 후 새로(replace)
+                WritingProblem.objects.filter(unit=unit_obj).delete()
+                WritingProblem.objects.bulk_create([
+                    WritingProblem(unit=unit_obj, index=p['index'], korean=p['korean'], english=p['english']) for p in parsed])
+                n = len(parsed)
+            created_total += n
+            results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'title': title, 'created': n})
 
     assigned = assigned_many = None
     if assign_to or assign_login_id:

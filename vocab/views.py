@@ -1022,6 +1022,7 @@ def words_import_api(request):
         assign_to = str(data.get('assign_to', '') or '').strip()
         assign_login_id = str(data.get('assign_login_id', '') or '').strip()
         assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
+        mode = str(data.get('mode', 'replace') or 'replace').strip().lower()   # 'replace' | 'merge'
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
     if not items:
@@ -1044,8 +1045,8 @@ def words_import_api(request):
             unit.grade = grade
             unit.is_active = True
             unit.save(update_fields=['title', 'grade', 'is_active', 'updated_at'])
-        VocabWord.objects.filter(unit=unit).delete()
-        rows = []
+        # 입력 파싱(번호 기준)
+        parsed = []
         for it in items:
             w = str(it.get('word', '') or '').strip()
             if not w:
@@ -1053,14 +1054,39 @@ def words_import_api(request):
             try:
                 idx = int(it.get('idx'))
             except (TypeError, ValueError):
-                idx = len(rows) + 1
-            rows.append(VocabWord(
-                unit=unit, index=idx, word=w,
-                meaning=str(it.get('meaning', '') or '').strip(),
-                sub_unit=str(it.get('unit', '') or '').strip(),
-                source=str(it.get('source', '') or '').strip()))
-        VocabWord.objects.bulk_create(rows)
-        created = len(rows)
+                idx = len(parsed) + 1
+            parsed.append({
+                'index': idx, 'word': w,
+                'meaning': str(it.get('meaning', '') or '').strip(),
+                'sub_unit': str(it.get('unit', '') or '').strip(),
+                'source': str(it.get('source', '') or '').strip(),
+            })
+
+        if mode == 'merge':
+            # 통합 — 번호(index) 기준 upsert: 기존 갱신·신규 추가·나머지 보존
+            existing = {x.index: x for x in VocabWord.objects.filter(unit=unit)}
+            to_create, to_update = [], []
+            for p in parsed:
+                x = existing.get(p['index'])
+                if x is None:
+                    to_create.append(VocabWord(
+                        unit=unit, index=p['index'], word=p['word'],
+                        meaning=p['meaning'], sub_unit=p['sub_unit'], source=p['source']))
+                else:
+                    x.word, x.meaning, x.sub_unit, x.source = p['word'], p['meaning'], p['sub_unit'], p['source']
+                    to_update.append(x)
+            if to_create:
+                VocabWord.objects.bulk_create(to_create)
+            if to_update:
+                VocabWord.objects.bulk_update(to_update, ['word', 'meaning', 'sub_unit', 'source'])
+            created = len(to_create) + len(to_update)
+        else:
+            # 삭제 후 새로(replace) — 기존 전부 지우고 새로
+            VocabWord.objects.filter(unit=unit).delete()
+            VocabWord.objects.bulk_create([
+                VocabWord(unit=unit, index=p['index'], word=p['word'], meaning=p['meaning'],
+                          sub_unit=p['sub_unit'], source=p['source']) for p in parsed])
+            created = len(parsed)
 
     User = get_user_model()
     assigned = assigned_many = None

@@ -623,6 +623,7 @@ def import_api(request):
         assign_to = str(data.get('assign_to', '') or '').strip()
         assign_login_id = str(data.get('assign_login_id', '') or '').strip()
         assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
+        mode = str(data.get('mode', 'replace') or 'replace').strip().lower()   # 'replace' | 'merge'
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -650,27 +651,56 @@ def import_api(request):
                 },
             )
             created_units.append(unit_obj)
-            SummaryProblem.objects.filter(unit=unit_obj).delete()
-            rows = []
+            # 입력 파싱(번호 기준)
+            parsed = []
             for it in group:
                 try:
                     idx = int(it.get('idx'))
                 except (TypeError, ValueError):
-                    idx = len(rows) + 1
-                rows.append(SummaryProblem(
-                    unit=unit_obj,
-                    index=idx,
-                    sub_unit=str(it.get('sub_unit', '') or '').strip(),
-                    sentence1_template=str(it.get('sentence1_template', '') or ''),
-                    sentence1_answer=str(it.get('sentence1_answer', '') or '').strip(),
-                    korean1=str(it.get('korean1', '') or '').strip(),
-                    sentence2_template=str(it.get('sentence2_template', '') or ''),
-                    sentence2_answer=str(it.get('sentence2_answer', '') or '').strip(),
-                    korean2=str(it.get('korean2', '') or '').strip(),
-                ))
-            SummaryProblem.objects.bulk_create(rows)
-            created_total += len(rows)
-            results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'created': len(rows)})
+                    idx = len(parsed) + 1
+                parsed.append({
+                    'index': idx,
+                    'sub_unit': str(it.get('sub_unit', '') or '').strip(),
+                    'sentence1_template': str(it.get('sentence1_template', '') or ''),
+                    'sentence1_answer': str(it.get('sentence1_answer', '') or '').strip(),
+                    'korean1': str(it.get('korean1', '') or '').strip(),
+                    'sentence2_template': str(it.get('sentence2_template', '') or ''),
+                    'sentence2_answer': str(it.get('sentence2_answer', '') or '').strip(),
+                    'korean2': str(it.get('korean2', '') or '').strip(),
+                })
+
+            def _mk(p):
+                return SummaryProblem(
+                    unit=unit_obj, index=p['index'], sub_unit=p['sub_unit'],
+                    sentence1_template=p['sentence1_template'], sentence1_answer=p['sentence1_answer'], korean1=p['korean1'],
+                    sentence2_template=p['sentence2_template'], sentence2_answer=p['sentence2_answer'], korean2=p['korean2'])
+
+            if mode == 'merge':
+                # 통합 — 번호 기준 upsert: 기존 갱신·신규 추가·나머지 보존
+                _F = ['sub_unit', 'sentence1_template', 'sentence1_answer', 'korean1',
+                      'sentence2_template', 'sentence2_answer', 'korean2']
+                existing = {x.index: x for x in SummaryProblem.objects.filter(unit=unit_obj)}
+                to_create, to_update = [], []
+                for p in parsed:
+                    x = existing.get(p['index'])
+                    if x is None:
+                        to_create.append(_mk(p))
+                    else:
+                        for f in _F:
+                            setattr(x, f, p[f])
+                        to_update.append(x)
+                if to_create:
+                    SummaryProblem.objects.bulk_create(to_create)
+                if to_update:
+                    SummaryProblem.objects.bulk_update(to_update, _F)
+                n = len(to_create) + len(to_update)
+            else:
+                # 삭제 후 새로(replace)
+                SummaryProblem.objects.filter(unit=unit_obj).delete()
+                SummaryProblem.objects.bulk_create([_mk(p) for p in parsed])
+                n = len(parsed)
+            created_total += n
+            results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'created': n})
 
     # 학생 배정 — 단일(assign_to/assign_login_id) + 다수(assign_to_list)
     assigned = None
