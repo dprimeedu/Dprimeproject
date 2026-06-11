@@ -191,6 +191,14 @@ def import_api(request):
             ok_names.append(student.username)
         assigned_many = {'assigned': ok_names, 'failed': fail, 'units': len(created_units)}
 
+    # 업로드 직후: 고등학교 단원에 한해 긴 문장(20단어 초과)을 절·쉼표 기준 분할 + AI 한글뜻 힌트.
+    # (엑셀 업로드 경로와 동일하게 split_first=True. 중/초/기타 단원은 _split_unit_for_training 에서 스킵)
+    for u in created_units:
+        try:
+            _start_hint_generation(u.id, split_first=True)
+        except Exception:
+            pass
+
     return JsonResponse({
         'success': True, 'school': school, 'units': results,
         'created': created_total, 'assigned': assigned, 'assigned_many': assigned_many,
@@ -275,6 +283,32 @@ def demo_login(request):
 # 학생 화면들
 # ─────────────────────────────────────────────
 
+# 시험은 20문제 단위 청크로 끊어 본다 (긴문장 분할 후 문항이 늘어나므로).
+CHUNK_SIZE = 20
+
+
+def _chunks_from_indices(idxs):
+    """정렬된 문항 index 리스트 → 20개 단위 청크 메타 [{num, start, end, count}]."""
+    chunks = []
+    for i in range(0, len(idxs), CHUNK_SIZE):
+        seg = idxs[i:i + CHUNK_SIZE]
+        if not seg:
+            continue
+        chunks.append({'num': i // CHUNK_SIZE + 1,
+                       'start': seg[0], 'end': seg[-1], 'count': len(seg)})
+    return chunks
+
+
+def _ranged_problems(session):
+    """세션의 시험 범위 문항 queryset (범위 없으면 단원 전체)."""
+    qs = session.unit.problems.all().order_by('index')
+    if session.start_index is not None:
+        qs = qs.filter(index__gte=session.start_index)
+    if session.end_index is not None:
+        qs = qs.filter(index__lte=session.end_index)
+    return qs
+
+
 @login_required
 def student_home(request):
     """영작훈련 학생 홈 — 배정된 단원 목록 (선생님은 전체)"""
@@ -322,6 +356,13 @@ def student_home(request):
         if s.unit_id not in last_map:
             last_map[s.unit_id] = s
 
+    # 단원별 문항 index 모음(1쿼리) → 20개 단위 청크 버튼
+    from collections import defaultdict
+    idx_map = defaultdict(list)
+    for uid, pidx in (WritingProblem.objects.filter(unit_id__in=unit_ids)
+                      .order_by('index').values_list('unit_id', 'index')):
+        idx_map[uid].append(pidx)
+
     unit_info = []
     for unit in units:
         last = last_map.get(unit.id)
@@ -333,6 +374,7 @@ def student_home(request):
             'last_started': last.started_at if last else None,
             'unit_level': u_level,
             'level_info': level_service.level_summary(u_level),
+            'chunks': _chunks_from_indices(idx_map.get(unit.id, [])),
         })
 
     # 학생 화면만 Lv 오름차순 정렬 (약한 단원 위로 — 우선 학습 유도).
@@ -387,8 +429,23 @@ def start_session(request, unit_id):
         return redirect('writing:home')
 
     view_mode = request.GET.get('view') == '1'
+    # chunk=N 이면 그 20문제 범위만, 없으면 단원 전체
+    start_i = end_i = None
+    chunk = request.GET.get('chunk')
+    if chunk:
+        idxs = list(unit.problems.order_by('index').values_list('index', flat=True))
+        try:
+            c = int(chunk)
+        except (TypeError, ValueError):
+            c = 1
+        seg = idxs[(c - 1) * CHUNK_SIZE: c * CHUNK_SIZE]
+        if not seg:
+            messages.error(request, '해당 시험 범위가 없습니다.')
+            return redirect('writing:home')
+        start_i, end_i = seg[0], seg[-1]
     session = WritingSession.objects.create(
         student=request.user, unit=unit, view_mode=view_mode,
+        start_index=start_i, end_index=end_i,
     )
     return redirect('writing:session', session_id=session.id)
 
@@ -463,7 +520,7 @@ def session_view(request, session_id):
         return redirect('writing:result', session_id=session.id)
 
     profile = get_or_create_profile(request.user)
-    problems = list(session.unit.problems.all().order_by('index'))
+    problems = list(_ranged_problems(session))   # 청크 세션이면 그 범위만
 
     # 이 세션 동안 적용될 단원 Lv (세션 시작 시 frozen — 풀이 중 흔들리지 않게)
     is_preview = is_teacher(session.student)

@@ -136,6 +136,9 @@ class WritingSession(models.Model):
         related_name='writing_sessions',
     )
     unit = models.ForeignKey(WritingUnit, on_delete=models.CASCADE, related_name='sessions')
+    # 시험 범위(20문제 단위 청크). 둘 다 None 이면 단원 전체.
+    start_index = models.IntegerField(null=True, blank=True, verbose_name='시작 문항')
+    end_index = models.IntegerField(null=True, blank=True, verbose_name='끝 문항')
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
@@ -171,6 +174,13 @@ class WritingSession(models.Model):
     @property
     def is_completed(self):
         return self.finished_at is not None
+
+    @property
+    def range_label(self):
+        """시험 범위 표기 — 청크면 'start~end', 전체면 '전체'."""
+        if self.start_index and self.end_index:
+            return f'{self.start_index}~{self.end_index}'
+        return '전체'
 
 
 class WritingAttempt(models.Model):
