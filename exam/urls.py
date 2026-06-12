@@ -26,4 +26,5 @@ urlpatterns = [
 
     # 외부 연동 — 내신 정답 import (토큰)
     path('api/import-naesin/', views.import_naesin_api, name='import_naesin'),
+    path('api/import-image/', views.import_image_api, name='import_image'),
 ]

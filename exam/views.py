@@ -7,6 +7,7 @@
 채점은 객관식(1~5) 숫자 비교 자동채점.
 """
 import json
+import os
 import re
 
 from django.conf import settings
@@ -260,6 +261,20 @@ def result_view(request, session_id):
     graded = [a for a in answers if not a.flagged]
     wrong = [a for a in graded if not a.is_correct]          # 1차 오답(빈칸 포함)
     round2_done = session.round >= 2
+
+    # 교사에게는 지문/관련번호/해설도 붙여 보여준다(채점·리뷰용)
+    has_detail = False
+    if teacher:
+        meta = {q['number']: q for q in session.paper.get_questions()}
+        for a in answers:
+            m = meta.get(a.number) or {}
+            a.q_ref = m.get('ref_number') or ''
+            a.q_text = m.get('text') or m.get('question') or m.get('passage') or ''
+            a.q_expl = m.get('explanation') or ''
+            a.q_img = m.get('explanation_image') or ''
+            if a.q_ref or a.q_text or a.q_expl or a.q_img:
+                has_detail = True
+
     return render(request, 'exam/result.html', {
         'session': session,
         'answers': answers,
@@ -270,6 +285,7 @@ def result_view(request, session_id):
         'is_teacher': teacher,
         'round2_done': round2_done,
         'round2_total': len(wrong),
+        'has_detail': has_detail,
     })
 
 
@@ -538,6 +554,39 @@ def _check_token(request):
     return (got == expected), ('토큰 불일치' if got != expected else '')
 
 
+def _parse_question_item(it):
+    """답지 한 문항 → {number, answer, qtype, ref_number, text, explanation} | None.
+
+    list 형: [번호, 정답, 유형, 관련번호?, 지문/text?, 해설?]  (뒤 3개 선택, 하위호환)
+    dict 형: {number, answer, qtype/type, ref_number/ref/관련번호, text/passage/지문, explanation/해설}
+    """
+    def s(v):
+        return '' if v is None else str(v).strip()
+
+    if isinstance(it, dict):
+        try:
+            num = int(it.get('number'))
+        except (TypeError, ValueError):
+            return None
+        return {
+            'number': num,
+            'answer': s(it.get('answer')),
+            'qtype': s(it.get('qtype') or it.get('type')),
+            'ref_number': s(it.get('ref_number') or it.get('ref') or it.get('관련번호')),
+            'text': s(it.get('text') or it.get('passage') or it.get('지문')),
+            'explanation': s(it.get('explanation') or it.get('해설')),
+        }
+    try:
+        num = int(it[0])
+    except (ValueError, TypeError, IndexError):
+        return None
+
+    def g(i):
+        return s(it[i]) if len(it) > i else ''
+    return {'number': num, 'answer': g(1), 'qtype': g(2),
+            'ref_number': g(3), 'text': g(4), 'explanation': g(5)}
+
+
 @csrf_exempt
 @require_POST
 def import_naesin_api(request):
@@ -548,7 +597,9 @@ def import_naesin_api(request):
       school_grade,           # 예: 동백고2
       season,                 # 예: 2026 1학기 기말
       categories: {           # 카테고리별 문항 목록
-        "Part1": [[번호, 정답, 유형], ...],
+        # 기본: [번호, 정답, 유형]  / 확장: [번호, 정답, 유형, 관련번호, 지문, 해설]
+        # 또는 dict: {number, answer, qtype, ref_number, text, explanation}
+        "Part1": [[번호, 정답, 유형, 관련번호?, 지문?, 해설?], ...],
         "내신TEST": [...], "내신객관식빈칸": [...], ...
       }
     }
@@ -584,17 +635,62 @@ def import_naesin_api(request):
             ExamQuestion.objects.filter(paper=paper).delete()
             rows = []
             for it in items:
-                try:
-                    num = int(it[0])
-                except (ValueError, TypeError, IndexError):
+                f = _parse_question_item(it)
+                if f is None:
                     continue
-                ans = '' if len(it) < 2 or it[1] is None else str(it[1]).strip()
-                typ = str(it[2]).strip() if len(it) > 2 and it[2] is not None else ''
-                rows.append(ExamQuestion(paper=paper, number=num, answer=ans, qtype=typ))
+                rows.append(ExamQuestion(paper=paper, **f))
             ExamQuestion.objects.bulk_create(rows)
             total += len(rows)
             results.append({'paper_id': paper.id, 'category': cat, 'questions': len(rows)})
 
     return JsonResponse({'success': True, 'school_grade': school_grade, 'season': season,
                          'papers': results, 'total_questions': total},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+@require_POST
+def import_image_api(request):
+    """문항 해설 이미지 업로드 (multipart/form-data). 구글드라이브 대체 — 서버에 직접 저장.
+
+    form fields: token, number, image(파일) + 문항식별
+      식별 A: paper_id
+      식별 B: school_grade, season, category
+    """
+    # 멀티파트라 request.body 못 읽음 → 헤더/폼필드에서 토큰 확인
+    expected = getattr(settings, 'EXAM_IMPORT_TOKEN', '')
+    got = request.headers.get('X-Exam-Token') or request.POST.get('token') or ''
+    if not expected or got != expected:
+        return JsonResponse({'success': False, 'error': '토큰 불일치/미설정'}, status=403)
+
+    img = request.FILES.get('image')
+    if not img:
+        return JsonResponse({'success': False, 'error': 'image 파일 없음'}, status=400)
+    try:
+        number = int(request.POST.get('number'))
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'number 필요'}, status=400)
+
+    paper_id = (request.POST.get('paper_id') or '').strip()
+    if paper_id:
+        q = ExamQuestion.objects.filter(paper_id=paper_id, number=number).first()
+    else:
+        q = ExamQuestion.objects.filter(
+            paper__source=ExamPaper.SOURCE_NAESIN,
+            paper__school_grade=(request.POST.get('school_grade') or '').strip(),
+            paper__season=(request.POST.get('season') or '').strip(),
+            paper__category=(request.POST.get('category') or '').strip(),
+            number=number,
+        ).first()
+    if q is None:
+        return JsonResponse({'success': False, 'error': '해당 문항을 찾지 못함'}, status=404)
+
+    # 파일명 충돌 방지: 시험지·번호 기준 고정 이름
+    ext = os.path.splitext(img.name)[1].lower() or '.png'
+    fname = f'p{q.paper_id}_n{q.number}{ext}'
+    if q.explanation_image:
+        q.explanation_image.delete(save=False)   # 재업로드 시 기존 교체
+    q.explanation_image.save(fname, img, save=True)
+    return JsonResponse({'success': True, 'paper_id': q.paper_id, 'number': q.number,
+                         'url': q.explanation_image.url},
                         json_dumps_params={'ensure_ascii': False})

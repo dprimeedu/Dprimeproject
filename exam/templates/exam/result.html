@@ -60,6 +60,29 @@
         </table>
     </div>
 
+    {% if has_detail %}
+    <div class="card mb-4">
+        <div class="card-header fw-semibold"><i class="fas fa-book-open me-1"></i>문항 자료 (관련번호·지문·해설)</div>
+        <div class="list-group list-group-flush">
+            {% for a in answers %}
+                {% if a.q_ref or a.q_text or a.q_expl %}
+                <div class="list-group-item {% if not a.flagged and not a.is_correct %}bg-danger-subtle{% endif %}">
+                    <div class="d-flex gap-2 align-items-center mb-1">
+                        <span class="badge bg-primary">{{ a.number }}번</span>
+                        {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
+                        {% if a.q_ref %}<span class="badge bg-info-subtle text-info-emphasis">관련 {{ a.q_ref }}</span>{% endif %}
+                        <span class="ms-auto small">정답 <b class="text-success">{{ a.correct_answer }}</b>{% if not a.flagged %} · 내답 {{ a.student_choice|default:"-" }}{% endif %}</span>
+                    </div>
+                    {% if a.q_text %}<div class="small mb-1" style="white-space:pre-wrap;">{{ a.q_text }}</div>{% endif %}
+                    {% if a.q_expl %}<div class="small text-muted" style="white-space:pre-wrap;"><i class="fas fa-lightbulb me-1"></i>{{ a.q_expl }}</div>{% endif %}
+                    {% if a.q_img %}<a href="{{ a.q_img }}" target="_blank"><img src="{{ a.q_img }}" class="img-fluid mt-1 rounded border" style="max-height:340px;" alt="{{ a.number }}번 해설"></a>{% endif %}
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     {% else %}
     {# ───────── 학생: 정답 비공개. 1차 점수 + 틀린문제 2차 재입력 ───────── #}
     {% if not wrong %}

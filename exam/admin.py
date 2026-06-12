@@ -6,7 +6,7 @@ from .models import ExamPaper, ExamQuestion, ExamAssignment, ExamSession, ExamAn
 class ExamQuestionInline(admin.TabularInline):
     model = ExamQuestion
     extra = 0
-    fields = ('number', 'answer', 'qtype')
+    fields = ('number', 'answer', 'qtype', 'ref_number', 'text', 'explanation', 'explanation_image')
 
 
 @admin.register(ExamPaper)

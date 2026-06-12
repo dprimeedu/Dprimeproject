@@ -81,21 +81,33 @@ class ExamPaper(models.Model):
                 'passage': q.지문 or '',
                 'question': q.문제 or '',
                 'choices': q.보기 or '',
+                'ref_number': '', 'text': '', 'explanation': '', 'explanation_image': '',
             } for q in qs]
         return [{
             'number': q.number,
             'qtype': q.qtype or '',
             'answer': (q.answer or '').strip(),
             'passage': '', 'question': '', 'choices': '',
+            'ref_number': q.ref_number or '',
+            'text': q.text or '',
+            'explanation': q.explanation or '',
+            'explanation_image': (q.explanation_image.url if q.explanation_image else ''),
         } for q in self.questions.all().order_by('number')]
 
 
 class ExamQuestion(models.Model):
-    """내신 시험지의 문항(번호·정답·유형). 모의고사는 QuestionData를 쓰므로 사용 안 함."""
+    """내신 시험지의 문항(번호·정답·유형 + 지문/관련번호/해설). 모의고사는 QuestionData를 쓴다."""
     paper = models.ForeignKey(ExamPaper, on_delete=models.CASCADE, related_name='questions')
     number = models.IntegerField('번호')
     answer = models.CharField('정답', max_length=50, blank=True, default='')
     qtype = models.CharField('유형', max_length=100, blank=True, default='')
+    # 추가 자료(2026-06-12~) — 답지 푸시에서 같이 올림. 채점/리뷰·오답 DB 활용용.
+    ref_number = models.CharField('관련번호', max_length=50, blank=True, default='')   # 예: 모고번호/출처번호
+    text = models.TextField('지문/문제', blank=True, default='')
+    explanation = models.TextField('상세 해설', blank=True, default='')
+    # 빨파정답 등 해설 이미지 — 로컬→서버 업로드(구글드라이브 대체). /media/ 로 서빙.
+    explanation_image = models.ImageField('해설 이미지', upload_to='exam/explain/%Y/%m/',
+                                          null=True, blank=True)
 
     class Meta:
         db_table = 'exam_question'
