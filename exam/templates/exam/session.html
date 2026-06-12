@@ -1,13 +1,31 @@
 {% extends 'base.html' %}
 {% block content %}
+<style>
+.exam-input {
+    width: 58px; height: 50px; text-align: center; font-size: 1.6rem; font-weight: 700;
+    border: 2px solid #cbd5e1; border-radius: 10px; color: #1e293b; background: #fff;
+    -moz-appearance: textfield;
+}
+.exam-input:focus { outline: none; border-color: #6d28d9; box-shadow: 0 0 0 3px rgba(109,40,217,.18); }
+.exam-input.filled { border-color: #16a34a; background: #f0fdf4; color: #15803d; }
+.choice-btn { min-width: 42px; }
+.exam-q.answered { border-color: #86efac; }
+.exam-hint { background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; border-radius:10px;
+    padding:.5rem .85rem; font-size:.9rem; }
+</style>
 <div class="home-wrap" style="max-width:860px;">
     {% csrf_token %}
     <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h3 class="mb-0"><i class="fas fa-file-alt me-2"></i>{{ session.title }}</h3>
-            <p class="section-desc mb-0">번호별로 답(1~5)을 선택한 뒤 제출하세요.</p>
+            <p class="section-desc mb-0">번호별로 답(1~5)을 입력하세요.</p>
         </div>
         <span class="badge bg-secondary fs-6" id="answeredBadge">0 / {{ total_questions }}</span>
+    </div>
+
+    <div class="exam-hint mb-3">
+        <i class="fas fa-keyboard me-1"></i>숫자(1~5)를 입력하면 <b>자동으로 다음 문항</b>으로 넘어갑니다.
+        Enter·Tab·↑·↓ 로도 이동, 터치는 버튼을 눌러도 됩니다.
     </div>
 
     <div id="questionList">
@@ -21,10 +39,14 @@
                 {% if q.passage %}<div class="text-muted small mb-2" style="white-space:pre-wrap;">{{ q.passage }}</div>{% endif %}
                 {% if q.question %}<div class="mb-2" style="white-space:pre-wrap;">{{ q.question }}</div>{% endif %}
                 {% if q.choices %}<div class="small mb-3" style="white-space:pre-wrap;">{{ q.choices }}</div>{% endif %}
-                <div class="btn-group choice-group" role="group" aria-label="답 선택">
-                    {% for n in "12345" %}
-                    <button type="button" class="btn btn-outline-secondary choice-btn" data-value="{{ n }}">{{ n }}</button>
-                    {% endfor %}
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <input type="text" class="exam-input" inputmode="numeric" maxlength="1"
+                           autocomplete="off" aria-label="{{ q.number }}번 답 (1~5)">
+                    <div class="btn-group choice-group" role="group" aria-label="답 선택">
+                        {% for n in "12345" %}
+                        <button type="button" tabindex="-1" class="btn btn-outline-secondary choice-btn" data-value="{{ n }}">{{ n }}</button>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -44,17 +66,52 @@
     const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     const answers = {};
 
-    document.querySelectorAll('.exam-q').forEach(function (card) {
+    const cards = Array.from(document.querySelectorAll('.exam-q'));
+    const inputs = cards.map(c => c.querySelector('.exam-input'));
+
+    function setAnswer(card, val) {
         const number = card.dataset.number;
+        answers[number] = val;
+        card.querySelectorAll('.choice-btn').forEach(b => {
+            const on = b.dataset.value === val;
+            b.classList.toggle('btn-primary', on);
+            b.classList.toggle('btn-outline-secondary', !on);
+        });
+        const inp = card.querySelector('.exam-input');
+        inp.value = val;
+        inp.classList.add('filled');
+        card.classList.add('answered');
+        updateBadge();
+    }
+
+    function focusInput(i, scroll) {
+        if (i < 0 || i >= inputs.length) return;
+        const el = inputs[i];
+        el.focus();
+        el.select();
+        if (scroll) el.closest('.exam-q').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+
+    cards.forEach(function (card, idx) {
+        const inp = inputs[idx];
+        // 숫자 입력 → 답 기록 + 자동으로 다음 문항으로
+        inp.addEventListener('input', function () {
+            const v = (inp.value.match(/[1-5]/g) || []).pop() || '';
+            inp.value = v;
+            if (v) { setAnswer(card, v); focusInput(idx + 1, true); }
+            else { delete answers[card.dataset.number]; inp.classList.remove('filled');
+                   card.classList.remove('answered'); updateBadge(); }
+        });
+        inp.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); focusInput(idx + 1, true); }
+            else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); focusInput(idx - 1, true); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); focusInput(idx + 1, true); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); focusInput(idx - 1, true); }
+            else if (e.key === 'Backspace' && !inp.value) { e.preventDefault(); focusInput(idx - 1, true); }
+        });
+        // 터치/마우스용 버튼 — 누르면 기록(자동 이동 없음, 검토용)
         card.querySelectorAll('.choice-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                card.querySelectorAll('.choice-btn').forEach(b => {
-                    b.classList.remove('btn-primary'); b.classList.add('btn-outline-secondary');
-                });
-                btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-primary');
-                answers[number] = btn.dataset.value;
-                updateBadge();
-            });
+            btn.addEventListener('click', function () { setAnswer(card, btn.dataset.value); });
         });
     });
 
@@ -62,6 +119,8 @@
         document.getElementById('answeredBadge').textContent =
             Object.keys(answers).length + ' / ' + TOTAL;
     }
+
+    if (inputs.length) inputs[0].focus();
 
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.addEventListener('click', function () {
