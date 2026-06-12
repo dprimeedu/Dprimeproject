@@ -50,8 +50,16 @@ def parse_answers(correct_answer):
         return []
     for k, v in _CIRCLED.items():
         s = s.replace(k, v + ',')          # 동그라미는 붙어 있어도 분리되게 구분자 삽입
-    parts = re.split(r'[,\s/|·~]+|또는|or', s)
-    return [p.strip() for p in parts if p.strip()]
+    out = []
+    for p in re.split(r'[,\s/|·~]+|또는|or', s):
+        p = p.strip()
+        if not p:
+            continue
+        if re.fullmatch(r'[1-5]{2,}', p):  # 객관식(1~5) 붙여 쓴 복수정답: '23' → 2,3
+            out.extend(list(p))
+        else:
+            out.append(p)
+    return out
 
 
 def grade_answer(student_choice, correct_answer):
