@@ -109,6 +109,23 @@ def class_days_until(weekdays_str, exam_date, today):
     return n
 
 
+def _split_redblue(text):
+    """빨파 text('원문\\n[빨] ...\\n[파] ...') → (passage, red, blue). ￰ 마커는 「」 로 표시."""
+    passage, red, blue = [], '', ''
+    for line in (text or '').split('\n'):
+        ls = line.strip()
+        if ls.startswith('[빨]'):
+            red = ls[3:].strip()
+        elif ls.startswith('[파]'):
+            blue = ls[3:].strip()
+        else:
+            passage.append(line)
+
+    def mark(s):
+        return re.sub('￰(.*?)￰', r'「\1」', s or '')
+    return mark('\n'.join(passage).strip()), mark(red), mark(blue)
+
+
 def available_mock_exams():
     """QuestionData에 존재하는 모의고사 1회분 목록 (학년·연도·강 + 문항 수)."""
     rows = (QuestionData.objects
@@ -131,6 +148,8 @@ def get_or_create_mock_paper(grade, year, month):
 def _can_access(user, paper):
     if is_teacher(user):
         return True
+    if paper.category == '빨파':       # 모의고사 빨파는 배정 없이 자기주도 응시 허용
+        return True
     return ExamAssignment.objects.filter(paper=paper, student=user).exists()
 
 
@@ -146,12 +165,14 @@ def student_home(request):
     if is_teacher(request.user):
         naesin_papers = list(
             ExamPaper.objects.filter(source=ExamPaper.SOURCE_NAESIN)
+            .exclude(category='빨파')      # 빨파 모의고사는 별도 메뉴로
             .order_by('school_grade', 'season', 'category')
         )
         return render(request, 'exam/home.html', {
             'is_teacher': True,
             'mock_exams': available_mock_exams(),
             'naesin_papers': naesin_papers,
+            'has_redblue': ExamPaper.objects.filter(category='빨파').exists(),
         })
 
     assignments = list(
@@ -161,6 +182,46 @@ def student_home(request):
     return render(request, 'exam/home.html', {
         'is_teacher': False,
         'assignments': assignments,
+        'has_redblue': ExamPaper.objects.filter(category='빨파').exists(),
+    })
+
+
+@login_required
+def mock_redblue(request):
+    """모의고사 빨파 회차 브라우저 — 학년 → 연도·월 회차 선택 후 응시(자기주도)."""
+    if not is_teacher(request.user) and not getattr(request.user, 'is_approved', False):
+        return render(request, 'exam/student_pending.html', {})
+
+    from collections import defaultdict
+    papers = (ExamPaper.objects.filter(category='빨파')
+              .annotate(qn=Count('questions')).order_by('school_grade', 'season'))
+    tree = defaultdict(lambda: defaultdict(list))   # grade -> year -> [(month, paper)]
+    for p in papers:
+        m = re.match(r'(\d{4})\s*(\d{1,2})\s*월', p.season or '')
+        year = m.group(1) if m else '기타'
+        month = int(m.group(2)) if m else 0
+        tree[p.school_grade][year].append((month, p))
+
+    grades = sorted(tree.keys())
+    # 기본 학년 = 학생 본인 학년(고N) 있으면 그것, 없으면 첫 학년
+    default_grade = ''
+    try:
+        sg = request.user.report_info.school_grade or ''
+        mm = re.search(r'고[123]', sg)
+        if mm and mm.group(0) in tree:
+            default_grade = mm.group(0)
+    except Exception:
+        pass
+    grade = request.GET.get('grade') or default_grade or (grades[0] if grades else '')
+
+    years = []
+    for y in sorted(tree.get(grade, {}).keys(), reverse=True):
+        months = [{'month': mo, 'paper': p} for mo, p in sorted(tree[grade][y])]
+        years.append({'year': y, 'months': months})
+
+    return render(request, 'exam/mock_redblue.html', {
+        'grades': grades, 'grade': grade, 'years': years,
+        'is_teacher': is_teacher(request.user),
     })
 
 
@@ -212,6 +273,7 @@ def session_view(request, session_id):
         return redirect('exam:result', session_id=session.id)
 
     questions = session.paper.get_questions()  # 정답(answer)은 템플릿에 안 보냄
+    redblue = session.paper.category == '빨파'   # 빨파 회차 → 지문+지시문 리딩 응시
 
     # 진행 저장된 답/오류표시 로드 → 이어풀기(이미 입력/오류표시 문항은 숨김)
     saved = {a.number: a for a in ExamAnswer.objects.filter(session=session)}
@@ -223,8 +285,11 @@ def session_view(request, session_id):
         answered = bool(choice) or flagged
         if answered:
             done_count += 1
-        q_view.append({'number': q['number'], 'qtype': q['qtype'],
-                       'choice': choice, 'flagged': flagged, 'answered': answered})
+        item = {'number': q['number'], 'qtype': q['qtype'],
+                'choice': choice, 'flagged': flagged, 'answered': answered}
+        if redblue:
+            item['passage'], item['red'], item['blue'] = _split_redblue(q.get('text', ''))
+        q_view.append(item)
 
     # 시험일 D-day + 남은 수업 수 (학생 출석요일 기준)
     today = timezone.now().date()
@@ -246,6 +311,7 @@ def session_view(request, session_id):
         'exam_date': exam_date,
         'dday': dday,
         'classes_left': classes_left,
+        'redblue': redblue,
     })
 
 

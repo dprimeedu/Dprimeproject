@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap" style="max-width:880px;">
+    <a href="{% url 'exam:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>시험 홈</a>
+
+    <div class="section-header">
+        <h3 class="mb-0"><i class="fas fa-highlighter me-2"></i>모의고사 빨파</h3>
+        <p class="section-desc mb-0">학년 → 회차(연도·월)를 골라 응시하세요. 지문을 읽고 빨강/파랑 표시 후 정답 입력.</p>
+    </div>
+
+    {# 학년 탭 #}
+    <ul class="nav nav-pills mb-3">
+        {% for g in grades %}
+        <li class="nav-item">
+            <a class="nav-link {% if g == grade %}active{% endif %}" href="?grade={{ g }}">{{ g }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% for y in years %}
+    <div class="card mb-2">
+        <div class="card-header fw-semibold py-2">{{ y.year }}년</div>
+        <div class="card-body d-flex flex-wrap gap-2">
+            {% for m in y.months %}
+            <a href="{% url 'exam:start_paper' m.paper.id %}" class="btn btn-outline-primary btn-sm">
+                {{ m.month }}월
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-muted">이 학년의 빨파 회차가 없습니다.</p>
+    {% endfor %}
+</div>
+{% endblock %}

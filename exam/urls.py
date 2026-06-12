@@ -8,6 +8,7 @@ urlpatterns = [
     path('', views.student_home, name='home'),
 
     # 응시
+    path('mock-redblue/', views.mock_redblue, name='mock_redblue'),
     path('start/mock/', views.start_mock, name='start_mock'),
     path('start/paper/<int:paper_id>/', views.start_paper, name='start_paper'),
     path('session/<int:session_id>/', views.session_view, name='session'),

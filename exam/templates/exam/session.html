@@ -5,7 +5,21 @@
 @media (max-width: 992px) { .exam-grid { grid-template-columns: repeat(8, 1fr); } }
 @media (max-width: 768px) { .exam-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (max-width: 420px) { .exam-grid { grid-template-columns: repeat(4, 1fr); } }
-.exam-grid.hide-done .exam-cell.is-done { display: none; }
+#questionGrid.hide-done .exam-cell.is-done { display: none; }
+
+/* 빨파 리딩 레이아웃 (지문+빨/파 지시문+정답) */
+.exam-readlist { display: flex; flex-direction: column; gap: 12px; margin-bottom: 1rem; }
+.exam-readlist .exam-cell { display: block; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 12px 14px; background: #fff; }
+.exam-readlist .exam-cell.is-flagged { background: #fef2f2; border-color: #fecaca; }
+.rb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.rb-passage { white-space: pre-wrap; line-height: 1.65; margin-bottom: 8px; }
+.rb-inst { border-left: 3px solid; padding: 5px 9px; margin: 4px 0; border-radius: 5px; white-space: pre-wrap; font-size: .93rem; }
+.rb-red { border-color: #ef4444; background: #fef2f2; color: #b91c1c; }
+.rb-blue { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+.rb-answer { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.rb-answer .xbtn { width: auto; height: 32px; padding: 0 10px; font-size: .8rem; }
+.rb-answer .exam-input { height: 40px; }
 
 .exam-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .exam-cell .qnum { font-size: .78rem; font-weight: 700; color: #475569; }
@@ -36,7 +50,7 @@
     <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h3 class="mb-0"><i class="fas fa-file-alt me-2"></i>{{ session.title }}</h3>
-            <p class="section-desc mb-0">번호별로 답(1~5)을 입력하세요. 오류 문제는 ✕로 표시하면 채점에서 빠집니다.</p>
+            <p class="section-desc mb-0">{% if redblue %}지문을 읽고 빨강/파랑 지시문대로 표시한 뒤 정답(1~5)을 입력하세요. 오류 문제는 ✕로 빼면 됩니다.{% else %}번호별로 답(1~5)을 입력하세요. 오류 문제는 ✕로 표시하면 채점에서 빠집니다.{% endif %}</p>
         </div>
         <span class="badge bg-secondary fs-6" id="answeredBadge">0 / {{ total_questions }}</span>
     </div>
@@ -52,8 +66,25 @@
         </button>
     </div>
 
-    <div class="exam-grid hide-done" id="questionGrid">
+    <div class="{% if redblue %}exam-readlist{% else %}exam-grid{% endif %} hide-done" id="questionGrid">
         {% for q in questions %}
+        {% if redblue %}
+        <div class="exam-cell{% if q.answered %} is-done{% endif %}{% if q.flagged %} is-flagged{% endif %}" data-number="{{ q.number }}">
+            <div class="rb-head">
+                <span class="badge bg-primary">{{ q.number }}번</span>
+                {% if q.qtype %}<span class="badge bg-light text-dark">{{ q.qtype }}</span>{% endif %}
+            </div>
+            {% if q.passage %}<div class="rb-passage">{{ q.passage }}</div>{% endif %}
+            {% if q.red %}<div class="rb-inst rb-red">🔴 {{ q.red }}</div>{% endif %}
+            {% if q.blue %}<div class="rb-inst rb-blue">🔵 {{ q.blue }}</div>{% endif %}
+            <div class="rb-answer">
+                <span class="small text-muted">정답(1~5)</span>
+                <input type="text" class="exam-input{% if q.choice %} filled{% endif %}" inputmode="numeric" maxlength="1"
+                       value="{{ q.choice }}" autocomplete="off" {% if q.flagged %}disabled{% endif %} aria-label="{{ q.number }}번 답">
+                <button type="button" class="xbtn{% if q.flagged %} on{% endif %}" title="오류 문제 — 채점 제외">✕ 오류</button>
+            </div>
+        </div>
+        {% else %}
         <div class="exam-cell{% if q.answered %} is-done{% endif %}{% if q.flagged %} is-flagged{% endif %}" data-number="{{ q.number }}">
             <span class="qnum">{{ q.number }}</span>
             <div class="cellrow">
@@ -62,6 +93,7 @@
                 <button type="button" class="xbtn{% if q.flagged %} on{% endif %}" title="오류 문제 — 채점 제외">✕</button>
             </div>
         </div>
+        {% endif %}
         {% endfor %}
     </div>
 </div>
