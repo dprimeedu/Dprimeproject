@@ -1,11 +1,14 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve as _media_serve
 from . import views
 from .views import CustomLoginView
 
 urlpatterns = [
+    # 업로드 미디어 — 운영(DEBUG=False)에서도 Django가 서빙(nginx가 /media/를 여기로 프록시).
+    re_path(r'^media/(?P<path>.*)$', _media_serve, {'document_root': settings.MEDIA_ROOT}),
     path('admin/', admin.site.urls),
     path("", views.HomeView.as_view(), name='index'),
     path('mock-exam/', views.MockExamView.as_view(), name='mock_exam'),
