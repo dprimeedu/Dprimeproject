@@ -12,7 +12,8 @@ class ExamQuestionInline(admin.TabularInline):
 @admin.register(ExamPaper)
 class ExamPaperAdmin(admin.ModelAdmin):
     list_display = ('resolved_title', 'source', 'school_grade', 'season', 'category',
-                    'grade', 'year', 'month', 'created_at')
+                    'exam_date', 'grade', 'year', 'month', 'created_at')
+    list_editable = ('exam_date',)
     list_filter = ('source', 'school_grade', 'season', 'grade', 'year')
     search_fields = ('title', 'school_grade', 'season', 'category')
     inlines = [ExamQuestionInline]

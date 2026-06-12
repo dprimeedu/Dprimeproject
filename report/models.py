@@ -42,6 +42,9 @@ class StudentInfo(models.Model):
     )
     # 카톡 대화방명 — 비우면 "{이름}({학교}) 프라임에듀 단톡방" 규칙으로 생성
     chatroom_name = models.CharField('카톡 단톡방명', max_length=200, blank=True, default='')
+    # 학생이 나오는 수업 요일 — '화목', '월수금' 등(쉼표/공백 무관). 시험까지 남은 수업 수 계산용.
+    attend_weekdays = models.CharField('수업 요일', max_length=20, blank=True, default='',
+                                       help_text='예: 화목 / 월수금')
 
     class Meta:
         db_table = 'report_student_info'

@@ -80,6 +80,34 @@ def grade_answer(student_choice, correct_answer):
     return False
 
 
+# 한글 요일 → weekday() 번호 (월=0 … 일=6)
+_WEEKDAY_NUM = {'월': 0, '화': 1, '수': 2, '목': 3, '금': 4, '토': 5, '일': 6}
+
+
+def parse_weekdays(s):
+    """'화목' / '월,수,금' → {1,3} 같은 요일 번호 집합."""
+    return {_WEEKDAY_NUM[ch] for ch in (s or '') if ch in _WEEKDAY_NUM}
+
+
+def class_days_until(weekdays_str, exam_date, today):
+    """오늘(포함)~시험일 전날까지, 학생 출석요일에 해당하는 '남은 수업 횟수'.
+
+    출석요일/시험일 없으면 None. 시험일이 지났으면 0.
+    """
+    from datetime import timedelta
+    wd = parse_weekdays(weekdays_str)
+    if not wd or not exam_date:
+        return None
+    if exam_date <= today:
+        return 0
+    n, d = 0, today
+    while d < exam_date:           # 시험 당일은 제외(그날이 시험)
+        if d.weekday() in wd:
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
 def available_mock_exams():
     """QuestionData에 존재하는 모의고사 1회분 목록 (학년·연도·강 + 문항 수)."""
     rows = (QuestionData.objects
@@ -184,10 +212,25 @@ def session_view(request, session_id):
 
     questions = session.paper.get_questions()  # 정답(answer)은 템플릿에 안 보냄
     q_view = [{'number': q['number'], 'qtype': q['qtype']} for q in questions]
+
+    # 시험일 D-day + 남은 수업 수 (학생 출석요일 기준)
+    today = timezone.now().date()
+    exam_date = session.paper.exam_date
+    dday = (exam_date - today).days if exam_date else None
+    weekdays = ''
+    try:
+        weekdays = request.user.report_info.attend_weekdays
+    except Exception:
+        weekdays = ''
+    classes_left = class_days_until(weekdays, exam_date, today)
+
     return render(request, 'exam/session.html', {
         'session': session,
         'questions': q_view,
         'total_questions': len(q_view),
+        'exam_date': exam_date,
+        'dday': dday,
+        'classes_left': classes_left,
     })
 
 

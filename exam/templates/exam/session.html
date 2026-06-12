@@ -70,6 +70,12 @@
             <span class="done">입력 <b id="cntDone">0</b></span>
             <span class="left">남은 <b id="cntLeft">{{ total_questions }}</b></span>
             <span>전체 <b>{{ total_questions }}</b></span>
+            {% if exam_date %}
+            <span class="exam-date">📅 시험 {{ exam_date|date:'n/j' }}{% if dday >= 0 %} · D-{{ dday }}{% endif %}</span>
+            {% endif %}
+            {% if classes_left != None %}
+            <span class="goal">📚 남은 수업 <b>{{ classes_left }}</b>번</span>
+            {% endif %}
         </div>
         <button id="submitBtn" class="btn btn-success"><i class="fas fa-paper-plane me-1"></i>제출하고 채점</button>
     </div>

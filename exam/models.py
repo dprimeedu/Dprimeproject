@@ -31,6 +31,9 @@ class ExamPaper(models.Model):
     season = models.CharField('시험명/시즌', max_length=100, blank=True, default='')     # 예: 2026 1학기 기말
     category = models.CharField('카테고리', max_length=50, blank=True, default='')        # Part1~4/내신TEST/내신객관식빈칸
 
+    # 시험일 — 응시 화면에서 'D-day / 남은 수업' 계산용 (선택)
+    exam_date = models.DateField('시험일', null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

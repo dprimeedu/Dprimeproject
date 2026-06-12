@@ -11,7 +11,8 @@ class ClassRoomAdmin(admin.ModelAdmin):
 
 @admin.register(StudentInfo)
 class StudentInfoAdmin(admin.ModelAdmin):
-    list_display = ('student', 'school', 'school_grade', 'class_room', 'chatroom_name')
+    list_display = ('student', 'school', 'school_grade', 'class_room', 'attend_weekdays', 'chatroom_name')
+    list_editable = ('attend_weekdays',)
     list_filter = ('school_grade', 'class_room')
     search_fields = ('student__username', 'student__login_id', 'school_grade')
     autocomplete_fields = ()
