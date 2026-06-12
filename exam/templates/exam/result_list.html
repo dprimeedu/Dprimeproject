@@ -21,8 +21,11 @@
                     <td>{{ s.title }}</td>
                     <td class="fw-bold">{{ s.percent }}점</td>
                     <td>{{ s.correct_count }} / {{ s.total_questions }}</td>
-                    <td class="small text-muted">{{ s.submitted_at|date:"Y-m-d H:i" }}</td>
-                    <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'exam:result' s.id %}">상세</a></td>
+                    <td class="small text-muted">{{ s.submitted_at|date:"Y-m-d H:i" }}{% if s.round >= 2 %} <span class="badge bg-success">2차완료</span>{% endif %}</td>
+                    <td class="text-nowrap">
+                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'exam:result' s.id %}">상세</a>
+                        <a class="btn btn-sm btn-outline-danger" href="{% url 'exam:wrong_summary' s.paper_id %}" title="이 시험 틀린번호 모아보기">틀린번호</a>
+                    </td>
                 </tr>
             {% endfor %}
             </tbody>

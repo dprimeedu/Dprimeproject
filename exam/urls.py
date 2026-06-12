@@ -16,9 +16,11 @@ urlpatterns = [
     # 학생 — AJAX
     path('api/save/', views.save_progress_api, name='save_progress'),
     path('api/submit/', views.submit_session_api, name='submit'),
+    path('api/submit2/', views.submit_round2_api, name='submit2'),
 
     # 선생님 / 관리자
     path('admin/results/', views.result_list, name='result_list'),
+    path('admin/paper/<int:paper_id>/wrong/', views.wrong_summary, name='wrong_summary'),
     path('admin/assign/mock/', views.mock_assign_redirect, name='mock_assign'),
     path('admin/assign/<int:paper_id>/', views.assign_view, name='assign'),
 

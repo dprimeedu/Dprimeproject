@@ -250,13 +250,26 @@ def session_view(request, session_id):
 
 @login_required
 def result_view(request, session_id):
-    session = get_object_or_404(ExamSession.objects.select_related('paper'), pk=session_id)
-    if session.student != request.user and not is_teacher(request.user):
+    session = get_object_or_404(
+        ExamSession.objects.select_related('paper', 'student'), pk=session_id)
+    teacher = is_teacher(request.user)
+    if session.student != request.user and not teacher:
         return redirect('exam:home')
     answers = list(session.answers.all().order_by('number'))
-    wrong = [a for a in answers if not a.is_correct and a.student_choice]
+    flagged = [a for a in answers if a.flagged]
+    graded = [a for a in answers if not a.flagged]
+    wrong = [a for a in graded if not a.is_correct]          # 1차 오답(빈칸 포함)
+    round2_done = session.round >= 2
     return render(request, 'exam/result.html', {
-        'session': session, 'answers': answers, 'wrong': wrong,
+        'session': session,
+        'answers': answers,
+        'graded': graded,
+        'wrong': wrong,
+        'flagged': flagged,
+        'wrong_numbers': [a.number for a in wrong],
+        'is_teacher': teacher,
+        'round2_done': round2_done,
+        'round2_total': len(wrong),
     })
 
 
@@ -354,6 +367,52 @@ def submit_session_api(request):
                         json_dumps_params={'ensure_ascii': False})
 
 
+@login_required
+@require_POST
+def submit_round2_api(request):
+    """2차(틀린문제 재시험) 제출. body: {session_id, answers:{번호:답}}.
+
+    학생이 제출하지만 2차 점수는 학생에게 안 보이고 교사만 결과 페이지에서 본다.
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        session_id = int(data['session_id'])
+        raw_answers = data.get('answers') or {}
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    session = get_object_or_404(
+        ExamSession, pk=session_id, student=request.user,
+        status=ExamSession.STATUS_GRADED, round=1,
+    )
+    by_num = {}
+    for k, v in raw_answers.items():
+        try:
+            by_num[int(k)] = ('' if v is None else str(v)).strip()
+        except (ValueError, TypeError):
+            continue
+
+    targets = list(session.answers.filter(flagged=False, is_correct=False))
+    correct2 = 0
+    for a in targets:
+        a.second_choice = by_num.get(a.number, '')
+        a.is_correct2 = grade_answer(a.second_choice, a.correct_answer)
+        if a.is_correct2:
+            correct2 += 1
+
+    with transaction.atomic():
+        if targets:
+            ExamAnswer.objects.bulk_update(targets, ['second_choice', 'is_correct2'])
+        session.round = 2
+        session.round2_at = timezone.now()
+        session.correct_count2 = correct2
+        session.save(update_fields=['round', 'round2_at', 'correct_count2'])
+
+    return JsonResponse({'success': True,
+                         'redirect_url': f'/training/exam/result/{session.id}/'},
+                        json_dumps_params={'ensure_ascii': False})
+
+
 # ─────────────────────────────────────────────
 # 선생님 / 관리자
 # ─────────────────────────────────────────────
@@ -365,6 +424,50 @@ def result_list(request):
         .select_related('student', 'paper').order_by('-submitted_at')[:300]
     )
     return render(request, 'exam/result_list.html', {'sessions': sessions})
+
+
+@teacher_required
+def wrong_summary(request, paper_id):
+    """시험지 한 장의 '틀린번호 모아보기' — 학생별 틀린 번호 + 번호별 오답자 수."""
+    from collections import Counter
+    paper = get_object_or_404(ExamPaper, pk=paper_id)
+    sessions = list(
+        ExamSession.objects.filter(paper=paper, status=ExamSession.STATUS_GRADED)
+        .select_related('student').order_by('student__username')
+    )
+    sess_ids = [s.id for s in sessions]
+    # 세션별 틀린/오류 번호 (1쿼리)
+    wrong_map, flag_map = {}, {}
+    for a in (ExamAnswer.objects.filter(session_id__in=sess_ids)
+              .values('session_id', 'number', 'is_correct', 'flagged')
+              .order_by('number')):
+        if a['flagged']:
+            flag_map.setdefault(a['session_id'], []).append(a['number'])
+        elif not a['is_correct']:
+            wrong_map.setdefault(a['session_id'], []).append(a['number'])
+
+    freq = Counter()
+    rows = []
+    for s in sessions:
+        wn = wrong_map.get(s.id, [])
+        freq.update(wn)
+        rows.append({
+            'session': s,
+            'student': s.student.username,
+            'wrong': wn,
+            'wrong_count': len(wn),
+            'flagged': flag_map.get(s.id, []),
+            'score': f'{s.correct_count}/{s.total_questions}',
+            'round2': s.round >= 2,
+            'correct2': s.correct_count2,
+        })
+    most_wrong = [{'number': n, 'count': c} for n, c in freq.most_common()]
+    return render(request, 'exam/wrong_summary.html', {
+        'paper': paper,
+        'rows': rows,
+        'most_wrong': most_wrong,
+        'student_count': len(sessions),
+    })
 
 
 @teacher_required
