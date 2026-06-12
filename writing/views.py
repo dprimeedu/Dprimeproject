@@ -110,28 +110,37 @@ def import_api(request):
     if not items:
         return JsonResponse({'success': False, 'error': 'items 비어있음'}, status=400)
 
+    # '... (1/2)', '(2/2)' 분할 접미사는 떼어 하나의 단원으로 합친다(세트 패킹).
+    # groups[base_unit_name] = [(part_no, item), ...]
+    from .services import packing
     groups = {}
     for it in items:
-        u = str(it.get('unit') or top_unit or '').strip()
-        groups.setdefault(u, []).append(it)
+        raw = str(it.get('unit') or top_unit or '').strip()
+        base, part_no = packing.base_title(raw)
+        groups.setdefault(base, []).append((part_no, it))
 
     grade = _w_grade_from_school(school)
     results, created_total, created_units = [], 0, []
     with transaction.atomic():
-        for unit_name, group in groups.items():
+        for unit_name, part_items in groups.items():
             title = (f'{school} {unit_name}').strip() or school or unit_name or '영작 단원'
-            # WritingUnit.title 은 unique 가 아니므로 first()+생성으로 업서트(중복 방지).
-            unit_obj = WritingUnit.objects.filter(title=title).first()
+            # 기존에 이미 '(n/m)' 로 쪼개져 들어와 있던 같은 단원들을 먼저 흡수.
+            fam = [u for u in WritingUnit.objects.filter(title__startswith=title)
+                   if packing.base_title(u.title)[0] == title]
+            unit_obj = next((u for u in fam if u.title.strip() == title), None) or (fam[0] if fam else None)
             if unit_obj is None:
                 unit_obj = WritingUnit.objects.create(title=title, grade=grade, is_active=True)
             else:
+                if unit_obj.title.strip() != title:
+                    unit_obj.title = title
                 unit_obj.grade = grade
                 unit_obj.is_active = True
-                unit_obj.save(update_fields=['grade', 'is_active', 'updated_at'])
-            created_units.append(unit_obj)
-            # 입력 파싱(번호 기준)
+                unit_obj.save(update_fields=['title', 'grade', 'is_active', 'updated_at'])
+            siblings = [u for u in fam if u.id != unit_obj.id]
+
+            # 입력 파싱: (part_no, 원래 idx) 순으로 정렬해 연속 번호로 패킹.
             parsed = []
-            for it in group:
+            for part_no, it in part_items:
                 eng = str(it.get('english', '') or '').strip()
                 kor = str(it.get('korean', '') or '').strip()
                 if not eng:
@@ -139,31 +148,29 @@ def import_api(request):
                 try:
                     idx = int(it.get('idx'))
                 except (TypeError, ValueError):
-                    idx = len(parsed) + 1
-                parsed.append({'index': idx, 'korean': kor, 'english': eng})
+                    idx = 0
+                parsed.append((part_no, idx, kor, eng))
+            parsed.sort(key=lambda x: (x[0], x[1]))
 
             if mode == 'merge':
-                # 통합 — 번호 기준 upsert: 기존 갱신·신규 추가·나머지 보존
-                existing = {x.index: x for x in WritingProblem.objects.filter(unit=unit_obj)}
-                to_create, to_update = [], []
-                for p in parsed:
-                    x = existing.get(p['index'])
-                    if x is None:
-                        to_create.append(WritingProblem(unit=unit_obj, index=p['index'], korean=p['korean'], english=p['english']))
-                    else:
-                        x.korean, x.english = p['korean'], p['english']
-                        to_update.append(x)
-                if to_create:
-                    WritingProblem.objects.bulk_create(to_create)
-                if to_update:
-                    WritingProblem.objects.bulk_update(to_update, ['korean', 'english'])
-                n = len(to_create) + len(to_update)
+                # 추가(append) — 형제 흡수 후 기존 뒤에 연속 번호로 이어붙여 세트를 채운다.
+                packing.absorb_siblings(unit_obj, siblings)
+                start = packing._max_index(unit_obj) + 1
+                WritingProblem.objects.bulk_create([
+                    WritingProblem(unit=unit_obj, index=start + i, korean=kor, english=eng)
+                    for i, (_, _, kor, eng) in enumerate(parsed)])
+                n = len(parsed)
             else:
-                # 삭제 후 새로(replace)
+                # 교체(replace) — 형제 참조 이전 후 삭제, 본 단원 비우고 1..N 새로.
+                for sib in siblings:
+                    packing._move_refs(unit_obj, sib)
+                    sib.delete()
                 WritingProblem.objects.filter(unit=unit_obj).delete()
                 WritingProblem.objects.bulk_create([
-                    WritingProblem(unit=unit_obj, index=p['index'], korean=p['korean'], english=p['english']) for p in parsed])
+                    WritingProblem(unit=unit_obj, index=i, korean=kor, english=eng)
+                    for i, (_, _, kor, eng) in enumerate(parsed, start=1)])
                 n = len(parsed)
+            created_units.append(unit_obj)
             created_total += n
             results.append({'unit_id': unit_obj.id, 'unit': unit_name, 'title': title, 'created': n})
 
@@ -283,12 +290,13 @@ def demo_login(request):
 # 학생 화면들
 # ─────────────────────────────────────────────
 
-# 시험은 20문제 단위 청크로 끊어 본다 (긴문장 분할 후 문항이 늘어나므로).
-CHUNK_SIZE = 20
+# 시험은 한 세트 15문제 단위 청크로 끊어 본다 (긴문장 분할 후 문항이 늘어나므로).
+# 단원 통합/패킹 기준(services.packing.SET_SIZE)과 동일하게 맞춘다.
+from .services.packing import SET_SIZE as CHUNK_SIZE
 
 
 def _chunks_from_indices(idxs):
-    """정렬된 문항 index 리스트 → 20개 단위 청크 메타 [{num, start, end, count}]."""
+    """정렬된 문항 index 리스트 → 한 세트(15) 단위 청크 메타 [{num, start, end, count}]."""
     chunks = []
     for i in range(0, len(idxs), CHUNK_SIZE):
         seg = idxs[i:i + CHUNK_SIZE]
