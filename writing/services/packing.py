@@ -33,12 +33,13 @@ def set_size_for(grade):
     return SET_SIZE_HIGH if str(grade or '').startswith('고') else SET_SIZE_DEFAULT
 
 
-# 단원명 끝의 분할 접미사 ' (2/2)' 형태. 'part1' 등 다른 표기는 건드리지 않는다.
-_SPLIT_RE = re.compile(r'\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)\s*$')
+# 단원명 끝의 분할 접미사 — ' (2/2)'(부분/전체) 또는 ' (2)'(단일 번호) 형태.
+# 'part1', '(시험범위)' 처럼 숫자가 아닌 괄호나 끝나지 않는 괄호는 건드리지 않는다.
+_SPLIT_RE = re.compile(r'\s*\(\s*(\d+)\s*(?:/\s*\d+\s*)?\)\s*$')
 
 
 def base_title(title):
-    """'동백고2 ... 통합 (2/2)' → ('동백고2 ... 통합', 2). 접미사 없으면 (title, 1)."""
+    """'... 통합 (2/2)' / '...(시험범위) (2)' → (base, 부분번호). 접미사 없으면 (title, 1)."""
     t = (title or '').strip()
     m = _SPLIT_RE.search(t)
     if not m:
