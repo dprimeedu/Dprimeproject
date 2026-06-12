@@ -27,6 +27,14 @@
 .lm-chip.still .num { background: #f59e0b; color: #fff; }
 .lm-chip.known { color: #15803d; border-color: #86efac; background: #f0fdf4; }
 .lm-chip.known .num { background: #16a34a; color: #fff; }
+.lm-chip.clickable { cursor: pointer; transition: .15s; }
+.lm-chip.clickable:hover { transform: translateY(-1px); box-shadow: 0 2px 7px rgba(0,0,0,.12); }
+.lm-chip.clickable:active { transform: translateY(0); }
+.lm-chip.dim { opacity: .45; cursor: default; box-shadow: none; transform: none; }
+/* 분류 다시보기 배너 */
+.fc-review-banner { display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+    background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; border-radius: 12px;
+    padding: .5rem .5rem .5rem .95rem; margin-bottom: .75rem; font-weight: 600; }
 
 .fc-card-container { perspective: 1500px; margin: 0.75rem 0 1.25rem; }
 .fc-card {
@@ -115,10 +123,20 @@
         </div>
     </div>
 
-    <!-- 학습 현황 칩 (관리 모드에서만) -->
+    <!-- 학습 현황 칩 (관리 모드에서만) — 클릭하면 그 분류 단어만 모아 보기 -->
     <div class="lm-status" id="lmStatus" style="display:none;">
-        <span class="lm-chip still"><span class="num" id="lmStill">0</span> 학습 중</span>
-        <span class="lm-chip known">알고 있음 <span class="num" id="lmKnown">0</span></span>
+        <span class="lm-chip still clickable" id="chipStill" onclick="enterReview('still')" title="학습 중 단어만 모아 보기">
+            <span class="num" id="lmStill">0</span> 학습 중 <i class="fas fa-eye" style="font-size:.8rem;opacity:.55;"></i>
+        </span>
+        <span class="lm-chip known clickable" id="chipKnown" onclick="enterReview('known')" title="알고 있음 단어만 모아 보기">
+            알고 있음 <span class="num" id="lmKnown">0</span> <i class="fas fa-eye" style="font-size:.8rem;opacity:.55;"></i>
+        </span>
+    </div>
+
+    <!-- 분류 다시보기 배너 (학습 중/알고 있음 칩을 눌렀을 때) -->
+    <div class="fc-review-banner" id="reviewBanner" style="display:none;">
+        <span id="reviewBannerText">다시 보기</span>
+        <button class="btn btn-sm btn-primary" onclick="exitReview()"><i class="fas fa-arrow-left me-1"></i>분류로 돌아가기</button>
     </div>
 
     <div id="fcMain">
@@ -242,6 +260,10 @@ let still = [];                // 이번 라운드 '모름'으로 분류한 id
 let history = [];              // 되돌리기용: [{pos, knowIt}]
 let finished = false;
 
+// 분류 다시보기: 'still'(학습 중) | 'known'(알고 있음) | null. 메인 분류 상태는 savedRound에 보관.
+let reviewBucket = null;
+let savedRound = null;
+
 const $ = id => document.getElementById(id);
 
 function baseCards() {
@@ -259,6 +281,7 @@ function shuffleArray(a) {
 }
 
 function startRound(cards) {
+    reviewBucket = null; savedRound = null;   // 새 라운드면 다시보기 종료
     pool = cards.slice();
     if (autoShuffle) shuffleArray(pool);
     pos = 0; known = []; still = []; history = []; finished = false;
@@ -276,10 +299,26 @@ function setScreen(name) {
     $('lmStatus').style.display = (manageMode && name === 'card') ? '' : 'none';
 }
 
+function updateControls() {
+    // 다시보기 중에는 분류 버튼 대신 둘러보기(이전/다음)만, 배너 표시.
+    const review = !!reviewBucket;
+    $('reviewBanner').style.display = review ? '' : 'none';
+    $('lmSwitch').style.display = review ? 'none' : '';
+    $('browseControls').style.display = (review || !manageMode) ? '' : 'none';
+    $('manageControls').style.display = (!review && manageMode) ? '' : 'none';
+    $('lmUndo').style.display = review ? 'none' : '';
+    $('lmShuffle').style.display = review ? 'none' : '';
+}
+
 function render() {
     $('fcTotal').textContent = pool.length;
-    $('lmStill').textContent = still.length;
-    $('lmKnown').textContent = known.length;
+    // 칩은 항상 메인 분류 개수를 보여준다 (다시보기 중에도 동일).
+    const mainStill = reviewBucket ? savedRound.still.length : still.length;
+    const mainKnown = reviewBucket ? savedRound.known.length : known.length;
+    $('lmStill').textContent = mainStill;
+    $('lmKnown').textContent = mainKnown;
+    $('chipStill').classList.toggle('dim', mainStill === 0);
+    $('chipKnown').classList.toggle('dim', mainKnown === 0);
     $('lmUndo').disabled = history.length === 0;
 
     if (pool.length === 0) {
@@ -295,7 +334,7 @@ function render() {
         setScreen('empty'); return;
     }
 
-    if (manageMode && finished) {
+    if (manageMode && finished && !reviewBucket) {
         if (still.length === 0) {
             setScreen('allDone');
             celebrate();
@@ -309,6 +348,7 @@ function render() {
     }
 
     setScreen('card');
+    updateControls();
 
     const c = pool[pos];
     if (!dirReversed) {
@@ -343,11 +383,44 @@ function flipCard() {
     if (pool.length === 0 || finished) return;
     $('fcCard').classList.toggle('flipped');
 }
-function nextCard() { if (!manageMode && pos < pool.length - 1) { pos++; render(); } }
-function prevCard() { if (!manageMode && pos > 0) { pos--; render(); } }
+function nextCard() {
+    if (reviewBucket) { if (pos < pool.length - 1) { pos++; render(); } return; }
+    if (!manageMode && pos < pool.length - 1) { pos++; render(); }
+}
+function prevCard() {
+    if (reviewBucket) { if (pos > 0) { pos--; render(); } return; }
+    if (!manageMode && pos > 0) { pos--; render(); }
+}
+
+// 학습 중/알고 있음 칩 → 그 분류 단어만 모아 다시 보기 (메인 분류 상태는 보존)
+function enterReview(which) {
+    const ids = which === 'still' ? still : known;
+    if (!ids.length) return;
+    if (!reviewBucket) {   // 메인 분류 상태 저장 (최초 진입 시 1회)
+        savedRound = { pool, pos, known, still, history, finished };
+    }
+    reviewBucket = which;
+    pool = ids.map(id => CARD_BY_ID[id]);
+    pos = 0;
+    finished = false;
+    const label = which === 'still' ? '학습 중' : '알고 있음';
+    $('reviewBannerText').innerHTML =
+        '<i class="fas fa-eye me-1"></i><b>' + label + '</b> 단어 ' + ids.length + '개 다시 보기';
+    render();
+}
+function exitReview() {
+    if (savedRound) {
+        pool = savedRound.pool; pos = savedRound.pos;
+        known = savedRound.known; still = savedRound.still;
+        history = savedRound.history; finished = savedRound.finished;
+    }
+    reviewBucket = null; savedRound = null;
+    render();
+}
 
 // 분류 학습: 알아요(→) / 모름(←)
 function mark(knowIt) {
+    if (reviewBucket) return;
     if (!manageMode || finished || pool.length === 0) return;
     const c = pool[pos];
     // 학습 중(모름)으로 넘기면 자동 별표 — 이미 별표면 그대로 둠
@@ -510,9 +583,11 @@ document.addEventListener('keydown', e => {
     if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault(); flipCard();
     } else if (e.key === 'ArrowRight') {
-        if (manageMode) mark(true); else nextCard();
+        if (reviewBucket) nextCard(); else if (manageMode) mark(true); else nextCard();
     } else if (e.key === 'ArrowLeft') {
-        if (manageMode) mark(false); else prevCard();
+        if (reviewBucket) prevCard(); else if (manageMode) mark(false); else prevCard();
+    } else if (e.key === 'Escape') {
+        if (reviewBucket) exitReview();
     } else if (e.key === 's' || e.key === 'S') {
         toggleStar();
     }
@@ -536,7 +611,8 @@ document.addEventListener('keydown', e => {
         swiped = true;
         if (Math.abs(dx) > Math.abs(dy)) {
             // 좌우 스와이프
-            if (manageMode) { if (dx > 0) mark(true); else mark(false); }
+            if (reviewBucket) { if (dx < 0) nextCard(); else prevCard(); }
+            else if (manageMode) { if (dx > 0) mark(true); else mark(false); }
             else { if (dx < 0) nextCard(); else prevCard(); }
         } else { flipCard(); }
     }, { passive: true });
