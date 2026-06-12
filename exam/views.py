@@ -148,8 +148,7 @@ def session_view(request, session_id):
         return redirect('exam:result', session_id=session.id)
 
     questions = session.paper.get_questions()  # 정답(answer)은 템플릿에 안 보냄
-    q_view = [{'number': q['number'], 'qtype': q['qtype'], 'passage': q['passage'],
-               'question': q['question'], 'choices': q['choices']} for q in questions]
+    q_view = [{'number': q['number'], 'qtype': q['qtype']} for q in questions]
     return render(request, 'exam/session.html', {
         'session': session,
         'questions': q_view,
