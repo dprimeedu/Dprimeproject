@@ -290,19 +290,18 @@ def demo_login(request):
 # 학생 화면들
 # ─────────────────────────────────────────────
 
-# 시험은 한 세트 15문제 단위 청크로 끊어 본다 (긴문장 분할 후 문항이 늘어나므로).
-# 단원 통합/패킹 기준(services.packing.SET_SIZE)과 동일하게 맞춘다.
-from .services.packing import SET_SIZE as CHUNK_SIZE
+# 시험 청크(한 세트) 크기는 학년별로 다름 — 고등 15 / 그 외 20 (services.packing.set_size_for).
+from .services import packing
 
 
-def _chunks_from_indices(idxs):
-    """정렬된 문항 index 리스트 → 한 세트(15) 단위 청크 메타 [{num, start, end, count}]."""
+def _chunks_from_indices(idxs, size):
+    """정렬된 문항 index 리스트 → size 단위 청크 메타 [{num, start, end, count}]."""
     chunks = []
-    for i in range(0, len(idxs), CHUNK_SIZE):
-        seg = idxs[i:i + CHUNK_SIZE]
+    for i in range(0, len(idxs), size):
+        seg = idxs[i:i + size]
         if not seg:
             continue
-        chunks.append({'num': i // CHUNK_SIZE + 1,
+        chunks.append({'num': i // size + 1,
                        'start': seg[0], 'end': seg[-1], 'count': len(seg)})
     return chunks
 
@@ -375,6 +374,7 @@ def student_home(request):
     for unit in units:
         last = last_map.get(unit.id)
         u_level = level_map.get(unit.id, 1)
+        size = packing.set_size_for(unit.grade)   # 고등 15 / 그 외 20
         unit_info.append({
             'unit': unit,
             'attempts_count': count_map.get(unit.id, 0),
@@ -382,7 +382,8 @@ def student_home(request):
             'last_started': last.started_at if last else None,
             'unit_level': u_level,
             'level_info': level_service.level_summary(u_level),
-            'chunks': _chunks_from_indices(idx_map.get(unit.id, [])),
+            'set_size': size,
+            'chunks': _chunks_from_indices(idx_map.get(unit.id, []), size),
         })
 
     # 학생 화면만 Lv 오름차순 정렬 (약한 단원 위로 — 우선 학습 유도).
@@ -437,16 +438,17 @@ def start_session(request, unit_id):
         return redirect('writing:home')
 
     view_mode = request.GET.get('view') == '1'
-    # chunk=N 이면 그 20문제 범위만, 없으면 단원 전체
+    # chunk=N 이면 그 세트 범위만(고등 15 / 그 외 20), 없으면 단원 전체
     start_i = end_i = None
     chunk = request.GET.get('chunk')
     if chunk:
+        size = packing.set_size_for(unit.grade)
         idxs = list(unit.problems.order_by('index').values_list('index', flat=True))
         try:
             c = int(chunk)
         except (TypeError, ValueError):
             c = 1
-        seg = idxs[(c - 1) * CHUNK_SIZE: c * CHUNK_SIZE]
+        seg = idxs[(c - 1) * size: c * size]
         if not seg:
             messages.error(request, '해당 시험 범위가 없습니다.')
             return redirect('writing:home')

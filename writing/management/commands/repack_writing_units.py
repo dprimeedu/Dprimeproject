@@ -39,12 +39,13 @@ class Command(BaseCommand):
             parts = sorted(units, key=lambda u: (packing.base_title(u.title)[1], u.id))
             counts = {u.title: WritingProblem.objects.filter(unit=u).count() for u in parts}
             total = sum(counts.values())
-            sets = (total + packing.SET_SIZE - 1) // packing.SET_SIZE
+            size = packing.set_size_for(parts[0].grade)   # 고등 15 / 그 외 20
+            sets = (total + size - 1) // size
             detail = ', '.join(f'"{t}"={c}' for t, c in counts.items())
-            self.stdout.write(f'\n· {base}')
+            self.stdout.write(f'\n· {base}  (세트 {size}문제)')
             self.stdout.write(f'    {detail}')
-            self.stdout.write(f'    → 합계 {total}문제 = {packing.SET_SIZE}개 세트 {sets}개'
-                              + (f' (마지막 {total - (sets-1)*packing.SET_SIZE}개)' if total else ''))
+            self.stdout.write(f'    → 합계 {total}문제 = {size}개 세트 {sets}개'
+                              + (f' (마지막 {total - (sets-1)*size}개)' if total else ''))
 
             if not dry:
                 target, merged = packing.consolidate_title(base)

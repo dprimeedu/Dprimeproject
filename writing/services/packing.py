@@ -21,7 +21,17 @@ from ..models import (
     WritingUnit, WritingProblem, UnitAssignment, WritingSession, StudentUnitLevel,
 )
 
-SET_SIZE = 15
+# 한 세트(실전 TEST 청크) 문제 수 — 학년별로 다름.
+# 고등은 긴 문장을 절 단위로 쪼개 문항이 많아지므로 15, 그 외(중·초·기타)는 20.
+SET_SIZE_HIGH = 15
+SET_SIZE_DEFAULT = 20
+SET_SIZE = SET_SIZE_DEFAULT   # 학년 모를 때 기본값(하위호환)
+
+
+def set_size_for(grade):
+    """학년 → 한 세트 문제 수. '고1/고2/고3' → 15, 그 외 → 20."""
+    return SET_SIZE_HIGH if str(grade or '').startswith('고') else SET_SIZE_DEFAULT
+
 
 # 단원명 끝의 분할 접미사 ' (2/2)' 형태. 'part1' 등 다른 표기는 건드리지 않는다.
 _SPLIT_RE = re.compile(r'\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)\s*$')
