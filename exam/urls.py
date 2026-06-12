@@ -14,6 +14,7 @@ urlpatterns = [
     path('result/<int:session_id>/', views.result_view, name='result'),
 
     # 학생 — AJAX
+    path('api/save/', views.save_progress_api, name='save_progress'),
     path('api/submit/', views.submit_session_api, name='submit'),
 
     # 선생님 / 관리자

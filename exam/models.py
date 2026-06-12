@@ -33,6 +33,8 @@ class ExamPaper(models.Model):
 
     # 시험일 — 응시 화면에서 'D-day / 남은 수업' 계산용 (선택)
     exam_date = models.DateField('시험일', null=True, blank=True)
+    # 하루 목표 문항 수 — 제출 확인창에 '오늘 목표 N 중 M 제출' (0이면 전체 기준)
+    daily_goal = models.IntegerField('하루 목표 문항', default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -156,6 +158,11 @@ class ExamSession(models.Model):
     correct_count = models.IntegerField(default=0, verbose_name='맞은 개수')
     total_questions = models.IntegerField(default=0, verbose_name='전체 문항 수')
 
+    # 회차: 1=1차 채점 완료, 2=틀린문제 재시험(2차)까지 완료
+    round = models.IntegerField('회차', default=1)
+    round2_at = models.DateTimeField('2차 제출 시각', null=True, blank=True)
+    correct_count2 = models.IntegerField('2차 맞은 개수', default=0)
+
     graded_at = models.DateTimeField(null=True, blank=True)
     graded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
@@ -192,6 +199,11 @@ class ExamAnswer(models.Model):
     student_choice = models.CharField(max_length=50, blank=True, default='', verbose_name='학생 답')
     correct_answer = models.CharField(max_length=255, blank=True, default='', verbose_name='정답(스냅샷)')
     is_correct = models.BooleanField(default=False, verbose_name='정답 여부')
+    # 학생이 '오류 문제'로 X 표시 → 채점 제외 + 다음 풀이에서 숨김
+    flagged = models.BooleanField('오류표시', default=False)
+    # 2차(틀린문제 재시험) 응답
+    second_choice = models.CharField('2차 학생 답', max_length=50, blank=True, default='')
+    is_correct2 = models.BooleanField('2차 정답 여부', default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

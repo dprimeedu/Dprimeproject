@@ -1,67 +1,69 @@
 {% extends 'base.html' %}
 {% block content %}
 <style>
-.exam-grid {
-    display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px 8px;
-    margin-bottom: 1rem;
-}
+.exam-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px 8px; margin-bottom: 1rem; }
 @media (max-width: 992px) { .exam-grid { grid-template-columns: repeat(8, 1fr); } }
 @media (max-width: 768px) { .exam-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (max-width: 420px) { .exam-grid { grid-template-columns: repeat(4, 1fr); } }
+.exam-grid.hide-done .exam-cell.is-done { display: none; }
 
 .exam-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.exam-cell .qnum { font-size: .8rem; font-weight: 700; color: #475569; }
+.exam-cell .qnum { font-size: .78rem; font-weight: 700; color: #475569; }
+.cellrow { display: flex; align-items: center; gap: 3px; }
 .exam-input {
-    width: 100%; max-width: 66px; height: 44px; text-align: center;
-    font-size: 1.4rem; font-weight: 700; color: #1e293b; background: #fff;
-    border: 2px solid #cbd5e1; border-radius: 8px; -moz-appearance: textfield;
+    width: 46px; height: 44px; text-align: center; font-size: 1.35rem; font-weight: 700;
+    color: #1e293b; background: #fff; border: 2px solid #cbd5e1; border-radius: 8px; -moz-appearance: textfield;
 }
 .exam-input:focus { outline: none; border-color: #6d28d9; box-shadow: 0 0 0 3px rgba(109,40,217,.18); }
 .exam-input.filled { border-color: #16a34a; background: #f0fdf4; color: #15803d; }
+.exam-input:disabled { background: #fef2f2; border-color: #fecaca; color: #ef4444; }
+.xbtn { width: 22px; height: 28px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff;
+    color: #cbd5e1; font-size: .8rem; line-height: 1; cursor: pointer; padding: 0; }
+.xbtn:hover { color: #ef4444; border-color: #fecaca; }
+.xbtn.on { background: #ef4444; color: #fff; border-color: #ef4444; }
 
-.exam-hint { background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; border-radius:10px;
-    padding:.5rem .85rem; font-size:.9rem; }
-/* 항상 화면에 고정되는 하단 제출/진행 바 */
-.exam-footer {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030;
-    background: rgba(255,255,255,.97); backdrop-filter: blur(6px);
-    border-top: 1px solid #e5e7eb; box-shadow: 0 -2px 10px rgba(0,0,0,.06);
-}
-.exam-footer .inner {
-    max-width: 880px; margin: 0 auto; padding: 10px 14px;
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-}
-.exam-stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: .92rem; color: #334155; }
-.exam-stats b { color: #111827; }
-.exam-stats .left b { color: #b45309; }
-.exam-stats .goal b { color: #6d28d9; }
-.exam-footer .btn { margin-left: auto; }
+.exam-hint { background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; border-radius:10px; padding:.5rem .85rem; font-size:.9rem; }
+.exam-footer { position: fixed; left:0; right:0; bottom:0; z-index:1030;
+    background: rgba(255,255,255,.97); backdrop-filter: blur(6px); border-top:1px solid #e5e7eb; box-shadow:0 -2px 10px rgba(0,0,0,.06); }
+.exam-footer .inner { max-width: 880px; margin:0 auto; padding:10px 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.exam-stats { display:flex; gap:14px; flex-wrap:wrap; font-size:.92rem; color:#334155; }
+.exam-stats b { color:#111827; } .exam-stats .left b { color:#b45309; } .exam-stats .flag b { color:#ef4444; }
+.exam-stats .goal b { color:#6d28d9; }
+.exam-footer .btn-submit { margin-left:auto; }
 </style>
 <div class="home-wrap" style="max-width:880px; padding-bottom: 84px;">
     {% csrf_token %}
     <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h3 class="mb-0"><i class="fas fa-file-alt me-2"></i>{{ session.title }}</h3>
-            <p class="section-desc mb-0">번호별로 답(1~5)을 입력하세요.</p>
+            <p class="section-desc mb-0">번호별로 답(1~5)을 입력하세요. 오류 문제는 ✕로 표시하면 채점에서 빠집니다.</p>
         </div>
         <span class="badge bg-secondary fs-6" id="answeredBadge">0 / {{ total_questions }}</span>
     </div>
 
-    <div class="exam-hint mb-3">
-        <i class="fas fa-keyboard me-1"></i>숫자(1~5)를 입력하면 <b>자동으로 다음 칸</b>으로 넘어갑니다.
-        Enter·Tab·↑·↓ 로도 이동, 모바일은 칸을 눌러 숫자 키패드로 입력하세요.
+    <div class="exam-hint mb-2">
+        <i class="fas fa-keyboard me-1"></i>숫자(1~5) 입력 시 <b>자동으로 다음 칸</b>으로. Enter·Tab·↑·↓ 이동.
+        입력은 <b>자동 저장</b>되어, 다시 들어오면 이어서 풀 수 있어요.
     </div>
 
-    <div class="exam-grid" id="questionGrid">
+    <div class="mb-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleDone">
+            <i class="fas fa-eye me-1"></i>이미 입력한 <b id="doneCnt">{{ done_count }}</b>개 보기/숨기기
+        </button>
+    </div>
+
+    <div class="exam-grid hide-done" id="questionGrid">
         {% for q in questions %}
-        <div class="exam-cell" data-number="{{ q.number }}">
+        <div class="exam-cell{% if q.answered %} is-done{% endif %}{% if q.flagged %} is-flagged{% endif %}" data-number="{{ q.number }}">
             <span class="qnum">{{ q.number }}</span>
-            <input type="text" class="exam-input" inputmode="numeric" maxlength="1"
-                   autocomplete="off" aria-label="{{ q.number }}번 답 (1~5)">
+            <div class="cellrow">
+                <input type="text" class="exam-input{% if q.choice %} filled{% endif %}" inputmode="numeric" maxlength="1"
+                       value="{{ q.choice }}" autocomplete="off" {% if q.flagged %}disabled{% endif %} aria-label="{{ q.number }}번 답">
+                <button type="button" class="xbtn{% if q.flagged %} on{% endif %}" title="오류 문제 — 채점 제외">✕</button>
+            </div>
         </div>
         {% endfor %}
     </div>
-
 </div>
 
 <div class="exam-footer">
@@ -69,102 +71,124 @@
         <div class="exam-stats">
             <span class="done">입력 <b id="cntDone">0</b></span>
             <span class="left">남은 <b id="cntLeft">{{ total_questions }}</b></span>
-            <span>전체 <b>{{ total_questions }}</b></span>
-            {% if exam_date %}
-            <span class="exam-date">📅 시험 {{ exam_date|date:'n/j' }}{% if dday >= 0 %} · D-{{ dday }}{% endif %}</span>
-            {% endif %}
-            {% if classes_left != None %}
-            <span class="goal">📚 남은 수업 <b>{{ classes_left }}</b>번</span>
-            {% endif %}
+            <span class="flag">오류 <b id="cntFlag">0</b></span>
+            {% if daily_goal %}<span class="goal">오늘 목표 <b>{{ daily_goal }}</b></span>{% endif %}
+            {% if exam_date %}<span>📅 시험 {{ exam_date|date:'n/j' }}{% if dday >= 0 %} · D-{{ dday }}{% endif %}</span>{% endif %}
+            {% if classes_left != None %}<span class="goal">📚 남은 수업 <b>{{ classes_left }}</b>번</span>{% endif %}
         </div>
-        <button id="submitBtn" class="btn btn-success"><i class="fas fa-paper-plane me-1"></i>제출하고 채점</button>
+        <button id="submitBtn" class="btn btn-success btn-submit"><i class="fas fa-paper-plane me-1"></i>제출하고 채점</button>
     </div>
 </div>
 
 <script>
 (function () {
     const SESSION_ID = {{ session.id }};
+    const SAVE_URL = '{% url "exam:save_progress" %}';
     const SUBMIT_URL = '{% url "exam:submit" %}';
     const TOTAL = {{ total_questions }};
+    const GOAL = {{ daily_goal|default:0 }};
     const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-    const answers = {};
 
+    const grid = document.getElementById('questionGrid');
     const cells = Array.from(document.querySelectorAll('.exam-cell'));
     const inputs = cells.map(c => c.querySelector('.exam-input'));
+    const answers = {};           // 번호 -> 답 (오류표시 아닌 것만)
+    const flaggedSet = new Set();
 
-    function setAnswer(cell, val) {
-        answers[cell.dataset.number] = val;
-        const inp = cell.querySelector('.exam-input');
-        inp.value = val;
-        inp.classList.add('filled');
-        updateBadge();
-    }
-    function clearAnswer(cell) {
-        delete answers[cell.dataset.number];
-        const inp = cell.querySelector('.exam-input');
-        inp.value = '';
-        inp.classList.remove('filled');
-        updateBadge();
+    // 서버에서 이어받은 값으로 초기화
+    cells.forEach(function (cell) {
+        const num = cell.dataset.number;
+        if (cell.classList.contains('is-flagged')) flaggedSet.add(num);
+        else { const inp = cell.querySelector('.exam-input'); if (inp.value) answers[num] = inp.value; }
+    });
+
+    function save(number, choice, flagged) {
+        fetch(SAVE_URL, {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+            body: JSON.stringify({session_id: SESSION_ID, number: Number(number), choice: choice, flagged: flagged})
+        }).catch(function () {});
     }
 
-    function focusInput(i, scroll) {
-        if (i < 0 || i >= inputs.length) return;
-        const el = inputs[i];
-        el.focus();
-        el.select();
-        if (scroll) el.scrollIntoView({ block: 'nearest' });
+    function focusFrom(i, dir) {
+        for (let j = i + dir; j >= 0 && j < inputs.length; j += dir) {
+            const el = inputs[j];
+            if (el.offsetParent !== null && !el.disabled) { el.focus(); el.select(); el.scrollIntoView({block: 'nearest'}); return; }
+        }
     }
 
     cells.forEach(function (cell, idx) {
+        const num = cell.dataset.number;
         const inp = inputs[idx];
-        // 숫자(1~5) 입력 → 답 기록 + 자동으로 다음 칸
+        const xbtn = cell.querySelector('.xbtn');
+
         inp.addEventListener('input', function () {
             const v = (inp.value.match(/[1-5]/g) || []).pop() || '';
-            if (v) { setAnswer(cell, v); focusInput(idx + 1, true); }
-            else { clearAnswer(cell); }
+            inp.value = v;
+            if (v) { answers[num] = v; inp.classList.add('filled'); save(num, v, false); updateBadge(); focusFrom(idx, +1); }
+            else { delete answers[num]; inp.classList.remove('filled'); save(num, '', false); updateBadge(); }
         });
         inp.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); focusInput(idx + 1, true); }
-            else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); focusInput(idx - 1, true); }
-            else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); focusInput(idx + 1, true); }
-            else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); focusInput(idx - 1, true); }
-            else if (e.key === 'Backspace' && !inp.value) { e.preventDefault(); focusInput(idx - 1, true); }
+            if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) { e.preventDefault(); focusFrom(idx, +1); }
+            else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); focusFrom(idx, -1); }
+            else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); focusFrom(idx, +1); }
+            else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); focusFrom(idx, -1); }
+            else if (e.key === 'Backspace' && !inp.value) { e.preventDefault(); focusFrom(idx, -1); }
         });
-        // 빈 칸 클릭 시 바로 입력 가능하게 포커스
         inp.addEventListener('focus', function () { inp.select(); });
+
+        xbtn.addEventListener('click', function () {
+            const on = !cell.classList.contains('is-flagged');
+            cell.classList.toggle('is-flagged', on);
+            xbtn.classList.toggle('on', on);
+            inp.disabled = on;
+            if (on) { flaggedSet.add(num); delete answers[num]; inp.value = ''; inp.classList.remove('filled'); save(num, '', true); }
+            else { flaggedSet.delete(num); save(num, '', false); }
+            updateBadge();
+        });
     });
 
     function updateBadge() {
-        const n = Object.keys(answers).length;
-        document.getElementById('answeredBadge').textContent = n + ' / ' + TOTAL;
-        document.getElementById('cntDone').textContent = n;
-        document.getElementById('cntLeft').textContent = (TOTAL - n);
+        const done = Object.keys(answers).length;
+        const flag = flaggedSet.size;
+        const left = Math.max(0, TOTAL - done - flag);
+        document.getElementById('answeredBadge').textContent = done + ' / ' + TOTAL;
+        document.getElementById('cntDone').textContent = done;
+        document.getElementById('cntLeft').textContent = left;
+        document.getElementById('cntFlag').textContent = flag;
     }
+    updateBadge();
 
-    if (inputs.length) inputs[0].focus();
+    document.getElementById('toggleDone').addEventListener('click', function () {
+        grid.classList.toggle('hide-done');
+    });
+
+    // 첫 미입력 칸 포커스
+    (function () {
+        for (let j = 0; j < inputs.length; j++) {
+            if (inputs[j].offsetParent !== null && !inputs[j].disabled) { inputs[j].focus(); break; }
+        }
+    })();
 
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.addEventListener('click', function () {
-        const unanswered = TOTAL - Object.keys(answers).length;
-        let msg = '제출하면 즉시 채점됩니다. 제출할까요?';
-        if (unanswered > 0) msg = '아직 ' + unanswered + '문항이 비어 있습니다. 그래도 제출할까요?';
+        const done = Object.keys(answers).length;
+        const flag = flaggedSet.size;
+        const target = GOAL > 0 ? GOAL : TOTAL;
+        let msg = '오늘 목표 ' + target + '개 중 ' + done + '개 입력' + (flag ? ' (오류 ' + flag + '개 제외)' : '') + '.\n제출하면 채점됩니다. 제출할까요?';
         if (!confirm(msg)) return;
 
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>채점 중...';
         fetch(SUBMIT_URL, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
-            body: JSON.stringify({session_id: SESSION_ID, answers: answers})
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+            body: JSON.stringify({session_id: SESSION_ID, answers: answers, flagged: Array.from(flaggedSet)})
         })
         .then(r => r.json())
         .then(d => {
             if (d.success && d.redirect_url) { window.location.href = d.redirect_url; }
-            else { alert('제출 실패. 다시 시도해주세요.'); submitBtn.disabled = false;
-                   submitBtn.innerHTML = '제출하고 채점'; }
+            else { alert('제출 실패. 다시 시도해주세요.'); submitBtn.disabled = false; submitBtn.innerHTML = '제출하고 채점'; }
         })
-        .catch(() => { alert('네트워크 오류. 다시 시도해주세요.'); submitBtn.disabled = false;
-                       submitBtn.innerHTML = '제출하고 채점'; });
+        .catch(() => { alert('네트워크 오류. 다시 시도해주세요.'); submitBtn.disabled = false; submitBtn.innerHTML = '제출하고 채점'; });
     });
 })();
 </script>

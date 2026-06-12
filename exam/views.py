@@ -211,7 +211,19 @@ def session_view(request, session_id):
         return redirect('exam:result', session_id=session.id)
 
     questions = session.paper.get_questions()  # 정답(answer)은 템플릿에 안 보냄
-    q_view = [{'number': q['number'], 'qtype': q['qtype']} for q in questions]
+
+    # 진행 저장된 답/오류표시 로드 → 이어풀기(이미 입력/오류표시 문항은 숨김)
+    saved = {a.number: a for a in ExamAnswer.objects.filter(session=session)}
+    q_view, done_count = [], 0
+    for q in questions:
+        a = saved.get(q['number'])
+        choice = a.student_choice if a else ''
+        flagged = a.flagged if a else False
+        answered = bool(choice) or flagged
+        if answered:
+            done_count += 1
+        q_view.append({'number': q['number'], 'qtype': q['qtype'],
+                       'choice': choice, 'flagged': flagged, 'answered': answered})
 
     # 시험일 D-day + 남은 수업 수 (학생 출석요일 기준)
     today = timezone.now().date()
@@ -228,6 +240,8 @@ def session_view(request, session_id):
         'session': session,
         'questions': q_view,
         'total_questions': len(q_view),
+        'done_count': done_count,
+        'daily_goal': session.paper.daily_goal,
         'exam_date': exam_date,
         'dday': dday,
         'classes_left': classes_left,
@@ -248,12 +262,43 @@ def result_view(request, session_id):
 
 @login_required
 @require_POST
+def save_progress_api(request):
+    """응시 중 진행 저장(채점 안 함). body: {session_id, number, choice, flagged}.
+
+    한 문항 단위 upsert — 자동저장. 이어풀기/오류표시 보존용.
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        session_id = int(data['session_id'])
+        number = int(data['number'])
+        choice = ('' if data.get('choice') is None else str(data.get('choice'))).strip()
+        flagged = bool(data.get('flagged'))
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+
+    session = get_object_or_404(
+        ExamSession, pk=session_id, student=request.user,
+        status=ExamSession.STATUS_IN_PROGRESS,
+    )
+    ExamAnswer.objects.update_or_create(
+        session=session, number=number,
+        defaults={'student_choice': choice, 'flagged': flagged},
+    )
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
 def submit_session_api(request):
-    """세션 제출 → 즉시 자동 채점. body: {session_id, answers: {번호: 학생답}}."""
+    """세션 1차 제출 → 즉시 자동 채점. body: {session_id, answers:{번호:답}, flagged:[번호]}.
+
+    오류표시(flagged) 문항은 채점에서 제외(전체 문항 수에서도 빠짐).
+    """
     try:
         data = json.loads(request.body or '{}')
         session_id = int(data['session_id'])
         raw_answers = data.get('answers') or {}
+        flagged_raw = data.get('flagged') or []
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return HttpResponseBadRequest('Invalid')
 
@@ -268,29 +313,40 @@ def submit_session_api(request):
             choice_by_number[int(k)] = ('' if v is None else str(v)).strip()
         except (ValueError, TypeError):
             continue
+    flagged_set = set()
+    for k in flagged_raw:
+        try:
+            flagged_set.add(int(k))
+        except (ValueError, TypeError):
+            continue
 
     questions = session.paper.get_questions()
-    rows, correct = [], 0
+    rows, correct, graded_total = [], 0, 0
     for q in questions:
-        choice = choice_by_number.get(q['number'], '')
+        num = q['number']
+        is_flagged = num in flagged_set
+        choice = '' if is_flagged else choice_by_number.get(num, '')
         ans = q['answer']
-        ok = grade_answer(choice, ans)
-        if ok:
-            correct += 1
+        ok = (not is_flagged) and grade_answer(choice, ans)
+        if not is_flagged:
+            graded_total += 1
+            if ok:
+                correct += 1
         rows.append(ExamAnswer(
-            session=session, number=q['number'], qtype=q['qtype'],
-            student_choice=choice, correct_answer=ans, is_correct=ok,
+            session=session, number=num, qtype=q['qtype'],
+            student_choice=choice, correct_answer=ans, is_correct=ok, flagged=is_flagged,
         ))
 
     with transaction.atomic():
         session.answers.all().delete()
         ExamAnswer.objects.bulk_create(rows)
-        session.total_questions = len(rows)
+        session.total_questions = graded_total      # 오류표시 제외한 채점 대상 수
         session.correct_count = correct
         session.status = ExamSession.STATUS_GRADED
+        session.round = 1
         session.submitted_at = timezone.now()
         session.graded_at = timezone.now()
-        session.save(update_fields=['total_questions', 'correct_count', 'status',
+        session.save(update_fields=['total_questions', 'correct_count', 'status', 'round',
                                     'submitted_at', 'graded_at'])
 
     return JsonResponse({'success': True,
