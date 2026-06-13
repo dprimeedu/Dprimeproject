@@ -2,9 +2,42 @@
 {% load static %}
 {% block content %}
 <div class="container">
-    <div class="section" style="margin-top: 50px; margin-bottom: 100px; text-align: center;"><h1>
+    <div class="section" style="margin-top: 50px; margin-bottom: 40px; text-align: center;"><h1>
         선택한 문제 유형 : {{ selected_year|join:',' }} 년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월
     </h1></div>
+
+    <!-- 번호 선택 옵션 필터 폼 -->
+    <div class="container mb-5">
+        <form method="GET" action="{% url 'academy:academy_list_result' %}">
+            <!-- 기존에 선택된 학년/연도/월 값을 유지 -->
+            {% for y in selected_year %}
+            <input type="hidden" name="year" value="{{ y }}">
+            {% endfor %}
+            {% for g in selected_grade %}
+            <input type="hidden" name="grade" value="{{ g }}">
+            {% endfor %}
+            {% for m in selected_month %}
+            <input type="hidden" name="month" value="{{ m }}">
+            {% endfor %}
+            
+            <div class="card p-3 shadow-sm border-0 bg-light">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="m-0 fw-bold text-primary">번호 다중 선택</h5>
+                    <button type="submit" class="btn btn-primary btn-sm">선택한 번호만 필터 적용</button>
+                </div>
+                <div class="d-flex flex-wrap gap-3">
+                    {% for num in available_numbers %}
+                    <div class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" name="number" value="{{ num }}" id="num_{{ num }}" {% if num in selected_numbers %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold" style="cursor: pointer;" for="num_{{ num }}">{{ num }}</label>
+                    </div>
+                    {% empty %}
+                    <span class="text-muted small">해당 조건의 번호가 없습니다.</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </form>
+    </div>
 
     <div class="table-container" style="margin-bottom: 250px; text-align: center;">
         {% if exams %}
@@ -31,10 +64,10 @@
                         <td>{{ exam.question_counter }}</td>
                         <td>
                         {% if exam.question_counter > 0 or exam.link %}
-                        <a href="{% url 'academy:exam_list_result' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}&category={{ exam.category }}">PDF 문제</a>
+                        <a href="{% url 'academy:exam_list_result' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}&category={{ exam.category }}{% for n in selected_numbers %}&number={{ n }}{% endfor %}">문제</a>
                         {% if exam.category == '중요영작' %}
                         &nbsp;|&nbsp;
-                        <a href="{% url 'academy:translation_practice' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}" style="color:#007bff; font-weight:600;">영작 연습</a>
+                        <a href="{% url 'academy:translation_practice' %}?year={{ selected_year|join:',' }}&grade={{ selected_grade|join:',' }}&month={{ selected_month|join:',' }}{% for n in selected_numbers %}&number={{ n }}{% endfor %}" style="color:#007bff; font-weight:600;">영작 연습</a>
                         {% endif %}
                         {% else %}
                         -
