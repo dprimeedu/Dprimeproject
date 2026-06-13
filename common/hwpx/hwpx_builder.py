@@ -33,9 +33,9 @@ import re
 import zipfile
 
 # === 자동 주입용 스타일 정의 ===
-# header.xml 에 해당 ID 가 없을 때 주입한다. 참조하는 하위 ID
-# (fontRef=1, borderFillIDRef=2, tabPrIDRef=0 등)는 양식 header 에 이미 존재.
-# charPr 11/12/15/16/17 은 빌드 시 양식 charPr 8 에서 동적 파생 (_derive_charpr_styles)
+# charPr 11/12/15 는 빌드 시 양식의 charPr 8 에서 동적 파생한다 (_derive_charpr_from_base).
+# 양식의 fontRef·shadeColor 가 정확히 일치하여 글꼴 문제가 없다.
+# paraPr, borderFill 은 정적 정의를 사용한다.
 _STYLE_DEFS = {
     'paraPr13': ('<hh:paraPr id="13" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1" suppressLineNumbers="0" checked="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="3" offsetLeft="283" offsetRight="283" offsetTop="283" offsetBottom="283" connect="0" ignoreMargin="0"/></hh:paraPr>'),
     'paraPr14': ('<hh:paraPr id="14" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1" suppressLineNumbers="0" checked="0"><hh:align horizontal="JUSTIFY" vertical="BASELINE"/><hh:heading type="NONE" idRef="0" level="0"/><hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/><hh:autoSpacing eAsianEng="0" eAsianNum="0"/><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar"><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:case><hp:default><hh:margin><hc:intent value="0" unit="HWPUNIT"/><hc:left value="0" unit="HWPUNIT"/><hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/><hc:next value="0" unit="HWPUNIT"/></hh:margin><hh:lineSpacing type="PERCENT" value="150" unit="HWPUNIT"/></hp:default></hp:switch><hh:border borderFillIDRef="4" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/></hh:paraPr>'),
@@ -76,31 +76,28 @@ def _esc(text):
 # ---------------------------------------------------------------------------
 # 단락(문단) 생성기
 # ---------------------------------------------------------------------------
-# charPr → 밑줄 charPr 매핑
-# 한/글은 bold+underline 을 한 charPr 에 합치면 글꼴 폴백이 발생한다.
-# 따라서 밑줄 run 은 항상 charPr 15(밑줄만, bold 없음)를 사용한다.
-
-_UNDERLINE_MAP = {8: 15, 12: 16, 11: 17}
+# charPr → 밑줄 charPr 매핑. 밑줄 run 은 charPr 15 (밑줄만, bold 없음) 사용.
+_UNDERLINE_MAP = {8: 12, 12: 12, 11: 12}
 
 
 def _run(text, char_pr):
     """텍스트를 run 으로 만든다.
     U+FFF0 으로 감싸진 구간이 있으면 밑줄 run 으로 분리한다.
     예: "normal \ufff0underlined\ufff0 text"
-        → normal(charPr) + underlined(밑줄 charPr) + text(charPr)
+        → normal(charPr) + underlined(밑줄charPr) + text(charPr)
     """
     MARKER = "\ufff0"
     if MARKER not in text:
         return (f'<hp:run charPrIDRef="{char_pr}">'
                 f'<hp:t>{_esc(text)}</hp:t></hp:run>')
 
-    ul_pr = _UNDERLINE_MAP.get(char_pr, 15)   # 매핑 없으면 기본 밑줄
+    ul_pr = _UNDERLINE_MAP.get(char_pr, 12)
     parts = text.split(MARKER)
     runs = []
     for i, seg in enumerate(parts):
         if not seg:
             continue
-        cp = ul_pr if (i % 2 == 1) else char_pr   # 홀수 구간 = 밑줄
+        cp = ul_pr if (i % 2 == 1) else char_pr
         runs.append(f'<hp:run charPrIDRef="{cp}">'
                     f'<hp:t>{_esc(seg)}</hp:t></hp:run>')
     return "".join(runs)
@@ -228,7 +225,7 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     if q.get("date"):
         head_runs += _run(" " + q["date"], 11)       # 파랑 굵게
     if q.get("prompt"):
-        head_runs += _run(" " + q["prompt"], 12)      # 검정 굵게
+        head_runs += _run(" " + q["prompt"], 8)      # 검정 굵게
     parts.append(_para(head_runs, para_pr=1,
                        column_break=column_break))
 
@@ -292,14 +289,14 @@ def build_hwpx(template_path, output_path, header_text, questions,
         if _has_required(ref_header):
             header_xml = ref_header
 
-    # 항상 _inject_styles 실행: charPr 11/12/15/16/17 을 양식 charPr 8 에서
-    # 동적 파생하므로, 부족한 스타일이 있으면 어떤 경우든 보충된다.
+    # 항상 실행: charPr 11/12/15 를 양식 charPr 8 에서 동적 파생하므로
+    # 부족한 스타일이 있으면 어떤 경우든 보충된다.
     header_xml = _inject_styles(header_xml)
 
     if not ('charPr id="12"' in header_xml and 'paraPr id="13"' in header_xml):
         raise RuntimeError(
-            "필수 스타일(charPr 11/12, paraPr 13, borderFill 3)을 "
-            "header.xml 에 확보하지 못했습니다. reference_path 를 지정하세요.")
+            "필수 스타일(charPr 11/12/15, paraPr 13, borderFill 3)을 "
+            "header.xml 에 확보하지 못했습니다.")
 
     files["Contents/header.xml"] = header_xml.encode("utf-8")
 
@@ -315,7 +312,7 @@ def build_hwpx(template_path, output_path, header_text, questions,
     #      (b) lineseg(조판 캐시) 제거
     #    하여, charPr(글자모양)은 양식 그대로 두고도 정상 폭으로 나오게 한다.
     sec = _replace_header(sec, "[프라임에듀 머리말]",
-                          "[" + header_text + "]")
+                          header_text)
 
     # 입력 정규화 (dict / Django Model / 객체 혼용 허용)
     questions = [q if (isinstance(q, dict) and "choices" in q
@@ -390,16 +387,13 @@ def _replace_header(sec, old_text, new_text):
 
 def _derive_charpr_from_base(header_xml):
     """
-    양식 header 의 charPr 8(본문 기본) 을 읽어, 거기서 파생한
-    charPr 11/12/15/16/17 정의를 dict 로 돌려준다.
+    양식 header 의 charPr 8 을 읽어 파생 charPr 정의를 만든다.
     양식의 fontRef·shadeColor 등이 정확히 일치하여 글꼴 불일치가 없다.
 
     파생 규칙:
-      11 = 8 + bold + textColor 파랑(#0000FF)           (날짜)
-      12 = 8 + bold                                     (발문)
-      15 = 8 + underline BOTTOM                         (밑줄)
-      16 = 8 + bold + underline BOTTOM                  (굵게+밑줄)
-      17 = 8 + bold + textColor 파랑 + underline BOTTOM (날짜+밑줄)
+      11 = 8 + bold + textColor 파랑(#0000FF)   (날짜)
+      12 = 8 + bold                             (발문)
+      15 = 8 + underline BOTTOM (bold 제거)     (밑줄)
     """
     m = re.search(r'<hh:charPr id="8".*?</hh:charPr>', header_xml, re.S)
     if not m:
@@ -413,27 +407,25 @@ def _derive_charpr_from_base(header_xml):
             s = s.replace('textColor="#000000"', 'textColor="#0000FF"')
         if bold and '<hh:bold/>' not in s:
             s = s.replace('<hh:underline', '<hh:bold/><hh:underline')
+        elif not bold and '<hh:bold/>' in s:
+            s = s.replace('<hh:bold/>', '')
         if underline:
             s = s.replace('underline type="NONE"', 'underline type="BOTTOM"')
         return s
 
     defs['charPr11'] = make(11, bold=True, blue=True)
     defs['charPr12'] = make(12, bold=True)
-    defs['charPr15'] = make(15, underline=True)
-    defs['charPr16'] = make(16, bold=True, underline=True)
-    defs['charPr17'] = make(17, bold=True, blue=True, underline=True)
+    defs['charPr15'] = make(15, underline=True)   # 밑줄만, bold 제거
     return defs
 
 
 def _inject_styles(header_xml):
     """
     header.xml 에 필요한 스타일이 없으면 주입하고 itemCnt 를 갱신한다.
-    charPr 11/12/15/16/17 은 양식 charPr 8 에서 동적 파생한다(글꼴 일치 보장).
+    charPr 11/12/15 는 양식 charPr 8 에서 동적 파생한다(글꼴 일치 보장).
     paraPr, borderFill 은 _STYLE_DEFS 에서 가져온다.
     """
-    # charPr 을 charPr 8 에서 파생
     derived = _derive_charpr_from_base(header_xml)
-    # _STYLE_DEFS + derived 를 합친다
     all_defs = dict(_STYLE_DEFS)
     all_defs.update(derived)
 
@@ -441,8 +433,7 @@ def _inject_styles(header_xml):
         ("borderFills", "borderFill",
          [("borderFill3", "3"), ("borderFill4", "4")]),
         ("charProperties", "charPr",
-         [("charPr11", "11"), ("charPr12", "12"),
-          ("charPr15", "15"), ("charPr16", "16"), ("charPr17", "17")]),
+         [("charPr11", "11"), ("charPr12", "12"), ("charPr15", "15")]),
         ("paraProperties", "paraPr",
          [("paraPr13", "13"), ("paraPr14", "14")]),
     ]
@@ -463,6 +454,13 @@ def _inject_styles(header_xml):
                 added += 1
         if add_xml:
             header_xml = header_xml[:ci] + add_xml + header_xml[ci:]
+            m = re.search(r'(<hh:' + container + r' itemCnt=")(\d+)(")',
+                          header_xml)
+            if m:
+                new_cnt = int(m.group(2)) + added
+                header_xml = (header_xml[:m.start()] +
+                              m.group(1) + str(new_cnt) + m.group(3) +
+                              header_xml[m.end():])
             m = re.search(r'(<hh:' + container + r' itemCnt=")(\d+)(")',
                           header_xml)
             if m:

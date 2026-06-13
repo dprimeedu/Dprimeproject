@@ -83,9 +83,10 @@ def academy_list_result(request):
                        "SchoolExamtest":"내신TEST", "Summary":"요약문완성",
                        "Translation":"중요영작", "WordTest":"내신단어"}
 
-    selected_year = request.GET.getlist("year", [])
-    selected_grade = request.GET.getlist("grade", [])
-    selected_month = request.GET.getlist('month', [])
+    selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
+    selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
+    selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
+    selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
     keys = KeyTable.objects.all()
     if selected_year or selected_grade or selected_month:
@@ -93,10 +94,21 @@ def academy_list_result(request):
             keys = keys.filter(year__in=selected_year)
         if selected_grade:
             keys = keys.filter(grade__in=selected_grade)
-        if selected_month:
+        # "전체"가 포함되어 있으면 특정 월 필터링을 생략하여 모든 월 조회
+        if selected_month and "전체" not in selected_month:
             keys = keys.filter(month__in=selected_month)
     else:
         keys = KeyTable.objects.none()
+
+    # 선택 가능한 전체 번호 목록 추출 및 숫자 길이 기반 정렬
+    available_numbers = sorted(
+        [x for x in keys.values_list('total_number', flat=True).distinct() if x], 
+        key=lambda x: (len(str(x)), str(x))
+    )
+
+    # 사용자가 번호를 선택했다면 번호로 필터링 적용
+    if selected_numbers:
+        keys = keys.filter(total_number__in=selected_numbers)
 
     pk_key_numbers = list(keys.values_list('pk_number', flat=True))
     keytable_map = dict(keys.values_list('pk_number', 'total_number'))
@@ -141,6 +153,8 @@ def academy_list_result(request):
         "all_grades": all_grades,
         "all_years": all_years,
         "all_months": all_months,
+        "available_numbers": available_numbers,
+        "selected_numbers": selected_numbers,
     }
 
     return render(request, "academy_list_result.html", context)
@@ -152,16 +166,24 @@ def academy_list_result(request):
 def exam_list_result(request):
     if request.method == "POST":
         return grading(request)
-    selected_year = request.GET.getlist('year', [])
-    selected_grade = request.GET.getlist('grade', [])
-    selected_month = [m for m in request.GET.getlist('month', []) if m]
+    selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
+    selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
+    selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
     selected_category = request.GET.getlist('category', [])
+    selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
     # KEY_TABLE에서 PK number 가져오기 및 필터링
     # 여기서 번호도 따와야지 출력할 수 있음
     pknum = KeyTable.objects.all()
-    if selected_year and selected_grade and selected_month:
-        pknum = pknum.filter(Q(year__in=selected_year) & Q(grade__in=selected_grade) & Q(month__in=selected_month))
+    if selected_year or selected_grade or selected_month:
+        if selected_year:
+            pknum = pknum.filter(year__in=selected_year)
+        if selected_grade:
+            pknum = pknum.filter(grade__in=selected_grade)
+        if selected_month and "전체" not in selected_month:
+            pknum = pknum.filter(month__in=selected_month)
+        if selected_numbers:
+            pknum = pknum.filter(total_number__in=selected_numbers)
     else:
         pknum = KeyTable.objects.none()
 
@@ -227,8 +249,15 @@ def exam_list_result(request):
             
             for val in question_data:
                 val['total_number'] = keytable_map.get(val['pk_number'])
+                
+            # session에 저장하여 download_pdf에서 접근할 수 있도록 리스트로 변환
+            request.session['selected_questions'] = list(question_data)
+            request.session['selected_questions_answer'] = list(question_answer)
     else:
-        questions = QuestionData.objects.none()  # 조건이 없을 경우 빈 쿼리셋 반환
+        question_data = []
+        question_answer = []
+        request.session['selected_questions'] = []
+        request.session['selected_questions_answer'] = []
 
     context = {
         "selected_questions": question_data,
@@ -303,17 +332,21 @@ def _clean_sentence(text):
 
 @login_required(login_url='/accounts/login/')
 def translation_practice(request):
-    selected_year = request.GET.getlist('year', [])
-    selected_grade = request.GET.getlist('grade', [])
-    selected_month = [m for m in request.GET.getlist('month', []) if m]
+    selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
+    selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
+    selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
+    selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
     pknum = KeyTable.objects.all()
-    if selected_year and selected_grade and selected_month:
-        pknum = pknum.filter(
-            Q(year__in=selected_year) &
-            Q(grade__in=selected_grade) &
-            Q(month__in=selected_month)
-        )
+    if selected_year or selected_grade or selected_month:
+        if selected_year:
+            pknum = pknum.filter(year__in=selected_year)
+        if selected_grade:
+            pknum = pknum.filter(grade__in=selected_grade)
+        if selected_month and "전체" not in selected_month:
+            pknum = pknum.filter(month__in=selected_month)
+        if selected_numbers:
+            pknum = pknum.filter(total_number__in=selected_numbers)
     else:
         pknum = KeyTable.objects.none()
 
@@ -399,18 +432,25 @@ def download_pdf(request):
     selected_questions_answer = request.session.get('selected_questions_answer', [])
 
     for idx, question in enumerate(selected_questions, 1):
-        pdf.drawString(100, y_position, f"문제 {idx}: {question['문제']}")
+        # 영어/한글 칼럼명을 모두 지원하도록 하고, 줄바꿈으로 인해 글자가 겹치는 것을 방지합니다.
+        q_text = str(question.get('문제', question.get('question', question.get('origin_text', question.get('word', ''))))).replace('\n', ' ').replace('\r', '')
+        pdf.drawString(100, y_position, f"문제 {idx}: {q_text}")
         y_position -= 20
 
-        pdf.drawString(120, y_position, f"지문: {question['지문']}")
+        passage_text = str(question.get('지문', question.get('sentence', question.get('korean_definition', '')))).replace('\n', ' ').replace('\r', '')
+        pdf.drawString(120, y_position, f"지문: {passage_text}")
         y_position -= 20
 
-        pdf.drawString(120, y_position, f"보기: {question['보기']}")
+        option_text = str(question.get('보기', question.get('option', question.get('summary', '')))).replace('\n', ' ').replace('\r', '')
+        pdf.drawString(120, y_position, f"보기: {option_text}")
         y_position -= 20
 
+        q_index = question.get('색인', question.get('index', ''))
         for answer in selected_questions_answer:
-            if answer['색인'] == question['색인']:
-                pdf.drawString(120, y_position, f"정답: {answer['정답']}")
+            a_index = answer.get('색인', answer.get('index', ''))
+            if a_index == q_index:
+                ans_text = str(answer.get('정답', answer.get('answer', ''))).replace('\n', ' ').replace('\r', '')
+                pdf.drawString(120, y_position, f"정답: {ans_text}")
                 break
         y_position -= 30
 
@@ -453,17 +493,22 @@ def download_modified_hwpx(request):
     from common.hwpx import TEMPLATE_PATH
     from common.hwpx.hwpx_builder import build_hwpx_bytes
 
-    selected_year = request.GET.getlist('year', [])
-    selected_grade = request.GET.getlist('grade', [])
-    selected_month = [m for m in request.GET.getlist('month', []) if m]
+    selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
+    selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
+    selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
+    selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
+    selected_category = [n for val in request.GET.getlist('category', []) for n in val.split(',') if n][0]
 
     pknum = KeyTable.objects.all()
-    if selected_year and selected_grade and selected_month:
-        pknum = pknum.filter(
-            Q(year__in=selected_year) &
-            Q(grade__in=selected_grade) &
-            Q(month__in=selected_month)
-        )
+    if selected_year or selected_grade or selected_month:
+        if selected_year:
+            pknum = pknum.filter(year__in=selected_year)
+        if selected_grade:
+            pknum = pknum.filter(grade__in=selected_grade)
+        if selected_month and "전체" not in selected_month:
+            pknum = pknum.filter(month__in=selected_month)
+        if selected_numbers:
+            pknum = pknum.filter(total_number__in=selected_numbers)
     else:
         pknum = KeyTable.objects.none()
 
@@ -489,12 +534,12 @@ def download_modified_hwpx(request):
     year_str = ', '.join(selected_year)
     grade_str = ', '.join(selected_grade)
     month_str = ', '.join(selected_month)
-    header_text = f"{year_str}년도 {grade_str} {month_str}월 변형문제"
+    header_text = f"{year_str}년도 {grade_str} {month_str}월 {selected_category}"
 
     data = build_hwpx_bytes(TEMPLATE_PATH, header_text, questions)
 
     import urllib.parse
-    filename = f"[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_변형문제.hwpx"
+    filename = f"[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_{selected_category}.hwpx"
     encoded_filename = urllib.parse.quote(filename, safe='')
     response = HttpResponse(data, content_type='application/hwp+zip')
     response['Content-Disposition'] = (

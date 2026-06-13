@@ -139,10 +139,7 @@
     <div class="button">
         {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category or "객관식빈칸" in selected_category %}
         <button type="button" id="gradeBtn"> 채점하기 </button>
-        {% endif %}
-        <button type="button" id="pdfDownloadBtn"> PDF 다운로드 </button>
-        {% if "변형문제" in selected_category %}
-        <button type="button" id="hwpxDownloadBtn"> HWP 다운로드 </button>
+        <button type="button" id="hwpxDownloadBtn"> HWPX 다운로드 </button>
         {% endif %}
     </div>
     
@@ -163,7 +160,7 @@
     {% endif %}
 </div>
 
-{% if "변형문제" in selected_category %}
+{% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category or "객관식빈칸" in selected_category %}
 <script>
 document.getElementById('hwpxDownloadBtn').addEventListener('click', function() {
     window.location.href = "{% url 'academy:download_modified_hwpx' %}" + window.location.search;
