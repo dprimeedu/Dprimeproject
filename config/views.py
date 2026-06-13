@@ -7,6 +7,7 @@ from django.contrib.auth.views import LoginView
 from django.contrib import messages
 from django.shortcuts import redirect, render
 from member.views import profile_edit_view
+from datetime import datetime
 
 class HomeView(generic.TemplateView):
     template_name = 'home.html'
@@ -18,7 +19,7 @@ class MockExamView(generic.TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['grades'] = ['고1', '고2', '고3']
-        context['years'] = ['2024', '2023', '2022', '2021', '2020', '2019']
+        context['years'] = [str(x) for x in range(2019, datetime.now().year + 1)]
         context['months'] = ['3', '6', '9', '11']
         return context
 
