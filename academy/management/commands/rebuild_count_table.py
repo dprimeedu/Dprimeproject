@@ -86,7 +86,7 @@ class Command(BaseCommand):
                     cursor.execute(
                         f"""
                         INSERT INTO Count_Table (Table_name, PK_number, Count)
-                        SELECT ?, PK_number, COUNT(*)
+                        SELECT %s, PK_number, COUNT(*)
                         FROM "{table}"
                         GROUP BY PK_number
                         """,
