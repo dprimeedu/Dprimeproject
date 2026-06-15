@@ -46,6 +46,7 @@ urlpatterns = [
     path('admin/api/students/<int:student_id>/assignments/', views.student_assignments, name='student_assignments'),
     path('admin/api/students/<int:student_id>/assignments/update/', views.student_assignments_update, name='student_assignments_update'),
     path('admin/students/<int:student_id>/report/', views.student_report, name='student_report'),
+    path('admin/students/<int:student_id>/inputs/', views.grade_student, name='grade_student'),
     path('admin/students/<int:student_id>/goal/', views.student_goal_update, name='student_goal_update'),
     path('admin/api/students/<int:student_id>/goal/', views.student_goal_api, name='student_goal_api'),
     path('admin/api/students/goal/', views.student_goal_save_api, name='student_goal_save_api'),

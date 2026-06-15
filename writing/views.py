@@ -2450,6 +2450,58 @@ def _fmt_duration(secs: int) -> str:
 
 @teacher_required
 @require_GET
+def grade_student(request, student_id):
+    """학생 1명의 영작 회차별 입력값을 한 화면에 — 각 회차에 문장을 어떻게 썼는지(단어별 정오)."""
+    User = get_user_model()
+    student = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True), pk=student_id)
+    sessions = (WritingSession.objects
+                .filter(student=student)
+                .select_related('unit')
+                .order_by('unit_id', 'start_index', 'started_at'))
+    seq = {}          # (unit, start, end) → 회차 순번
+    blocks = []
+    for sess in sessions:
+        attempts = list(WritingAttempt.objects
+                        .filter(session=sess)
+                        .select_related('problem')
+                        .order_by('problem__index', 'word_index', 'attempt_num', 'created_at'))
+        if not attempts:
+            continue
+        key = (sess.unit_id, sess.start_index, sess.end_index)
+        seq[key] = seq.get(key, 0) + 1
+        # 문제 → 단어 순번 → 시도들
+        probs = {}
+        for a in attempts:
+            pd = probs.setdefault(a.problem_id, {'problem': a.problem, 'words': {}})
+            pd['words'].setdefault(a.word_index, []).append(a)
+        prob_rows = []
+        for pid, pd in probs.items():
+            words, all_ok = [], True
+            for wi in sorted(pd['words']):
+                tries = pd['words'][wi]
+                first, final = tries[0], tries[-1]
+                ok = final.is_correct
+                if not ok:
+                    all_ok = False
+                    cls = 'wrong'
+                elif first.is_correct and first.hint_level == 0 and len(tries) == 1:
+                    cls = 'ok'         # 한 번에 정답
+                else:
+                    cls = 'struggle'   # 맞췄지만 재시도/힌트
+                words.append({'text': final.input_value or '·', 'cls': cls,
+                              'answer': final.correct_answer, 'tries': len(tries)})
+            prob_rows.append({'problem': pd['problem'], 'words': words, 'all_ok': all_ok})
+        prob_rows.sort(key=lambda r: r['problem'].index)
+        blocks.append({
+            'session': sess, 'round_no': seq[key], 'rows': prob_rows,
+            'perfect': sum(1 for r in prob_rows if r['all_ok']), 'total': len(prob_rows)})
+    return render(request, 'writing/grade_student.html', {
+        'student': student, 'blocks': blocks})
+
+
+@teacher_required
+@require_GET
 def student_report(request, student_id):
     """학생별 일일 학습 리포트 — 오늘(또는 ?date=YYYY-MM-DD) 기준."""
     from django.contrib.auth import get_user_model

@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.wr-ko { max-width:440px; white-space:normal; color:#374151; line-height:1.5; }
+.wr-sent { line-height:2; }
+.wr-w { display:inline-block; padding:1px 7px; margin:2px 3px 2px 0; border-radius:7px; font-weight:600; }
+.wr-w.ok { background:#dcfce7; color:#166534; }
+.wr-w.struggle { background:#fef9c3; color:#854d0e; }
+.wr-w.wrong { background:#fee2e2; color:#991b1b; text-decoration:line-through; }
+.wr-ans { color:#16a34a; }
+.cha-head { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; }
+tr.perfect td { background:#f0fdf4; }
+.vc { font-weight:800; } .vc.o { color:#16a34a; } .vc.x { color:#dc2626; }
+</style>
+
+<div class="home-wrap">
+    <a href="{% url 'writing:student_admin' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>학생 관리</a>
+
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-user-pen me-2"></i>{{ student.username }} <small class="text-muted">{{ student.login_id }}</small> — 회차별 입력 보기</h3>
+        <p class="section-desc mb-0">각 회차에 문장을 어떻게 썼는지 한 화면에서 확인하세요. <span class="wr-w ok">한번에</span> <span class="wr-w struggle">재시도·힌트</span> <span class="wr-w wrong">틀림</span></p>
+    </div>
+
+    {% for b in blocks %}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 mt-3 p-2 px-3 cha-head">
+        <div>
+            <span class="badge bg-primary-subtle text-primary-emphasis fs-6">{{ b.round_no }}회차 · {{ b.session.range_label }}</span>
+            <span class="ms-2 text-muted small">{{ b.session.unit.title }}</span>
+            <span class="badge bg-success-subtle text-success-emphasis ms-1">완벽 {{ b.perfect }}/{{ b.total }}문장 · {{ b.session.total_score }}점</span>
+            {% if not b.session.finished_at %}<span class="badge bg-warning text-dark ms-1">진행중</span>{% endif %}
+        </div>
+        <span class="text-muted small">{{ b.session.started_at|date:'m/d H:i' }}</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead class="table-light">
+                <tr><th style="width:40px;">#</th><th>한글</th><th>학생이 쓴 문장</th><th>정답</th><th class="text-center" style="width:50px;">정오</th></tr>
+            </thead>
+            <tbody>
+                {% for r in b.rows %}
+                <tr class="{% if r.all_ok %}perfect{% endif %}">
+                    <td class="text-muted">{{ r.problem.index }}</td>
+                    <td class="wr-ko small">{{ r.problem.korean }}</td>
+                    <td class="wr-sent">
+                        {% for w in r.words %}<span class="wr-w {{ w.cls }}" {% if w.cls == 'wrong' %}title="정답: {{ w.answer }}"{% elif w.cls == 'struggle' %}title="{{ w.tries }}회 시도"{% endif %}>{{ w.text }}</span>{% endfor %}
+                    </td>
+                    <td class="wr-ans small"><b>{{ r.problem.english }}</b></td>
+                    <td class="text-center"><span class="vc {% if r.all_ok %}o{% else %}x{% endif %}">{% if r.all_ok %}O{% else %}X{% endif %}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-2">시도 기록이 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% empty %}
+    <div class="alert alert-info text-center py-4">기록된 회차가 없습니다.</div>
+    {% endfor %}
+</div>
+{% endblock %}
