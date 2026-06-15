@@ -45,6 +45,16 @@ def _range_indices(all_idx, rt):
     return all_idx
 
 
+def _target_set_count(rt):
+    """학생관리자료에서 온 오늘볼TEST(rt) → 오늘 목표 세트 수.
+    rt 범위 문항수를 40으로 나눠 올림(예: 1~100 → 3세트). 없으면 0(제한 없음)."""
+    if rt and rt.start_index and rt.end_index:
+        n = rt.end_index - rt.start_index + 1
+        if n > 0:
+            return -(-n // SET_SIZE)  # 올림
+    return 0
+
+
 def _ranged_problems(session):
     """세션이 실제 출제한 문항 목록(출제 순서 유지). problem_indices 있으면 그것, 없으면 범위."""
     if session.problem_indices:
@@ -313,11 +323,16 @@ def student_home(request):
         rt = rt_map.get(u.id)
         u.range_test = rt
         if is_assigned_view:
-            rng = _range_indices(all_idx, rt)
-            sets = _student_sets(request.user.id, u.id, rng)
-            u.sets = [{'no': i + 1, 'count': len(s)} for i, s in enumerate(sets)]
+            # 전체 문항을 학생별 고정 셔플 → 40씩 비겹침 세트(언제든 클릭). 1~13세트…
+            sets = _student_sets(request.user.id, u.id, all_idx)
+            # 오늘 목표 세트 수 — 학생관리자료에서 온 오늘볼TEST 범위로 환산(없으면 0=제한 없음)
+            target = _target_set_count(rt)
+            u.target_sets = target
+            u.sets = [{'no': i + 1, 'count': len(s), 'today': bool(target) and (i < target)}
+                      for i, s in enumerate(sets)]
         else:
             u.sets = []
+            u.target_sets = 0
     return render(request, 'grammar/home.html', {'units': units, 'is_assigned_view': is_assigned_view})
 
 
@@ -334,16 +349,8 @@ def start_session(request, unit_id):
         messages.error(request, '이 단원에 문항이 없습니다.')
         return redirect('grammar:home')
 
-    # 범위 결정: ?rt=N 또는 이 단원의 활성 오늘볼TEST, 없으면 전체
-    rt = None
-    rt_id = request.GET.get('rt')
-    if rt_id:
-        rt = GrammarRangeTest.objects.filter(pk=rt_id, student=request.user, is_active=True).first()
-    if rt is None:
-        rt = (GrammarRangeTest.objects.filter(student=request.user, unit=unit, is_active=True)
-              .order_by('-created_at').first())
-    rng = _range_indices(all_idx, rt)
-    sets = _student_sets(request.user.id, unit.id, rng)
+    # 세트 = 전체 문항을 학생별 고정 셔플 → 40개씩 비겹침(언제든 클릭 가능). 범위 제한 없음.
+    sets = _student_sets(request.user.id, unit.id, all_idx)
     if not sets:
         messages.error(request, '해당 범위가 없습니다.')
         return redirect('grammar:home')

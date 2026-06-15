@@ -28,15 +28,17 @@
                     <h5 class="card-title">{{ u.title }}</h5>
                     <p class="text-muted small mb-2">{{ u.grade }} · 문항 {{ u.num_problems }}개{% if u.school %} · {{ u.school }}{% endif %}</p>
                     <div class="mt-auto">
-                        {% if u.range_test %}
-                        <a href="{% url 'grammar:start_session' u.id %}?rt={{ u.range_test.id }}" class="btn btn-danger w-100 mb-2 fw-bold">
-                            <i class="fas fa-bolt me-1"></i>오늘 볼 어법TEST ({{ u.range_test.range_label }})
-                        </a>
+                        {% if u.target_sets %}
+                        <div class="alert alert-warning py-1 px-2 mb-2 small">
+                            <i class="fas fa-bullseye me-1"></i>오늘 목표: <b>세트 1~{{ u.target_sets }}</b> (학생관리자료 연동)
+                        </div>
                         {% endif %}
-                        <div class="text-muted small mb-1"><i class="fas fa-shuffle me-1"></i>세트 (랜덤 40문제씩 · 겹치지 않게)</div>
+                        <div class="text-muted small mb-1"><i class="fas fa-shuffle me-1"></i>세트 (전체를 랜덤으로 섞어 40문제씩 · 겹치지 않게) — 아무때나 클릭</div>
                         <div class="d-flex flex-wrap gap-2">
                             {% for s in u.sets %}
-                            <a href="{% url 'grammar:start_session' u.id %}?set={{ s.no }}" class="btn btn-outline-primary btn-sm">세트 {{ s.no }} <span class="opacity-75">({{ s.count }}문제)</span></a>
+                            <a href="{% url 'grammar:start_session' u.id %}?set={{ s.no }}"
+                               class="btn btn-sm {% if s.today %}btn-warning fw-bold{% else %}btn-outline-primary{% endif %}">
+                               {% if s.today %}<i class="fas fa-bolt me-1"></i>{% endif %}세트 {{ s.no }} <span class="opacity-75">({{ s.count }}문제)</span></a>
                             {% empty %}
                             <span class="text-muted small">문항이 없습니다.</span>
                             {% endfor %}
