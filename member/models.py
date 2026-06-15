@@ -55,6 +55,17 @@ class Member(AbstractBaseUser, PermissionsMixin):
         help_text='학원이 재원생으로 인정한 경우 True. 재원생 메뉴 접근에 필요.',
     )
     member_type = models.CharField(max_length=20, choices=MEMBER_TYPES, default='user')
+    ACADEMY_ACCESS = (
+        ('none', '접근 없음'),
+        ('variant', '변형문제만'),
+        ('full', '모고 전체'),
+    )
+    academy_access = models.CharField(
+        max_length=10, choices=ACADEMY_ACCESS, default='none',
+        verbose_name='모고 데이터 접근범위',
+        help_text="외부 승인 계정용. none=접근X, variant=변형문제만, full=모고 전체. "
+                  "관리자/학원운영자(is_staff·is_superuser·is_academy)는 이 값과 무관하게 항상 전체.",
+    )
     phone = models.CharField(max_length=15, null=True, blank=True)
     is_academy = models.BooleanField(default=False)
     business_registration = models.FileField(upload_to='business_registrations/', null=True, blank=True)
@@ -75,6 +86,21 @@ class Member(AbstractBaseUser, PermissionsMixin):
     def display_name(self) -> str:
         """리더보드/대전 표시용 — 별명 > login_id > username 순."""
         return (self.nickname or '').strip() or (self.login_id or '').strip() or (self.username or '').strip() or f'user#{self.pk}'
+
+    @property
+    def is_admin_level(self) -> bool:
+        """관리자급 — 모고/변형 데이터 전체 접근. 학원운영자 포함."""
+        return bool(self.is_staff or self.is_superuser or self.is_academy)
+
+    @property
+    def can_view_mock_full(self) -> bool:
+        """모고 데이터 전체(모든 카테고리) 열람·다운로드 가능 여부."""
+        return self.is_admin_level or self.academy_access == 'full'
+
+    @property
+    def can_view_variant(self) -> bool:
+        """변형문제(최소) 이상 열람 가능 여부. full이면 당연히 포함."""
+        return self.can_view_mock_full or self.academy_access == 'variant'
 
 
 class Profile(models.Model):

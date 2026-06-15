@@ -68,7 +68,7 @@
     <aside class="app-sidebar" id="appSidebar">
         <div class="sidebar-section-label">메인</div>
         <a class="sidebar-link" href="{% url 'index' %}"><i class="fas fa-home"></i>홈</a>
-        {% if user.is_staff or user.is_superuser or user.is_academy or not user.is_approved %}
+        {% if user.can_view_variant %}
             <a class="sidebar-link" href="{% url 'mock_exam' %}"><i class="fas fa-download"></i>모고 데이터 다운로드</a>
         {% endif %}
 
@@ -87,6 +87,7 @@
                 <a class="sidebar-link" href="{% url 'writing:upload' %}"><i class="fas fa-upload"></i>새 단원 업로드</a>
                 <a class="sidebar-link" href="{% url 'writing:student_upload' %}"><i class="fas fa-file-excel"></i>학생 일괄 등록</a>
                 <a class="sidebar-link" href="{% url 'academy_tools:sub_book' %}"><i class="fas fa-print"></i>부교재 출력</a>
+                <a class="sidebar-link" href="{% url 'academy:access_admin' %}"><i class="fas fa-user-shield"></i>접근권한 설정</a>
                 <a class="sidebar-link" href="/admin/" target="_blank"><i class="fas fa-cog"></i>Django Admin</a>
             {% elif user.is_approved %}
                 <div class="sidebar-section-label">재원생</div>

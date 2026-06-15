@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}접근권한 설정 · 프라임에듀{% endblock %}
+
+{% block extra_css %}
+<style>
+    .access-wrap { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+    .access-wrap h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+    .access-wrap .desc { color: #6b7280; font-size: .9rem; margin-bottom: 18px; line-height: 1.5; }
+    .access-search { display: flex; gap: 8px; margin-bottom: 16px; }
+    .access-search input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; }
+    .access-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .access-table th, .access-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: .9rem; vertical-align: middle; }
+    .access-table th { background: #f9fafb; color: #374151; font-weight: 600; }
+    .access-table tr:last-child td { border-bottom: none; }
+    .badge-resident { display: inline-block; background: #eef2ff; color: #4338ca; border-radius: 6px; padding: 2px 7px; font-size: .72rem; margin-left: 6px; }
+    .access-table select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 7px; }
+    .access-table form { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+    .btn-save { background: #2563eb; color: #fff; border: none; border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: .85rem; }
+    .btn-save:hover { background: #1d4ed8; }
+    .lvl-none { color: #9ca3af; } .lvl-variant { color: #b45309; } .lvl-full { color: #047857; font-weight: 600; }
+    .muted { color: #9ca3af; font-size: .8rem; }
+    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: .9rem; }
+    .flash.success { background: #ecfdf5; color: #065f46; }
+    .flash.error { background: #fef2f2; color: #991b1b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="access-wrap">
+    <h1><i class="fas fa-user-shield"></i> 모고 데이터 접근권한 설정</h1>
+    <p class="desc">
+        아이디별로 모고/변형문제 데이터를 어디까지 볼 수 있는지 설정합니다.<br>
+        <b>접근 없음</b> = 차단 · <b>변형문제만</b> = 외부 승인(변형문제 다운로드만) · <b>모고 전체</b> = 모든 카테고리.<br>
+        관리자·학원운영자(is_staff/superuser/academy)는 항상 전체라 목록에 표시되지 않습니다.
+        재원생(<code>primeedu*</code>)은 기본 <b>접근 없음</b>으로 두세요.
+    </p>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="flash {{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="get" class="access-search">
+        <input type="text" name="q" value="{{ q }}" placeholder="아이디 / 이름 / 이메일 검색">
+        <button type="submit" class="btn-save">검색</button>
+    </form>
+
+    <table class="access-table">
+        <thead>
+            <tr>
+                <th>아이디</th>
+                <th>이름</th>
+                <th>학교/학년</th>
+                <th>현재</th>
+                <th>접근범위 변경</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>
+                    {{ row.m.login_id|default:row.m.email|default:"—" }}
+                    {% if row.is_resident %}<span class="badge-resident">재원생</span>{% endif %}
+                </td>
+                <td>{{ row.m.username|default:"—" }}</td>
+                <td class="muted">{{ row.m.school }} {{ row.m.grade }}</td>
+                <td class="lvl-{{ row.m.academy_access }}">
+                    {{ row.m.get_academy_access_display }}
+                </td>
+                <td>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="member_id" value="{{ row.m.pk }}">
+                        <select name="academy_access">
+                            {% for val, label in choices %}
+                            <option value="{{ val }}" {% if val == row.m.academy_access %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn-save">저장</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="muted" style="text-align:center; padding:24px;">대상 계정이 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="muted" style="margin-top:10px;">총 {{ total }}명 (최대 500명 표시){% if q %} · 검색: "{{ q }}"{% endif %}</p>
+</div>
+{% endblock %}

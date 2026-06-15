@@ -12,6 +12,7 @@ urlpatterns = [
     path('exam_list_result/', views.exam_list_result, name='exam_list_result'),
     path('download_pdf/', download_pdf, name='download_pdf'),
     path('download_modified_hwpx/', views.download_modified_hwpx, name='download_modified_hwpx'),
+    path('access-admin/', views.access_admin, name='access_admin'),
     path('translation_select/', views.translation_select, name='translation_select'),
     path('translation_practice/', views.translation_practice, name='translation_practice'),
     path('save_translation_log/', views.save_translation_log, name='save_translation_log'),

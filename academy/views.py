@@ -1,6 +1,10 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.db.models import Count, Q, F
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import get_user_model
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied
+from functools import wraps
 from .models import *
 
 from django.http import HttpResponse, JsonResponse
@@ -13,6 +17,28 @@ import json
 import re
 
 
+# ──────────────────────────────────────────────────────────────────────
+# 접근 권한 게이트 (2026-06-16)
+#   재원생(academy_access='none')   → 모고/변형 접근 차단
+#   외부 승인 variant               → 변형문제만
+#   관리자/학원운영자/full           → 모고 전체
+# 인증 안 된 사용자는 로그인으로, 인증됐지만 권한 없으면 403.
+# ──────────────────────────────────────────────────────────────────────
+def _require_access(check):
+    def deco(view):
+        @wraps(view)
+        @login_required(login_url='/accounts/login/')
+        def wrapped(request, *args, **kwargs):
+            if not check(request.user):
+                raise PermissionDenied("이 자료에 접근할 권한이 없습니다.")
+            return view(request, *args, **kwargs)
+        return wrapped
+    return deco
+
+require_variant = _require_access(lambda u: getattr(u, 'can_view_variant', False))
+require_mock_full = _require_access(lambda u: getattr(u, 'can_view_mock_full', False))
+
+
 # 선택한 카테고리를 이용해서 DB를 결정
 DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQuestion_Data,
             "상세해설":DetailedExplanation_Data, "객관식빈칸":FillinBlank_Data,
@@ -22,6 +48,7 @@ DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQues
             "내신TEST":SchoolExamTest_Data, "요약문완성":Summary_Data,
             "중요영작":Translation_Data, "내신단어":WordTest_Data}
 
+@require_variant
 def academy_list(request):
     """모의고사 선택 — 상단 학년/년도/월 필터 + 제목 검색, 아래 리스트는 클라이언트에서 즉시 필터링."""
     def _int(v):
@@ -56,6 +83,7 @@ def academy_list(request):
         "months": months,
     })
 
+@require_variant
 def academy_list_result(request):
     TABLE_NAMES_DICT = {"Additional_text":"원문추가", "Descriptive_Question":"직보서술형",
                        "DetailedExplanation":"상세해설", "FillinBlank":"객관식빈칸",
@@ -109,8 +137,13 @@ def academy_list_result(request):
             'total_number': keytable_map.get(c['pk_number']),
         })
 
+    # variant 전용(모고 전체 권한 없음) 계정은 변형문제 카테고리만 노출
+    only_variant = not request.user.can_view_mock_full
+
     exams = []
     for table, korname in TABLE_NAMES_DICT.items():
+        if only_variant and korname != '변형문제':
+            continue
         counts = counts_by_table.get(table, [])
         question_list = [{"num": c["total_number"], "count": c["count"]} for c in counts]
         total_count = sum(c['count'] for c in counts)
@@ -143,7 +176,7 @@ def academy_list_result(request):
 
 
 
-@login_required(login_url='/accounts/login/')
+@require_variant
 # 기존에 있는 코딩한 내용
 def exam_list_result(request):
     if request.method == "POST":
@@ -152,6 +185,9 @@ def exam_list_result(request):
     selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
     selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
     selected_category = request.GET.getlist('category', [])
+    # variant 전용 계정은 변형문제 외 카테고리 요청을 무시(직접 URL 접근 차단)
+    if not request.user.can_view_mock_full:
+        selected_category = [c for c in selected_category if c == '변형문제']
     selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
     # KEY_TABLE에서 PK number 가져오기 및 필터링
@@ -288,6 +324,7 @@ def grading(request):
         return JsonResponse(response)
 
 
+@require_mock_full
 def translation_select(request):
     """영작 연습 시작 전 년도/학년/월 선택 페이지"""
     translation_pk_numbers = Translation_Data.objects.values_list('pk_number', flat=True)
@@ -312,7 +349,7 @@ def _clean_sentence(text):
     return ' '.join(text.split())
 
 
-@login_required(login_url='/accounts/login/')
+@require_mock_full
 def translation_practice(request):
     selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
     selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
@@ -362,7 +399,7 @@ def translation_practice(request):
     return render(request, 'translation_practice.html', context)
 
 
-@login_required(login_url='/accounts/login/')
+@require_mock_full
 def save_translation_log(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error'}, status=400)
@@ -386,7 +423,7 @@ def save_translation_log(request):
     return JsonResponse({'status': 'ok'})
 
 
-@login_required(login_url='/accounts/login/')
+@require_variant
 def download_pdf(request):
     """
     이것도 카테고리에 따라 출력 양식을 지정하거나 해야 함
@@ -470,7 +507,7 @@ def _hwpx_choices(option_str):
 # ---------------------------------------------------------------------------
 # 변형문제 HWPX 다운로드
 # ---------------------------------------------------------------------------
-@login_required(login_url='/accounts/login/')
+@require_variant
 def download_modified_hwpx(request):
     from common.hwpx import TEMPLATE_PATH
     from common.hwpx.hwpx_builder import build_hwpx_bytes
@@ -529,3 +566,60 @@ def download_modified_hwpx(request):
     )
 
     return response
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 관리자 전용 — 아이디별 모고 데이터 접근범위 설정 화면 (2026-06-16)
+# ──────────────────────────────────────────────────────────────────────
+require_admin = _require_access(lambda u: getattr(u, 'is_admin_level', False))
+
+ACCESS_CHOICES = [
+    ('none', '접근 없음'),
+    ('variant', '변형문제만'),
+    ('full', '모고 전체'),
+]
+
+
+@require_admin
+def access_admin(request):
+    """아이디별로 모고 데이터 접근범위(none/variant/full)를 설정하는 관리자 페이지."""
+    User = get_user_model()
+
+    if request.method == 'POST':
+        member_id = request.POST.get('member_id')
+        new_level = request.POST.get('academy_access')
+        valid = {c[0] for c in ACCESS_CHOICES}
+        target = User.objects.filter(pk=member_id).first()
+        if not target or new_level not in valid:
+            messages.error(request, '잘못된 요청입니다.')
+        elif target.is_admin_level:
+            messages.error(request, f'{target.display_name}은(는) 관리자/학원운영자라 항상 전체 접근입니다.')
+        else:
+            target.academy_access = new_level
+            target.save(update_fields=['academy_access'])
+            label = dict(ACCESS_CHOICES)[new_level]
+            messages.success(request, f'{target.display_name} → 접근범위 "{label}" 저장 완료.')
+        return redirect('academy:access_admin')
+
+    q = (request.GET.get('q') or '').strip()
+    # 관리자/학원운영자는 항상 전체라 설정 대상에서 제외
+    members = (User.objects
+               .filter(is_staff=False, is_superuser=False, is_academy=False)
+               .order_by('-date_joined'))
+    if q:
+        members = members.filter(
+            Q(login_id__icontains=q) | Q(username__icontains=q) | Q(email__icontains=q)
+        )
+
+    rows = []
+    for m in members[:500]:
+        # 재원생(primeedu*) 여부 표시 — 기본 차단 대상 안내용
+        is_resident = bool(m.is_approved) or bool(re.match(r'^primeedu\d+$', m.login_id or ''))
+        rows.append({'m': m, 'is_resident': is_resident})
+
+    return render(request, 'access_admin.html', {
+        'rows': rows,
+        'choices': ACCESS_CHOICES,
+        'q': q,
+        'total': members.count(),
+    })
