@@ -9,6 +9,8 @@ USE_TZ=False 환경이라 DB 저장값이 naive datetime → started_at__date �
 from collections import defaultdict
 from datetime import timedelta
 
+from django.db.models import Count
+
 from vocab.models import (
     VocabSession, VocabAttempt, VocabRangeTest, VocabAssignment, StudentWordStar,
 )
@@ -52,6 +54,10 @@ def _vocab_cell(sessions):
 
 
 def _summary_cell(sessions):
+    # 학생이 열기만 하고 입력 안 한(빈) 진행중 세션은 제외 — 현황판에 '안 본' 차시 안 보이게
+    sessions = [s for s in sessions
+                if not (s.status == SummarySession.STATUS_IN_PROGRESS
+                        and getattr(s, '_ans', None) == 0)]
     if not sessions:
         return {'did': False}
     graded = [s for s in sessions if s.status == SummarySession.STATUS_GRADED]
@@ -172,7 +178,8 @@ def board(date):
     그날 1과목이라도 푼 학생만 키로 들어감. 나머지는 뷰에서 '미접속' 처리.
     """
     v = _bucket(VocabSession.objects.filter(started_at__date=date).select_related('unit', 'range_test'))
-    su = _bucket(SummarySession.objects.filter(started_at__date=date).select_related('unit'))
+    su = _bucket(SummarySession.objects.filter(started_at__date=date)
+                 .select_related('unit').annotate(_ans=Count('blank_answers')))
     w = _bucket(WritingSession.objects.filter(started_at__date=date).select_related('unit'))
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
     g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
@@ -232,7 +239,7 @@ def _vocab_today(student, date):
 
 def _summary_today(student, date):
     sessions = list(SummarySession.objects.filter(student=student, started_at__date=date)
-                    .select_related('unit').order_by('started_at'))
+                    .select_related('unit').annotate(_ans=Count('blank_answers')).order_by('started_at'))
     rows = []
     for s in sessions:
         rows.append({
