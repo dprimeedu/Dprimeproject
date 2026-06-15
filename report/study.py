@@ -120,24 +120,51 @@ def _bucket(qs):
 # 전체 학생 현황판 (그리드)
 # ─────────────────────────────────────────────
 
+def _vocab_today_tests(range_tests, day_test_sessions):
+    """학생의 활성 단어 '오늘 볼 TEST'(VocabRangeTest) — 단어장·범위·합격여부.
+    학생관리표의 '단어시험결과 / 단어장 / 오늘 범위' 칸에 대응."""
+    out = []
+    for rt in range_tests:
+        matched = [s for s in day_test_sessions if s.range_test_id == rt.id]
+        best = max((s.percent for s in matched), default=None)
+        if best is None:
+            status, ok = '미응시', None
+        elif best >= rt.pass_threshold:
+            status, ok = f'합격 {best}', True
+        else:
+            status, ok = f'미달 {best}', False
+        out.append({'book': rt.unit.title, 'range': rt.range_label, 'status': status, 'ok': ok})
+    return out
+
+
 def board(date):
     """{student_id: {'vocab':cell, 'summary':cell, 'writing':cell, 'exam':cell, 'active':bool}}
 
     그날 1과목이라도 푼 학생만 키로 들어감. 나머지는 뷰에서 '미접속' 처리.
     """
-    v = _bucket(VocabSession.objects.filter(started_at__date=date).select_related('unit'))
+    v = _bucket(VocabSession.objects.filter(started_at__date=date).select_related('unit', 'range_test'))
     su = _bucket(SummarySession.objects.filter(started_at__date=date).select_related('unit'))
     w = _bucket(WritingSession.objects.filter(started_at__date=date).select_related('unit'))
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
 
+    # 오늘 볼 단어 TEST(VocabRangeTest) — 학생별 활성 범위(접속 안 한 학생도 표시 위해 별도 집계)
+    vrt = defaultdict(list)
+    for rt in VocabRangeTest.objects.filter(is_active=True).select_related('unit'):
+        vrt[rt.student_id].append(rt)
+
     out = {}
-    for sid in set(v) | set(su) | set(w) | set(e):
+    for sid in set(v) | set(su) | set(w) | set(e) | set(vrt):
+        vs = v.get(sid, [])
         cells = {
-            'vocab': _vocab_cell(v.get(sid, [])),
+            'vocab': _vocab_cell(vs),
             'summary': _summary_cell(su.get(sid, [])),
             'writing': _writing_cell(w.get(sid, [])),
             'exam': _exam_cell(e.get(sid, [])),
         }
+        # 단어 '오늘 볼 TEST' 범위/합격 — 정식시험(MODE_TEST) 완료 세션 기준
+        cells['vocab']['tests'] = _vocab_today_tests(
+            vrt.get(sid, []),
+            [s for s in vs if s.mode == VocabSession.MODE_TEST and s.finished_at])
         cells['active'] = any(cells[k].get('did') for k, _, _ in SUBJECT_META)
         cells['subjects_done'] = sum(1 for k, _, _ in SUBJECT_META if cells[k].get('did'))
         cells['pending'] = sum(cells[k].get('pending', 0) for k, _, _ in SUBJECT_META)

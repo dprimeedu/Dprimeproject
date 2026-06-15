@@ -40,8 +40,19 @@
                     {% for key, label, url in subjects %}
                     <td class="text-center">
                         {% if row.cells %}
-                            {% if key == 'vocab' and row.cells.vocab.did %}
-                                <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
+                            {% if key == 'vocab' %}
+                                {% for t in row.cells.vocab.tests %}
+                                <div class="badge d-block text-start border mb-1
+                                     {% if t.ok %}bg-success-subtle text-success-emphasis{% elif t.ok == False %}bg-danger-subtle text-danger-emphasis{% else %}bg-light text-muted{% endif %}"
+                                     title="오늘 볼 단어 TEST">
+                                    {{ t.book }} <span class="opacity-75">{{ t.range }}</span> · {{ t.status }}
+                                </div>
+                                {% endfor %}
+                                {% if row.cells.vocab.did %}
+                                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
+                                {% elif not row.cells.vocab.tests %}
+                                    <span class="text-muted">·</span>
+                                {% endif %}
                             {% elif key == 'summary' and row.cells.summary.did %}
                                 <div class="d-flex flex-column gap-1" style="max-width:170px;margin:0 auto;">
                                 {% for c in row.cells.summary.chashi %}
