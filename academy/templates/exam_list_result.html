@@ -14,6 +14,15 @@
             <p><strong>{{ selected_year|join:',' }}년도 {{ selected_grade|join:',' }} {{ selected_month|join:',' }}월 {{ selected_category|join:',' }}</strong></p>
         </h3>
     </div>
+
+    {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category or "객관식빈칸" in selected_category %}
+    <div class="top-actions">
+        <button type="button" id="gradeBtn" class="ta-btn ta-grade"><i class="fas fa-circle-check"></i> 채점하기</button>
+        <button type="button" id="pdfDownloadBtn" class="ta-btn ta-pdf"><i class="fas fa-file-pdf"></i> PDF 다운로드</button>
+        <button type="button" id="hwpxDownloadBtn" class="ta-btn ta-hwpx"><i class="fas fa-file-lines"></i> HWPX(한글) 다운로드</button>
+    </div>
+    {% endif %}
+
     <div class="question-section">
         {% if selected_questions %}
             {% if "원문추가" in selected_category %}
@@ -136,13 +145,6 @@
             <p>해당하는 문제가 없습니다.</p>
         {% endif %}
     </div>
-    <div class="button">
-        {% if "변형문제" in selected_category or "문제출력" in selected_category or "내신TEST" in selected_category or "객관식빈칸" in selected_category %}
-        <button type="button" id="gradeBtn"> 채점하기 </button>
-        <button type="button" id="hwpxDownloadBtn"> HWPX 다운로드 </button>
-        {% endif %}
-    </div>
-    
 
     {% if user.is_staff or user.is_admin or user.is_academy %}
         {% if selected_questions_answer %}
@@ -164,6 +166,10 @@
 <script>
 document.getElementById('hwpxDownloadBtn').addEventListener('click', function() {
     window.location.href = "{% url 'academy:download_modified_hwpx' %}" + window.location.search;
+});
+var _pdfBtn = document.getElementById('pdfDownloadBtn');
+if (_pdfBtn) _pdfBtn.addEventListener('click', function() {
+    window.location.href = "{% url 'academy:download_pdf' %}" + window.location.search;
 });
 </script>
 {% endif %}

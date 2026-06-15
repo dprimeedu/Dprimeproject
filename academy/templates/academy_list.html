@@ -45,6 +45,10 @@
 .exam-title{ flex:1; font-size:.98rem; font-weight:600; color:var(--pe-ink); }
 .exam-tag{ font-size:.72rem; font-weight:700; color:var(--pe-tag); background:var(--pe-tag-bg); padding:3px 9px; border-radius:7px; flex:none; }
 .mx-empty{ text-align:center; color:var(--pe-muted); padding:60px 20px; font-size:1rem; }
+.mx-prompt{ text-align:center; color:#9ca3af; padding:64px 20px; }
+.mx-prompt i{ font-size:2rem; margin-bottom:12px; display:block; color:#cbd0d6; }
+.mx-prompt p{ margin:0; font-size:1rem; }
+.mx-prompt b{ color:var(--pe-primary); }
 
 /* 선택 바 */
 .mx-selbar{
@@ -78,9 +82,14 @@
     </div>
   </div>
 
-  <div class="mx-count"><span id="mxCount">{{ exams|length }}</span>개</div>
+  <div class="mx-count" id="mxCountWrap" style="display:none;"><span id="mxCount">0</span>개</div>
 
-  <div class="mx-list" id="mxList">
+  <div class="mx-prompt" id="mxPrompt">
+    <i class="fas fa-magnifying-glass"></i>
+    <p>위에서 <b>학년·년도·월</b>을 선택하거나 <b>제목을 검색</b>하면 모의고사가 나옵니다.</p>
+  </div>
+
+  <div class="mx-list" id="mxList" style="display:none;">
     {% for e in exams %}
     <a class="exam-row" data-grade="{{ e.grade }}" data-year="{{ e.year }}" data-month="{{ e.month }}"
        data-title="{{ e.title|lower }}"
@@ -106,11 +115,23 @@
   const rows = Array.from(document.querySelectorAll('.exam-row'));
   const search = document.getElementById('mxSearch');
   const countEl = document.getElementById('mxCount');
+  const countWrap = document.getElementById('mxCountWrap');
   const emptyEl = document.getElementById('mxEmpty');
   const listEl  = document.getElementById('mxList');
+  const promptEl = document.getElementById('mxPrompt');
 
   function apply(){
     const q = (search.value || '').trim().toLowerCase();
+    const hasFilter = active.grade.size || active.year.size || active.month.size || q;
+    // 기본은 숨김 — 필터/검색이 있을 때만 결과 표시
+    if(!hasFilter){
+      promptEl.style.display = 'block';
+      listEl.style.display = 'none';
+      emptyEl.style.display = 'none';
+      countWrap.style.display = 'none';
+      return;
+    }
+    promptEl.style.display = 'none';
     let shown = 0;
     rows.forEach(r=>{
       const okG = !active.grade.size || active.grade.has(r.dataset.grade);
@@ -122,6 +143,7 @@
       if(ok) shown++;
     });
     countEl.textContent = shown;
+    countWrap.style.display = 'block';
     emptyEl.style.display = shown ? 'none' : 'block';
     listEl.style.display = shown ? '' : 'none';
   }

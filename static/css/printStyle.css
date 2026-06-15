@@ -141,6 +141,41 @@ body {
     color: #fff;
 }
 
+/* 상단 액션바 — 항상 잘 보이게(sticky top) */
+.top-actions {
+    position: sticky;
+    top: 8px;
+    z-index: 20;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    background: rgba(255, 255, 255, .94);
+    backdrop-filter: blur(6px);
+    padding: 12px;
+    border: 1px solid var(--pe-line);
+    border-radius: 14px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .07);
+}
+.ta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 22px;
+    border: none;
+    border-radius: 11px;
+    font-size: .98rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: #fff;
+    transition: transform .1s ease, box-shadow .15s ease;
+}
+.ta-btn:hover { transform: translateY(-2px); }
+.ta-grade { background: #10b981; box-shadow: 0 4px 14px rgba(16, 185, 129, .3); }
+.ta-pdf   { background: #ef4444; box-shadow: 0 4px 14px rgba(239, 68, 68, .3); }
+.ta-hwpx  { background: var(--pe-primary); box-shadow: 0 4px 14px rgba(109, 40, 217, .3); }
+
 /* 액션 버튼 바 — 하단 고정 */
 .button {
     position: sticky;
@@ -245,7 +280,7 @@ body {
     }
     .question-box p { font-size: 1rem; line-height: 1.6; }
 
-    .container, .navbar, .sidebar, .button { display: none !important; }
+    .container, .navbar, .sidebar, .button, .top-actions { display: none !important; }
     .radioButton { display: none; }
 
     .answers-section {
