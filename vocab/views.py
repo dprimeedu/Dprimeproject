@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
+from django.db.models import Count, Case, When, IntegerField, Value
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -649,10 +649,13 @@ def test_today(request):
     source) 의 기존 활성 범위를 비활성화하고 새로 만든다. 따라서 '활성 내신단어TEST 범위'
     = '그날 봐야 할 시험'. 전체 배정/퀴즈렛 세트가 섞인 student_admin 과 달리 시험 볼 것만.
     """
+    # 학생관리표 행 순서(sort_order)대로 — 미지정(0)은 뒤로, 같은 행 안은 시작번호순.
     rts = (VocabRangeTest.objects
            .filter(is_active=True, source_label='내신단어TEST')
            .select_related('student', 'unit')
-           .order_by('unit__school', 'student__username', '-created_at'))
+           .annotate(_unset=Case(When(sort_order=0, then=Value(1)), default=Value(0),
+                                 output_field=IntegerField()))
+           .order_by('_unset', 'sort_order', 'student__username', 'start_index'))
     rows = []
     for rt in rts:
         sess = (rt.sessions
@@ -1190,13 +1193,17 @@ def range_import_api(request):
         qc = int(it.get('question_count', 40))
         tl = int(it.get('time_limit_seconds', 1200))
         th = int(it.get('threshold', 90))
+        try:
+            row = int(it.get('row') or 0)   # 학생관리표 행 번호(시트 순서 보존)
+        except (TypeError, ValueError):
+            row = 0
         chunks = split_range_into_chunks(start, end)
         VocabRangeTest.objects.bulk_create([
             VocabRangeTest(
                 student=student, unit=unit, start_index=cs, end_index=ce,
                 source_label=source,
                 question_count=min(qc, ce - cs + 1),
-                time_limit_seconds=tl, pass_threshold=th,
+                time_limit_seconds=tl, pass_threshold=th, sort_order=row,
             )
             for cs, ce in chunks
         ])

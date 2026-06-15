@@ -165,6 +165,8 @@ class VocabRangeTest(models.Model):
     start_index = models.IntegerField(verbose_name='시작 번호')
     end_index = models.IntegerField(verbose_name='끝 번호')
     source_label = models.CharField(max_length=100, default='내신단어TEST', verbose_name='단어장 라벨')
+    # 학생관리표 행 번호 — '오늘 단어 TEST' 정렬을 시트 순서와 맞추기 위함(0=미지정→뒤로).
+    sort_order = models.IntegerField(default=0, verbose_name='관리표 행순서')
 
     question_count = models.IntegerField(default=40, verbose_name='문제 수')
     time_limit_seconds = models.IntegerField(default=1200, verbose_name='제한시간(초)')

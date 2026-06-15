@@ -177,9 +177,10 @@ def board(date):
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
     g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
 
-    # 오늘 볼 단어 TEST(VocabRangeTest) — 학생별 활성 범위(접속 안 한 학생도 표시 위해 별도 집계)
+    # 오늘 볼 단어 TEST(VocabRangeTest) — 학생관리자료 '내신단어TEST' 지정만(퀴즈렛 자동청크 제외).
+    # vocab '오늘 단어 TEST' 페이지와 동일 기준. 접속 안 한 학생도 표시 위해 별도 집계.
     vrt = defaultdict(list)
-    for rt in VocabRangeTest.objects.filter(is_active=True).select_related('unit'):
+    for rt in VocabRangeTest.objects.filter(is_active=True, source_label='내신단어TEST').select_related('unit'):
         vrt[rt.student_id].append(rt)
 
     out = {}
@@ -314,7 +315,8 @@ def _next_actions(student, date):
     day_v = list(VocabSession.objects.filter(
         student=student, started_at__date=date,
         mode=VocabSession.MODE_TEST, finished_at__isnull=False))
-    for rt in VocabRangeTest.objects.filter(student=student, is_active=True).select_related('unit'):
+    for rt in VocabRangeTest.objects.filter(
+            student=student, is_active=True, source_label='내신단어TEST').select_related('unit'):
         matched = [s for s in day_v if s.range_test_id == rt.id]
         best = max((s.percent for s in matched), default=None)
         if best is None:
