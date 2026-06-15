@@ -97,21 +97,15 @@ def student_home(request):
             'quizlet_ranges': quizlet_map.get(unit.id, []),
         })
 
-    # 별표 모음(전체/오늘) 카드용 개수 — 단원 별표 + 낱말카드 별표 합산
-    # USE_TZ=False → now()는 Asia/Seoul 로컬 naive. created_at도 동일 기준.
-    day_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # 별표 모음 카드용 전체 개수 — 단원 별표 + 낱말카드 별표 합산
     total_star_count = (
         StudentWordStar.objects.filter(student=request.user).count()
         + WordCardStar.objects.filter(student=request.user).count())
-    today_star_count = (
-        StudentWordStar.objects.filter(student=request.user, created_at__gte=day_start).count()
-        + WordCardStar.objects.filter(student=request.user, created_at__gte=day_start).count())
 
     return render(request, 'vocab/home.html', {
         'unit_info': unit_info,
         'is_assigned_view': is_assigned_view,
         'total_star_count': total_star_count,
-        'today_star_count': today_star_count,
     })
 
 
@@ -1341,6 +1335,27 @@ def wordcard_list(request):
 
 
 @login_required
+def star_menu(request):
+    """별표 모음 메뉴 — 전체 별표 모음 / 오늘 별표 모음 선택."""
+    gate = _student_gate(request)
+    if gate:
+        return gate
+
+    # USE_TZ=False → now()는 Asia/Seoul 로컬 naive. created_at도 동일 기준.
+    day_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    total_star_count = (
+        StudentWordStar.objects.filter(student=request.user).count()
+        + WordCardStar.objects.filter(student=request.user).count())
+    today_star_count = (
+        StudentWordStar.objects.filter(student=request.user, created_at__gte=day_start).count()
+        + WordCardStar.objects.filter(student=request.user, created_at__gte=day_start).count())
+    return render(request, 'vocab/star_menu.html', {
+        'total_star_count': total_star_count,
+        'today_star_count': today_star_count,
+    })
+
+
+@login_required
 def star_flashcard(request, today=False):
     """별표 모음 플래시카드 — 단원 별표 + 낱말카드 별표 통합.
     today=True 면 오늘(로컬 자정 이후) 별표한 것만."""
@@ -1389,8 +1404,8 @@ def star_flashcard(request, today=False):
         'default_shuffle': True,
         'star_enabled': True,
         'wordcard_star_url': reverse('vocab:wordcard_star_toggle'),
-        'back_url': reverse('vocab:home'),
-        'back_label': '단어 훈련 단원',
+        'back_url': reverse('vocab:star_menu'),
+        'back_label': '별표 모음',
     })
 
 
