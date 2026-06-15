@@ -322,17 +322,15 @@ def student_home(request):
         u.num_problems = len(all_idx)
         rt = rt_map.get(u.id)
         u.range_test = rt
-        if is_assigned_view:
-            # 전체 문항을 학생별 고정 셔플 → 40씩 비겹침 세트(언제든 클릭). 1~13세트…
-            sets = _student_sets(request.user.id, u.id, all_idx)
-            # 오늘 목표 세트 수 — 학생관리자료에서 온 오늘볼TEST 범위로 환산(없으면 0=제한 없음)
-            target = _target_set_count(rt)
-            u.target_sets = target
-            u.sets = [{'no': i + 1, 'count': len(s), 'today': bool(target) and (i < target)}
-                      for i, s in enumerate(sets)]
+        # 단어/요약문/영작처럼: 학생관리자료에서 지정한 그날 시험범위(rt)를 40개씩 끊어 세트로.
+        u.has_range = bool(rt)
+        u.range_label = rt.range_label if rt else ''
+        if is_assigned_view and rt:
+            rng = _range_indices(all_idx, rt)        # 시험범위 안 문항만
+            sets = _student_sets(request.user.id, u.id, rng)
+            u.sets = [{'no': i + 1, 'count': len(s)} for i, s in enumerate(sets)]
         else:
             u.sets = []
-            u.target_sets = 0
 
     # 다시 풀 차시 — 본인 세션 중 (1) 진행중인 2차시+ 이어풀기, (2) 채점완료 후 틀린 문제 재시험 대기
     retries = []
@@ -368,10 +366,13 @@ def start_session(request, unit_id):
         messages.error(request, '이 단원에 문항이 없습니다.')
         return redirect('grammar:home')
 
-    # 세트 = 전체 문항을 학생별 고정 셔플 → 40개씩 비겹침(언제든 클릭 가능). 범위 제한 없음.
-    sets = _student_sets(request.user.id, unit.id, all_idx)
+    # 세트 = 학생관리자료에서 지정한 그날 시험범위(rt)를 40개씩 끊은 것. 범위 없으면 출제 불가.
+    rt = (GrammarRangeTest.objects.filter(student=request.user, unit=unit, is_active=True)
+          .order_by('-created_at').first()) if not is_teacher(request.user) else None
+    rng = _range_indices(all_idx, rt) if rt else all_idx
+    sets = _student_sets(request.user.id, unit.id, rng)
     if not sets:
-        messages.error(request, '해당 범위가 없습니다.')
+        messages.error(request, '오늘 시험범위가 지정되지 않았습니다. 선생님께 문의하세요.')
         return redirect('grammar:home')
     try:
         n = int(request.GET.get('set') or request.GET.get('chunk') or 1)

@@ -49,21 +49,22 @@
                     <h5 class="card-title">{{ u.title }}</h5>
                     <p class="text-muted small mb-2">{{ u.grade }} · 문항 {{ u.num_problems }}개{% if u.school %} · {{ u.school }}{% endif %}</p>
                     <div class="mt-auto">
-                        {% if u.target_sets %}
-                        <div class="alert alert-warning py-1 px-2 mb-2 small">
-                            <i class="fas fa-bullseye me-1"></i>오늘 목표: <b>세트 1~{{ u.target_sets }}</b> (학생관리자료 연동)
+                        {% if u.has_range %}
+                        <div class="text-muted small mb-1">
+                            <i class="fas fa-bullseye me-1"></i>오늘 시험범위 <b>{{ u.range_label }}</b> · 40문제씩 끊어 출제
                         </div>
-                        {% endif %}
-                        <div class="text-muted small mb-1"><i class="fas fa-shuffle me-1"></i>세트 (전체를 랜덤으로 섞어 40문제씩 · 겹치지 않게) — 아무때나 클릭</div>
                         <div class="d-flex flex-wrap gap-2">
                             {% for s in u.sets %}
-                            <a href="{% url 'grammar:start_session' u.id %}?set={{ s.no }}"
-                               class="btn btn-sm {% if s.today %}btn-warning fw-bold{% else %}btn-outline-primary{% endif %}">
-                               {% if s.today %}<i class="fas fa-bolt me-1"></i>{% endif %}세트 {{ s.no }} <span class="opacity-75">({{ s.count }}문제)</span></a>
+                            <a href="{% url 'grammar:start_session' u.id %}?set={{ s.no }}" class="btn btn-sm btn-outline-primary">세트 {{ s.no }} <span class="opacity-75">({{ s.count }}문제)</span></a>
                             {% empty %}
-                            <span class="text-muted small">문항이 없습니다.</span>
+                            <span class="text-muted small">시험범위에 문항이 없습니다.</span>
                             {% endfor %}
                         </div>
+                        {% elif is_assigned_view %}
+                        <div class="alert alert-light border py-2 px-2 mb-0 small text-muted">
+                            <i class="fas fa-hourglass-half me-1"></i>오늘 시험범위가 아직 지정되지 않았어요. (학생관리자료 연동)
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
