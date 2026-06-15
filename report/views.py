@@ -23,27 +23,35 @@ from . import study
 
 
 # 일일 입력 그리드 필드 (키, 라벨, 타입)
+# 학생관리표(0. 학생관리자료.xlsx) 한 행 = DailyRecord 한 건. 엑셀 열 순서에 맞춰 정렬.
 GRID_FIELDS = [
     ('attendance', '출석', 'att'),
-    ('hw1_rate', '과제1달성률', 'text'),
-    ('hw2_rate', '과제2달성률', 'text'),
+    # 4과목 시험 결과
     ('grammar_summary_result', '어법/요약문', 'text'),
     ('vocab_result', '단어시험', 'text'),
     ('writing_result', '영작시험', 'text'),
+    ('reading_result', 'TEST결과', 'text'),
+    # 과제 달성률 · 순위
+    ('hw1_rate', '과제1달성률', 'text'),
+    ('hw2_rate', '과제2달성률', 'text'),
+    ('hw_rank', '숙제순위', 'text'),
+    # 독해 · 문법 과제 결과
     ('reading_hw1_result', '독해과제1', 'text'),
     ('reading_hw2_result', '독해과제2', 'text'),
-    ('grammar_hw_result', '문법과제', 'text'),
     ('grammar_no', '문법번호', 'text'),
+    ('grammar_hw_result', '문법과제', 'text'),
+    # 단어 암기
+    ('vocab_book', '단어장', 'text'),
+    ('vocab_hw_start', '단어시작', 'text'),
+    ('vocab_hw_end', '단어끝', 'text'),
+    ('is_new_vocab', '새단어장', 'check'),
+    # 오늘 / 다음 수업 과제
     ('today_reading1', '오늘독해1', 'text'),
     ('today_reading2', '오늘독해2', 'text'),
     ('next_reading1', '다음독해1', 'text'),
     ('next_reading2', '다음독해2', 'text'),
     ('next_grammar', '다음문법', 'text'),
-    ('vocab_book', '단어장', 'text'),
-    ('vocab_hw_start', '단어시작', 'text'),
-    ('vocab_hw_end', '단어끝', 'text'),
     ('teacher_comment', '한마디', 'text'),
-    ('is_new_vocab', '새단어장', 'check'),
 ]
 TEXT_FIELDS = [f for f, _, t in GRID_FIELDS if t in ('text', 'att')]
 ATT_CHOICES = ['', '출석', '지각', '결석']
