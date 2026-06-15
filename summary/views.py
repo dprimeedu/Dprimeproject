@@ -746,7 +746,7 @@ def import_api(request):
         assign_to = str(data.get('assign_to', '') or '').strip()
         assign_login_id = str(data.get('assign_login_id', '') or '').strip()
         assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
-        mode = str(data.get('mode', 'replace') or 'replace').strip().lower()   # 'replace' | 'merge'
+        mode = str(data.get('mode', 'replace') or 'replace').strip().lower()   # 'replace' | 'merge' | 'append'
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -798,7 +798,17 @@ def import_api(request):
                     sentence1_template=p['sentence1_template'], sentence1_answer=p['sentence1_answer'], korean1=p['korean1'],
                     sentence2_template=p['sentence2_template'], sentence2_answer=p['sentence2_answer'], korean2=p['korean2'])
 
-            if mode == 'merge':
+            if mode == 'append':
+                # 유지하고 추가 — 기존 문항 보존, 들어온 항목을 기존 max index 다음부터 이어붙임
+                base = (SummaryProblem.objects.filter(unit=unit_obj)
+                        .order_by('-index').values_list('index', flat=True).first()) or 0
+                to_create = []
+                for i, p in enumerate(parsed, start=base + 1):
+                    p = dict(p); p['index'] = i
+                    to_create.append(_mk(p))
+                SummaryProblem.objects.bulk_create(to_create)
+                n = len(to_create)
+            elif mode == 'merge':
                 # 통합 — 번호 기준 upsert: 기존 갱신·신규 추가·나머지 보존
                 _F = ['sub_unit', 'sentence1_template', 'sentence1_answer', 'korean1',
                       'sentence2_template', 'sentence2_answer', 'korean2']
@@ -818,7 +828,7 @@ def import_api(request):
                     SummaryProblem.objects.bulk_update(to_update, _F)
                 n = len(to_create) + len(to_update)
             else:
-                # 삭제 후 새로(replace)
+                # 삭제 후 새로(replace) — 그 학교 단원 문항 전체 지우고 새로 넣기
                 SummaryProblem.objects.filter(unit=unit_obj).delete()
                 SummaryProblem.objects.bulk_create([_mk(p) for p in parsed])
                 n = len(parsed)
