@@ -12,8 +12,9 @@ urlpatterns = [
     path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
     path('range/<int:range_test_id>/flashcard/', views.range_flashcard_view, name='range_flashcard'),
 
-    # 학생 — 별표 모음
+    # 학생 — 별표 모음 (전체 / 오늘)
     path('stars/', views.star_flashcard, name='star_flashcard'),
+    path('stars/today/', views.star_flashcard, {'today': True}, name='star_flashcard_today'),
 
     # 학생 — 단어찾기 (낱말카드 만들기)
     path('cards/', views.wordcard_list, name='wordcard_list'),
