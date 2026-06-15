@@ -97,6 +97,11 @@ class GrammarSession(models.Model):
     # 이 세션이 실제 출제한 문항 번호들(JSON 리스트). 랜덤 40개 비순차 출제용 — 있으면 start/end보다 우선.
     problem_indices = models.TextField(blank=True, default='', verbose_name='출제 문항(JSON)')
     set_no = models.IntegerField(null=True, blank=True, verbose_name='세트 번호')
+    # 차시 — 1차시(처음 풀기) → 2차시(교사가 X 준 문제만 다시 풀기) → 3차시 …
+    round_no = models.IntegerField(default=1, verbose_name='차시')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='retries', verbose_name='이전 차시')
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_IN_PROGRESS, db_index=True)
     started_at = models.DateTimeField(auto_now_add=True)
@@ -119,12 +124,18 @@ class GrammarSession(models.Model):
         return round(self.correct_count / self.total_count * 100) if self.total_count else 0
 
     @property
+    def round_label(self):
+        return f'{self.round_no}차시'
+
+    @property
     def range_label(self):
         if self.set_no:
-            return f'세트{self.set_no}'
-        if self.start_index and self.end_index:
-            return f'{self.start_index}~{self.end_index}'
-        return '전체'
+            base = f'세트{self.set_no}'
+        elif self.start_index and self.end_index:
+            base = f'{self.start_index}~{self.end_index}'
+        else:
+            base = '전체'
+        return f'{base} · {self.round_no}차시' if self.round_no and self.round_no > 1 else base
 
 
 class GrammarWrongAnswer(models.Model):

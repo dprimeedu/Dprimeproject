@@ -333,7 +333,26 @@ def student_home(request):
         else:
             u.sets = []
             u.target_sets = 0
-    return render(request, 'grammar/home.html', {'units': units, 'is_assigned_view': is_assigned_view})
+
+    # 다시 풀 차시 — 본인 세션 중 (1) 진행중인 2차시+ 이어풀기, (2) 채점완료 후 틀린 문제 재시험 대기
+    retries = []
+    if is_assigned_view:
+        my = (GrammarSession.objects.filter(student=request.user, unit_id__in=unit_ids)
+              .exclude(status=GrammarSession.STATUS_SUBMITTED)
+              .select_related('unit').prefetch_related('answers', 'retries').order_by('-started_at'))
+        for s in my:
+            if s.status == GrammarSession.STATUS_IN_PROGRESS and s.round_no > 1:
+                retries.append({'session': s, 'kind': 'continue',
+                                'unit': s.unit.title, 'label': s.range_label,
+                                'count': len(s.problem_indices and json.loads(s.problem_indices) or [])})
+            elif s.status == GrammarSession.STATUS_GRADED and not s.retries.all():
+                wrong = sum(1 for a in s.answers.all() if not a.is_correct)
+                if wrong:
+                    retries.append({'session': s, 'kind': 'retry',
+                                    'unit': s.unit.title, 'label': s.range_label,
+                                    'count': wrong, 'next_round': s.round_no + 1})
+    return render(request, 'grammar/home.html', {
+        'units': units, 'is_assigned_view': is_assigned_view, 'retries': retries})
 
 
 @login_required
@@ -367,6 +386,40 @@ def start_session(request, unit_id):
         start_index=min(chosen), end_index=max(chosen),
         problem_indices=json.dumps(chosen), set_no=n)
     return redirect('grammar:session', session_id=session.id)
+
+
+def _wrong_problems(session):
+    """채점 완료된 세션에서 교사가 X(오답) 준 문항 목록(번호순)."""
+    answers = session.answers.select_related('problem').order_by('problem__index')
+    return [a.problem for a in answers if not a.is_correct]
+
+
+@login_required
+def start_retry(request, session_id):
+    """다음 차시 — 교사가 X 준 문항만 다시 풀기. 부모 세션은 채점 완료여야 함."""
+    parent = get_object_or_404(GrammarSession.objects.select_related('unit'), pk=session_id)
+    if parent.student != request.user:
+        messages.error(request, '본인 세션이 아닙니다.')
+        return redirect('grammar:home')
+    if parent.status != GrammarSession.STATUS_GRADED:
+        messages.info(request, '선생님 채점이 끝난 뒤 다시 풀 수 있어요.')
+        return redirect('grammar:result', session_id=parent.id)
+    # 이미 다음 차시가 있으면 그것으로 이동(중복 생성 방지)
+    existing = parent.retries.order_by('-started_at').first()
+    if existing:
+        return redirect('grammar:session' if existing.status == GrammarSession.STATUS_IN_PROGRESS
+                        else 'grammar:result', session_id=existing.id)
+    wrong = _wrong_problems(parent)
+    if not wrong:
+        messages.success(request, '틀린 문제가 없어요. 다시 풀 필요가 없습니다!')
+        return redirect('grammar:result', session_id=parent.id)
+    idxs = [p.index for p in wrong]
+    retry = GrammarSession.objects.create(
+        student=request.user, unit=parent.unit,
+        start_index=min(idxs), end_index=max(idxs),
+        problem_indices=json.dumps(idxs), set_no=parent.set_no,
+        round_no=parent.round_no + 1, parent=parent)
+    return redirect('grammar:session', session_id=retry.id)
 
 
 @login_required
@@ -431,7 +484,15 @@ def result_view(request, session_id):
     if session.student != request.user and not is_teacher(request.user):
         return redirect('grammar:home')
     answers = list(session.answers.select_related('problem').order_by('problem__index'))
-    return render(request, 'grammar/result.html', {'session': session, 'answers': answers})
+    wrong_n = sum(1 for a in answers if not a.is_correct)
+    # 다음 차시: 채점완료 + 틀린 문제 있음 + 아직 다음 차시 미생성
+    next_round = session.round_no + 1
+    can_retry = (session.status == GrammarSession.STATUS_GRADED and wrong_n > 0
+                 and not session.retries.exists())
+    retry_existing = session.retries.order_by('-started_at').first()
+    return render(request, 'grammar/result.html', {
+        'session': session, 'answers': answers, 'wrong_n': wrong_n,
+        'can_retry': can_retry, 'next_round': next_round, 'retry_existing': retry_existing})
 
 
 # ─────────────────────────────────────────────

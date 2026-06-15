@@ -19,6 +19,27 @@
         {% endif %}
     </div>
 
+    {% if retries %}
+    <div class="card mb-3 border-warning">
+        <div class="card-body">
+            <h6 class="card-title text-warning-emphasis mb-2"><i class="fas fa-rotate-left me-1"></i>다시 풀 문제 (차시)</h6>
+            <div class="d-flex flex-column gap-2">
+                {% for r in retries %}
+                {% if r.kind == 'retry' %}
+                <a href="{% url 'grammar:start_retry' r.session.id %}" class="btn btn-warning text-start fw-bold">
+                    {{ r.unit }} · {{ r.label }} → <i class="fas fa-pen mx-1"></i>{{ r.next_round }}차시 틀린 {{ r.count }}문제 다시 풀기
+                </a>
+                {% else %}
+                <a href="{% url 'grammar:session' r.session.id %}" class="btn btn-outline-warning text-start">
+                    {{ r.unit }} · {{ r.label }} — 이어서 풀기 ({{ r.count }}문제)
+                </a>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {% if units %}
     <div class="row g-3">
         {% for u in units %}

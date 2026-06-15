@@ -11,10 +11,26 @@ tr.wrong td{background:#fef2f2}
         <h3 class="mb-1"><i class="fas fa-clipboard-check me-2"></i>{{ session.unit.title }} 결과
             <span class="badge bg-primary-subtle text-primary-emphasis align-middle">{{ session.range_label }}</span></h3>
         <p class="section-desc mb-0">
+            <span class="badge bg-secondary-subtle text-secondary-emphasis align-middle">{{ session.round_label }}</span>
             점수 <b style="font-size:1.3rem;color:var(--primary-color);">{{ session.percent }}</b>점 ({{ session.correct_count }}/{{ session.total_count }})
             {% if session.status == 'graded' %}<span class="badge bg-success ms-1">채점 완료</span>{% else %}<span class="badge bg-warning text-dark ms-1">자동채점 · 선생님 검수 전</span>{% endif %}
         </p>
     </div>
+
+    {% if can_retry %}
+    <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><i class="fas fa-rotate-left me-1"></i>선생님이 <b>{{ wrong_n }}문제</b>를 틀렸다고 표시했어요. 그 문제만 다시 풀어보세요.</div>
+        <a href="{% url 'grammar:start_retry' session.id %}" class="btn btn-warning fw-bold">
+            <i class="fas fa-pen me-1"></i>{{ next_round }}차시 — 틀린 {{ wrong_n }}문제 다시 풀기</a>
+    </div>
+    {% elif retry_existing %}
+    <div class="alert alert-info d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><i class="fas fa-rotate-left me-1"></i>{{ retry_existing.round_label }}로 이어집니다.</div>
+        <a href="{% url 'grammar:result' retry_existing.id %}" class="btn btn-outline-primary">{{ retry_existing.round_label }} 보기</a>
+    </div>
+    {% elif session.status == 'graded' and wrong_n == 0 and session.round_no > 1 %}
+    <div class="alert alert-success"><i class="fas fa-circle-check me-1"></i>모두 맞았어요! 이 세트는 끝났습니다.</div>
+    {% endif %}
     <div class="table-responsive">
         <table class="table table-sm align-middle">
             <thead class="table-light"><tr><th>#</th><th>문장</th><th>내 답</th><th>정답</th><th class="text-center">정오</th></tr></thead>
