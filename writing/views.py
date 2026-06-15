@@ -1279,6 +1279,26 @@ def _w_find_or_create_canonical(school_tok, grade, publisher, user):
     return u, True
 
 
+# 교재 단원: 제목 앞머리의 '3과' 같은 과(課) 토큰.
+_W_LESSON_RE = re.compile(r'^\s*(\d+)\s*과')
+
+
+def _w_lesson_token(title):
+    m = _W_LESSON_RE.match(title or '')
+    return f'{m.group(1)}과' if m else ''
+
+
+def _w_find_or_create_lesson(lesson, grade, publisher, user):
+    """교재(publisher)의 'N과' 누적 단원 찾기(제목=lesson), 없으면 생성. (unit, created)."""
+    u = WritingUnit.objects.filter(
+        is_active=True, publisher=publisher, title=lesson).order_by('id').first()
+    if u:
+        return u, False
+    u = WritingUnit.objects.create(
+        title=lesson, publisher=publisher, grade=grade, created_by=user)
+    return u, True
+
+
 @teacher_required
 def upload_view(request):
     if request.method != 'POST':
@@ -1328,13 +1348,20 @@ def upload_view(request):
                 new_rows.append((p['english'], p['korean']))
 
         school_tok = _w_school_token(publisher, title)
+        lesson = _w_lesson_token(title)
 
-        if school_tok:
-            # ── 누적 모드: 학교 영작은 '{학교} 영작 통합' 한 단원에 문장 단위로 쌓는다 ──
+        if school_tok or (lesson and publisher):
+            # ── 누적 모드 ──
+            #   학교 영작(동백고2 등) → '{학교} 영작 통합'
+            #   교재 과(3과 part1 등)  → 같은 교재(publisher)의 'N과'
             try:
                 with transaction.atomic():
-                    canonical, created = _w_find_or_create_canonical(
-                        school_tok, grade, publisher, request.user)
+                    if school_tok:
+                        canonical, created = _w_find_or_create_canonical(
+                            school_tok, grade, publisher, request.user)
+                    else:
+                        canonical, created = _w_find_or_create_lesson(
+                            lesson, grade, publisher, request.user)
                     seen = set(_w_norm_en(e) for e in WritingProblem.objects
                                .filter(unit=canonical).values_list('english', flat=True))
                     idx = packing._max_index(canonical)
