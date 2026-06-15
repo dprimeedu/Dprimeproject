@@ -58,6 +58,8 @@ def _sentence_with_blank(template):
 
 # 시험은 10문제 단위 청크로 끊어 본다 (전체 업로드 후 10개씩).
 CHUNK_SIZE = 10
+# 차시(청크) 통과 기준 — 채점 완료 점수가 이 % 이상이면 그 차시 통과(다음 차시로 진행, 생략 가능).
+CHUNK_PASS_PERCENT = 80
 
 
 def _chunks_from_indices(idxs):
@@ -116,20 +118,55 @@ def student_home(request):
         idx_map[uid].append(idx)
     # 오늘 볼 TEST (활성 SummaryRangeTest) — 단원별 최신 1건
     rt_map = {}
+    # 차시별 학생 결과 — (unit_id, start_index) → {best 점수, 채점대기 여부}
+    chunk_state = defaultdict(dict)
     if is_assigned_view:
         for rt in (SummaryRangeTest.objects
                    .filter(student=request.user, is_active=True, unit_id__in=unit_ids)
                    .order_by('unit_id', '-created_at')):
             rt_map.setdefault(rt.unit_id, rt)
+        for s in (SummarySession.objects
+                  .filter(student=request.user, unit_id__in=unit_ids)
+                  .exclude(status=SummarySession.STATUS_IN_PROGRESS)
+                  .values('unit_id', 'start_index', 'status', 'correct_count', 'total_blanks')):
+            si = s['start_index']
+            if si is None:
+                continue
+            d = chunk_state[s['unit_id']].setdefault(si, {'best': None, 'pending': False})
+            if s['status'] == SummarySession.STATUS_GRADED and s['total_blanks']:
+                pct = round(s['correct_count'] / s['total_blanks'] * 100)
+                d['best'] = pct if d['best'] is None else max(d['best'], pct)
+            elif s['status'] == SummarySession.STATUS_SUBMITTED:
+                d['pending'] = True
 
     for u in units:
         u._problem_count = len(idx_map.get(u.id, []))
         u.chunks = _chunks_from_indices(idx_map.get(u.id, []))
         u.range_test = rt_map.get(u.id)
+        # 차시별 상태 주석: passed(통과)/retry(점수 미달)/pending(채점대기)/todo
+        st_map = chunk_state.get(u.id, {})
+        for ch in u.chunks:
+            st = st_map.get(ch['start'])
+            if st and st['best'] is not None and st['best'] >= CHUNK_PASS_PERCENT:
+                ch['state'], ch['score'] = 'passed', st['best']
+            elif st and st['best'] is not None:
+                ch['state'], ch['score'] = 'retry', st['best']
+            elif st and st['pending']:
+                ch['state'], ch['score'] = 'pending', None
+            else:
+                ch['state'], ch['score'] = 'todo', None
+        # 현재 차시 = 통과 안 된 첫 차시 (그 앞은 전부 통과 → 생략 가능)
+        cur = next((i for i, ch in enumerate(u.chunks) if ch['state'] != 'passed'), None)
+        for i, ch in enumerate(u.chunks):
+            ch['is_current'] = (i == cur)
+            ch['leading_passed'] = cur is not None and i < cur
+        u.all_passed = bool(u.chunks) and cur is None
 
     return render(request, 'summary/home.html', {
         'units': units,
         'is_assigned_view': is_assigned_view,
+        'is_student': is_assigned_view,
+        'pass_percent': CHUNK_PASS_PERCENT,
     })
 
 
