@@ -2451,7 +2451,8 @@ def _fmt_duration(secs: int) -> str:
 @teacher_required
 @require_GET
 def grade_student(request, student_id):
-    """학생 1명의 영작 회차별 입력값을 한 화면에 — 각 회차에 문장을 어떻게 썼는지(단어별 정오)."""
+    """학생 1명의 영작 단어별 시도(회차) 보기 — 단어마다 1회차(첫입력)/2회차(한글힌트)/
+    3회차(영어첫자)에 뭘 입력해 몇 회차에 맞췄는지(또는 다 틀렸는지)를 한 화면에."""
     User = get_user_model()
     student = get_object_or_404(
         User.objects.exclude(is_staff=True).exclude(is_superuser=True), pk=student_id)
@@ -2459,7 +2460,7 @@ def grade_student(request, student_id):
                 .filter(student=student)
                 .select_related('unit')
                 .order_by('unit_id', 'start_index', 'started_at'))
-    seq = {}          # (unit, start, end) → 회차 순번
+    seq = {}
     blocks = []
     for sess in sessions:
         attempts = list(WritingAttempt.objects
@@ -2470,31 +2471,43 @@ def grade_student(request, student_id):
             continue
         key = (sess.unit_id, sess.start_index, sess.end_index)
         seq[key] = seq.get(key, 0) + 1
-        # 문제 → 단어 순번 → 시도들
         probs = {}
         for a in attempts:
             pd = probs.setdefault(a.problem_id, {'problem': a.problem, 'words': {}})
             pd['words'].setdefault(a.word_index, []).append(a)
+        # 회차별 집계(단어 단위): 1회/2회/3회 성공, 실패
+        cnt = {1: 0, 2: 0, 3: 0, 0: 0}
         prob_rows = []
         for pid, pd in probs.items():
-            words, all_ok = [], True
+            words = []
             for wi in sorted(pd['words']):
-                tries = pd['words'][wi]
-                first, final = tries[0], tries[-1]
-                ok = final.is_correct
-                if not ok:
-                    all_ok = False
-                    cls = 'wrong'
-                elif first.is_correct and first.hint_level == 0 and len(tries) == 1:
-                    cls = 'ok'         # 한 번에 정답
-                else:
-                    cls = 'struggle'   # 맞췄지만 재시도/힌트
-                words.append({'text': final.input_value or '·', 'cls': cls,
-                              'answer': final.correct_answer, 'tries': len(tries)})
-            prob_rows.append({'problem': pd['problem'], 'words': words, 'all_ok': all_ok})
+                tries = sorted(pd['words'][wi], key=lambda x: x.attempt_num)
+                by_num = {t.attempt_num: t for t in tries}
+                success_at = next((t.attempt_num for t in tries if t.is_correct), 0)
+                cnt[success_at if success_at in cnt else 0] += 1
+                rounds = []
+                for num in (1, 2, 3):
+                    t = by_num.get(num)
+                    if t is None:
+                        rounds.append(None)
+                    else:
+                        rounds.append({'input': t.input_value or '(미입력)', 'ok': t.is_correct})
+                # 표시 단어(성공 입력 or 마지막 입력)
+                shown = (by_num.get(success_at) if success_at else tries[-1])
+                words.append({
+                    'index': wi, 'answer': tries[-1].correct_answer,
+                    'shown': shown.input_value or '·', 'success_at': success_at,
+                    'rounds': rounds,
+                    'struggled': success_at != 1,   # 1회차에 못 맞춘 단어
+                })
+            prob_rows.append({
+                'problem': pd['problem'], 'words': words,
+                'struggled': [w for w in words if w['struggled']],
+                'all_ok': all(w['success_at'] for w in words)})
         prob_rows.sort(key=lambda r: r['problem'].index)
         blocks.append({
             'session': sess, 'round_no': seq[key], 'rows': prob_rows,
+            'cnt': cnt, 'total_words': sum(cnt.values()),
             'perfect': sum(1 for r in prob_rows if r['all_ok']), 'total': len(prob_rows)})
     return render(request, 'writing/grade_student.html', {
         'student': student, 'blocks': blocks})

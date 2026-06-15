@@ -487,23 +487,37 @@ def grade_student(request, student_id):
         answers = list(sess.blank_answers.select_related('problem')
                        .order_by('problem__index', 'blank'))
         rows, n_o = [], 0
+        cnt = {1: 0, 2: 0, 0: 0}      # 1회차(첫입력) 성공 / 2회차(한글) 성공 / 실패
         for ba in answers:
+            cn = _norm(ba.correct_answer)
+            fn = _norm(ba.first_input)
+            sn = _norm(ba.second_input)
+            if fn and fn == cn:
+                success_at = 1
+            elif ba.korean_shown and sn and sn == cn:
+                success_at = 2
+            else:
+                success_at = 0
             if ba.admin_verdict:
                 verdict = ba.admin_verdict
             else:
-                final = _norm(ba.second_input or ba.first_input)
-                verdict = 'O' if final and final == _norm(ba.correct_answer) else 'X'
+                verdict = 'O' if success_at else 'X'
+            # 교사가 O로 인정했는데 입력매칭이 안되면 성공 회차로 간주
+            if verdict == 'O' and success_at == 0:
+                success_at = 2 if (ba.korean_shown and ba.second_input) else 1
             if verdict == 'O':
                 n_o += 1
+            cnt[success_at if success_at in cnt else 0] += 1
             raw = ba.problem.sentence1_template if ba.blank == 'a' else ba.problem.sentence2_template
             rows.append({
                 'ba': ba,
                 'label': BLANK_LABEL.get(ba.blank, ba.blank),
                 'verdict': verdict,
+                'success_at': success_at,
                 'sentence_html': _sentence_with_blank(raw),
                 'korean': ba.problem.korean1 if ba.blank == 'a' else ba.problem.korean2,
             })
-        blocks.append({'session': sess, 'rows': rows, 'o': n_o, 'total': len(rows)})
+        blocks.append({'session': sess, 'rows': rows, 'o': n_o, 'total': len(rows), 'cnt': cnt})
     return render(request, 'summary/grade_student.html', {
         'student': student, 'blocks': blocks,
     })
