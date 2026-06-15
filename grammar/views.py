@@ -2,21 +2,47 @@
 학생 응시/채점 UI는 Phase 2.
 """
 import json
+from collections import OrderedDict, defaultdict
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
 from django.db import transaction
 from django.http import JsonResponse, HttpResponseBadRequest
-from django.shortcuts import render
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .models import (
     GrammarUnit, GrammarProblem, GrammarAssignment, GrammarRangeTest,
+    GrammarSession, GrammarAnswer,
 )
-from .services import grade_from_school
+from .services import grade_from_school, auto_grade
 from member.auto_assign import auto_assign_unit
+
+# 한 차시(청크) 문항 수
+CHUNK_SIZE = 20
+
+
+def _chunks_from_indices(idxs):
+    """정렬 index 리스트 → CHUNK_SIZE 단위 청크 [{num,start,end,count}]."""
+    chunks = []
+    for i in range(0, len(idxs), CHUNK_SIZE):
+        seg = idxs[i:i + CHUNK_SIZE]
+        if seg:
+            chunks.append({'num': i // CHUNK_SIZE + 1, 'start': seg[0], 'end': seg[-1], 'count': len(seg)})
+    return chunks
+
+
+def _ranged_problems(session):
+    qs = session.unit.problems.all().order_by('index')
+    if session.start_index is not None:
+        qs = qs.filter(index__gte=session.start_index)
+    if session.end_index is not None:
+        qs = qs.filter(index__lte=session.end_index)
+    return qs
 
 
 # ─────────────────────────────────────────────
@@ -238,7 +264,140 @@ def range_import_api(request):
 
 
 # ─────────────────────────────────────────────
-# 교사 — 단원 목록 (Phase 1 임시 랜딩; 응시/채점은 Phase 2)
+# 학생 — 홈 / 응시 / 제출(자동채점) / 결과
+# ─────────────────────────────────────────────
+
+@login_required
+def student_home(request):
+    """어법훈련 학생 홈 — 배정 단원 + 차시 버튼."""
+    if not is_teacher(request.user) and not getattr(request.user, 'is_approved', False):
+        return render(request, 'grammar/student_pending.html', {})
+    if is_teacher(request.user):
+        units = list(GrammarUnit.objects.filter(is_active=True).order_by('-created_at'))
+        is_assigned_view = False
+    else:
+        units = [a.unit for a in GrammarAssignment.objects.filter(student=request.user).select_related('unit') if a.unit.is_active]
+        is_assigned_view = True
+
+    unit_ids = [u.id for u in units]
+    idx_map = defaultdict(list)
+    for uid, idx in (GrammarProblem.objects.filter(unit_id__in=unit_ids)
+                     .order_by('index').values_list('unit_id', 'index')):
+        idx_map[uid].append(idx)
+    rt_map = {}
+    if is_assigned_view:
+        for rt in (GrammarRangeTest.objects.filter(student=request.user, is_active=True, unit_id__in=unit_ids)
+                   .order_by('unit_id', '-created_at')):
+            rt_map.setdefault(rt.unit_id, rt)
+    for u in units:
+        u._problem_count = len(idx_map.get(u.id, []))
+        u.chunks = _chunks_from_indices(idx_map.get(u.id, []))
+        u.range_test = rt_map.get(u.id)
+    return render(request, 'grammar/home.html', {'units': units, 'is_assigned_view': is_assigned_view})
+
+
+@login_required
+def start_session(request, unit_id):
+    unit = get_object_or_404(GrammarUnit, pk=unit_id, is_active=True)
+    if not is_teacher(request.user):
+        if not GrammarAssignment.objects.filter(student=request.user, unit=unit).exists():
+            messages.error(request, '이 단원은 배정되지 않았습니다.')
+            return redirect('grammar:home')
+    idxs = list(unit.problems.order_by('index').values_list('index', flat=True))
+    if not idxs:
+        messages.error(request, '이 단원에 문항이 없습니다.')
+        return redirect('grammar:home')
+
+    start_i = end_i = None
+    rt_id = request.GET.get('rt')
+    if rt_id:
+        rt = GrammarRangeTest.objects.filter(pk=rt_id, student=request.user, is_active=True).first()
+        if rt:
+            start_i, end_i = rt.start_index, rt.end_index
+    chunk = request.GET.get('chunk')
+    if start_i is None and chunk:
+        try:
+            c = int(chunk)
+        except (TypeError, ValueError):
+            c = 1
+        seg = idxs[(c - 1) * CHUNK_SIZE: c * CHUNK_SIZE]
+        if not seg:
+            messages.error(request, '해당 범위가 없습니다.')
+            return redirect('grammar:home')
+        start_i, end_i = seg[0], seg[-1]
+
+    session = GrammarSession.objects.create(
+        student=request.user, unit=unit, start_index=start_i, end_index=end_i)
+    return redirect('grammar:session', session_id=session.id)
+
+
+@login_required
+def session_view(request, session_id):
+    session = get_object_or_404(GrammarSession, pk=session_id)
+    if session.student != request.user:
+        messages.error(request, '본인 세션이 아닙니다.')
+        return redirect('grammar:home')
+    if session.status != GrammarSession.STATUS_IN_PROGRESS:
+        return redirect('grammar:result', session_id=session.id)
+    problems = list(_ranged_problems(session))
+    # 정답은 클라이언트에 안 보냄 (제출 시 서버 자동채점)
+    problems_data = [{'id': p.id, 'index': p.index, 'sentence': p.sentence, 'sub_unit': p.sub_unit} for p in problems]
+    return render(request, 'grammar/session.html', {
+        'session': session, 'unit': session.unit,
+        'problems_json': json.dumps(problems_data, ensure_ascii=False),
+        'total_problems': len(problems),
+    })
+
+
+@login_required
+@require_POST
+def submit_session_api(request):
+    """제출 → 서버 자동채점. body: {session_id, answers:{problem_id: 학생입력}}."""
+    try:
+        data = json.loads(request.body or '{}')
+        session_id = int(data['session_id'])
+        answers = data.get('answers') or {}
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+    session = get_object_or_404(
+        GrammarSession, pk=session_id, student=request.user,
+        status=GrammarSession.STATUS_IN_PROGRESS)
+    problems = list(_ranged_problems(session))
+
+    correct = 0
+    with transaction.atomic():
+        rows = []
+        for p in problems:
+            student_input = str(answers.get(str(p.id), '') or '').strip()
+            ok = auto_grade(student_input, p.answer)   # True/False/None
+            ac = bool(ok)
+            if ac:
+                correct += 1
+            rows.append(GrammarAnswer(
+                session=session, problem=p, student_input=student_input,
+                auto_correct=ac, correct_answer=p.answer,
+                admin_verdict='O' if ac else None))   # 자동 O는 미리 반영, X는 교사 검수 대상
+        GrammarAnswer.objects.bulk_create(rows)
+        session.total_count = len(problems)
+        session.correct_count = correct
+        session.status = GrammarSession.STATUS_SUBMITTED
+        session.submitted_at = timezone.now()
+        session.save(update_fields=['total_count', 'correct_count', 'status', 'submitted_at'])
+    return JsonResponse({'success': True, 'redirect_url': f'/training/grammar/result/{session.id}/'},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+def result_view(request, session_id):
+    session = get_object_or_404(GrammarSession.objects.select_related('unit'), pk=session_id)
+    if session.student != request.user and not is_teacher(request.user):
+        return redirect('grammar:home')
+    answers = list(session.answers.select_related('problem').order_by('problem__index'))
+    return render(request, 'grammar/result.html', {'session': session, 'answers': answers})
+
+
+# ─────────────────────────────────────────────
+# 교사 — 단원 목록 + 채점(자동채점 후 X 위주 검수)
 # ─────────────────────────────────────────────
 
 @teacher_required
@@ -247,3 +406,81 @@ def unit_list(request):
     for u in units:
         u._pc = u.problem_count
     return render(request, 'grammar/unit_list.html', {'units': units})
+
+
+@teacher_required
+def grade_list(request):
+    """제출/채점 세션 — 학생별 그룹(차시 칩). 채점대기 많은 학생 먼저."""
+    show = request.GET.get('show', 'pending')
+    qs = (GrammarSession.objects.exclude(status=GrammarSession.STATUS_IN_PROGRESS)
+          .select_related('student', 'unit').order_by('-submitted_at'))
+    if show == 'pending':
+        qs = qs.filter(status=GrammarSession.STATUS_SUBMITTED)
+    sessions = list(qs[:300])
+    groups = OrderedDict()
+    for s in sessions:
+        g = groups.setdefault(s.student_id, {'student': s.student, 'sessions': []})
+        g['sessions'].append(s)
+    for g in groups.values():
+        g['sessions'].sort(key=lambda x: (x.unit_id, x.start_index or 0, x.started_at))
+        g['pending'] = sum(1 for x in g['sessions'] if x.status == GrammarSession.STATUS_SUBMITTED)
+    grouped = sorted(groups.values(), key=lambda g: (-g['pending'], g['student'].username or ''))
+    return render(request, 'grammar/grade_list.html', {'grouped': grouped, 'show': show})
+
+
+@teacher_required
+def grade_detail(request, session_id):
+    """세션 1건 채점 — 자동채점 결과 + X 위주(틀린 것 먼저) O/X 보정."""
+    session = get_object_or_404(GrammarSession.objects.select_related('student', 'unit'), pk=session_id)
+    answers = list(session.answers.select_related('problem').order_by('problem__index'))
+    rows = []
+    for a in answers:
+        verdict = a.admin_verdict if a.admin_verdict else ('O' if a.auto_correct else 'X')
+        rows.append({'a': a, 'verdict': verdict, 'wrong': verdict == 'X'})
+    # X(틀림) 먼저 정렬 — 교사 검수 집중
+    rows.sort(key=lambda r: (not r['wrong'], r['a'].problem.index))
+    wrong_count = sum(1 for r in rows if r['wrong'])
+    return render(request, 'grammar/grade_detail.html', {
+        'session': session, 'rows': rows, 'wrong_count': wrong_count})
+
+
+@teacher_required
+@require_POST
+def grade_update_api(request, session_id):
+    """채점 반영 — {verdicts:{answer_id:'O'|'X'}, finalize:bool}."""
+    session = get_object_or_404(GrammarSession, pk=session_id)
+    try:
+        data = json.loads(request.body or '{}')
+        verdicts = data.get('verdicts') or {}
+        finalize = bool(data.get('finalize'))
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid')
+    by_id = {a.id: a for a in session.answers.all()}
+    changed = []
+    for aid_str, v in verdicts.items():
+        try:
+            a = by_id.get(int(aid_str))
+        except (ValueError, TypeError):
+            continue
+        if a is None:
+            continue
+        nv = 'O' if str(v).upper() == 'O' else 'X'
+        if a.admin_verdict != nv:
+            a.admin_verdict = nv
+            changed.append(a)
+    if changed:
+        GrammarAnswer.objects.bulk_update(changed, ['admin_verdict'])
+
+    all_a = list(session.answers.all())
+    session.correct_count = sum(1 for a in all_a if a.is_correct)
+    session.total_count = len(all_a)
+    fields = ['correct_count', 'total_count']
+    if finalize:
+        session.status = GrammarSession.STATUS_GRADED
+        session.graded_at = timezone.now()
+        session.graded_by = request.user
+        fields += ['status', 'graded_at', 'graded_by']
+    session.save(update_fields=fields)
+    return JsonResponse({'success': True, 'correct': session.correct_count,
+                         'total': session.total_count, 'percent': session.percent,
+                         'status': session.status}, json_dumps_params={'ensure_ascii': False})

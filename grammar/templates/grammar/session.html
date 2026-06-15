@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.g-row { border:1px solid #e5e7eb; border-radius:10px; padding:.7rem .9rem; margin-bottom:.6rem; }
+.g-sent { color:#374151; line-height:1.6; white-space:normal; }
+.g-in { max-width:260px; }
+.g-bar { position:sticky; bottom:0; background:#fff; border-top:1px solid #e5e7eb; padding:.6rem 0; }
+</style>
+<div class="home-wrap">
+    <a href="{% url 'grammar:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>어법훈련</a>
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-spell-check me-2"></i>{{ unit.title }} <span class="badge bg-light text-dark border">{{ session.range_label }}</span></h3>
+        <p class="section-desc mb-0">문장이 맞으면 <b>O</b>, 틀리면 <b>고친 형태</b>(예: <code>had-&gt;has</code> 또는 <code>has</code>)를 입력하세요.</p>
+    </div>
+
+    <div id="gList"></div>
+
+    <div class="g-bar text-end">
+        <span class="text-muted me-2" id="gProg">0 / {{ total_problems }}</span>
+        <button class="btn btn-primary" id="gSubmit"><i class="fas fa-paper-plane me-1"></i>제출(자동채점)</button>
+    </div>
+</div>
+
+<script>
+const PROBS = {{ problems_json|safe }};
+const SID = {{ session.id }};
+const CSRF = '{{ csrf_token }}';
+const list = document.getElementById('gList');
+PROBS.forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = 'g-row';
+    div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div class="g-sent flex-grow-1"><b class="text-muted me-1">${i+1}.</b>${escapeHtml(p.sentence)}</div>
+        <div class="d-flex gap-1 align-items-center">
+          <button type="button" class="btn btn-sm btn-outline-success g-ok" data-pid="${p.id}">맞음 O</button>
+          <input type="text" class="form-control form-control-sm g-in" data-pid="${p.id}" placeholder="O 또는 고친 형태">
+        </div>
+      </div>`;
+    list.appendChild(div);
+});
+function escapeHtml(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+list.querySelectorAll('.g-ok').forEach(b=>b.addEventListener('click',()=>{
+    const inp=list.querySelector(`.g-in[data-pid="${b.dataset.pid}"]`); inp.value='O'; inp.focus(); updateProg();
+}));
+list.querySelectorAll('.g-in').forEach(i=>i.addEventListener('input', updateProg));
+function updateProg(){
+    const done=[...list.querySelectorAll('.g-in')].filter(i=>i.value.trim()).length;
+    document.getElementById('gProg').textContent = `${done} / ${PROBS.length}`;
+}
+document.getElementById('gSubmit').addEventListener('click', async ()=>{
+    const answers={};
+    list.querySelectorAll('.g-in').forEach(i=>{ answers[i.dataset.pid]=i.value.trim(); });
+    const blank=Object.values(answers).filter(v=>!v).length;
+    if(blank && !confirm(`${blank}문항이 비어있습니다. 그래도 제출할까요?`)) return;
+    const btn=document.getElementById('gSubmit'); btn.disabled=true; btn.textContent='채점 중…';
+    try{
+        const r=await fetch('{% url "grammar:submit" %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({session_id:SID,answers})});
+        const d=await r.json();
+        if(d.success) window.location.href=d.redirect_url; else throw new Error('실패');
+    }catch(e){ btn.disabled=false; btn.textContent='제출(자동채점)'; alert('제출 실패: '+e.message); }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.rv-toggle{display:inline-flex;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
+.rv-toggle button{border:0;background:#fff;padding:.3rem .8rem;cursor:pointer;font-weight:700;color:#9ca3af}
+.rv-toggle button.o.on{background:#16a34a;color:#fff}.rv-toggle button.x.on{background:#dc2626;color:#fff}
+tr.wrong td{background:#fef2f2}
+.g-sent{max-width:480px;white-space:normal;color:#374151;line-height:1.55}
+</style>
+<div class="home-wrap">
+    <a href="{% url 'grammar:grade_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>채점 목록</a>
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-user-check me-2"></i>{{ session.student.username }} 어법 검수
+            <span class="badge bg-primary-subtle text-primary-emphasis align-middle">{{ session.range_label }}</span></h3>
+        <p class="section-desc mb-0">{{ session.unit.title }} · 제출 {{ session.submitted_at|date:"Y-m-d H:i" }} · <b class="text-danger">틀림 {{ wrong_count }}개</b> 위주로 검수</p>
+    </div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-3" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
+        <div>점수 <b id="rvPct" style="font-size:1.4rem;color:var(--primary-color);">{{ session.percent }}</b>점
+            (<span id="rvCorrect">{{ session.correct_count }}</span>/<span id="rvTotal">{{ session.total_count }}</span>)</div>
+        <label class="small"><input type="checkbox" id="xOnly"> 틀림(X)만 보기</label>
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle"><thead class="table-light">
+            <tr><th>#</th><th>문장</th><th>학생 입력</th><th>정답</th><th class="text-center">판정</th></tr></thead>
+            <tbody>
+                {% for r in rows %}
+                <tr data-aid="{{ r.a.id }}" class="g-tr {% if r.wrong %}wrong{% endif %}">
+                    <td class="text-muted">{{ r.a.problem.index }}</td>
+                    <td class="g-sent">{{ r.a.problem.sentence }}</td>
+                    <td>{{ r.a.student_input|default:"(미입력)" }}</td>
+                    <td class="text-success"><b>{{ r.a.correct_answer }}</b></td>
+                    <td class="text-center">
+                        <span class="rv-toggle">
+                            <button type="button" class="o {% if not r.wrong %}on{% endif %}" data-v="1">O</button>
+                            <button type="button" class="x {% if r.wrong %}on{% endif %}" data-v="0">X</button>
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="text-end mt-2">
+        <button class="btn btn-outline-secondary" id="saveBtn">저장</button>
+        <button class="btn btn-primary" id="finalBtn"><i class="fas fa-check me-1"></i>검수 완료</button>
+    </div>
+</div>
+<script>
+const SID={{ session.id }}, CSRF='{{ csrf_token }}', TOTAL={{ session.total_count }};
+document.querySelectorAll('.rv-toggle').forEach(t=>{
+    t.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+        t.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+        const tr=b.closest('tr'); tr.classList.toggle('wrong', b.dataset.v==='0'); recalc();
+    }));
+});
+function recalc(){
+    const o=[...document.querySelectorAll('.g-tr')].filter(tr=>tr.querySelector('.o').classList.contains('on')).length;
+    document.getElementById('rvCorrect').textContent=o;
+    document.getElementById('rvPct').textContent=TOTAL?Math.round(o/TOTAL*100):0;
+}
+document.getElementById('xOnly').addEventListener('change',e=>{
+    document.querySelectorAll('.g-tr').forEach(tr=>{ tr.style.display=(e.target.checked && !tr.classList.contains('wrong'))?'none':''; });
+});
+function collect(){const v={};document.querySelectorAll('.g-tr').forEach(tr=>{v[tr.dataset.aid]=tr.querySelector('.o').classList.contains('on')?'O':'X';});return v;}
+async function save(finalize){
+    const r=await fetch('{% url "grammar:grade_update" session.id %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({verdicts:collect(),finalize})});
+    const d=await r.json();
+    if(d.success){ if(finalize) window.location.href='{% url "grammar:grade_list" %}'; else alert('저장됨 ('+d.correct+'/'+d.total+')'); }
+    else alert('저장 실패');
+}
+document.getElementById('saveBtn').addEventListener('click',()=>save(false));
+document.getElementById('finalBtn').addEventListener('click',()=>save(true));
+</script>
+{% endblock %}

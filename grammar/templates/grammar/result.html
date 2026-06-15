@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.vc{font-weight:800}.vc.o{color:#16a34a}.vc.x{color:#dc2626}
+tr.wrong td{background:#fef2f2}
+.g-sent{max-width:520px;white-space:normal;color:#374151;line-height:1.55}
+</style>
+<div class="home-wrap">
+    <a href="{% url 'grammar:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>어법훈련</a>
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-clipboard-check me-2"></i>{{ session.unit.title }} 결과
+            <span class="badge bg-primary-subtle text-primary-emphasis align-middle">{{ session.range_label }}</span></h3>
+        <p class="section-desc mb-0">
+            점수 <b style="font-size:1.3rem;color:var(--primary-color);">{{ session.percent }}</b>점 ({{ session.correct_count }}/{{ session.total_count }})
+            {% if session.status == 'graded' %}<span class="badge bg-success ms-1">채점 완료</span>{% else %}<span class="badge bg-warning text-dark ms-1">자동채점 · 선생님 검수 전</span>{% endif %}
+        </p>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead class="table-light"><tr><th>#</th><th>문장</th><th>내 답</th><th>정답</th><th class="text-center">정오</th></tr></thead>
+            <tbody>
+                {% for a in answers %}
+                <tr class="{% if not a.is_correct %}wrong{% endif %}">
+                    <td class="text-muted">{{ a.problem.index }}</td>
+                    <td class="g-sent">{{ a.problem.sentence }}</td>
+                    <td>{{ a.student_input|default:"(미입력)" }}</td>
+                    <td class="text-success"><b>{{ a.correct_answer }}</b></td>
+                    <td class="text-center"><span class="vc {% if a.is_correct %}o{% else %}x{% endif %}">{% if a.is_correct %}O{% else %}X{% endif %}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

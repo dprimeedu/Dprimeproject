@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+    <div class="section-header">
+        <h3><i class="fas fa-spell-check me-2"></i>어법훈련 단원</h3>
+        <p class="section-desc">
+            {% if is_assigned_view %}
+            배정받은 단원을 골라 문장을 보고 <b>맞으면 O</b>, 틀리면 <b>고친 형태</b>를 입력하세요. 제출하면 자동채점됩니다.
+            {% else %}
+            (관리자 모드) 모든 활성 단원이 표시됩니다.
+            {% endif %}
+        </p>
+        {% if not is_assigned_view %}
+        <div class="d-flex gap-2 flex-wrap mt-2">
+            <a href="{% url 'grammar:grade_list' %}" class="btn btn-sm btn-primary"><i class="fas fa-user-check me-1"></i>어법 채점</a>
+            <a href="{% url 'grammar:unit_list' %}" class="btn btn-sm btn-outline-secondary">단원 관리</a>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if units %}
+    <div class="row g-3">
+        {% for u in units %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">{{ u.title }}</h5>
+                    <p class="text-muted small mb-2">{{ u.grade }} · 문항 {{ u._problem_count }}개{% if u.school %} · {{ u.school }}{% endif %}</p>
+                    <div class="mt-auto">
+                        {% if u.range_test %}
+                        <a href="{% url 'grammar:start_session' u.id %}?rt={{ u.range_test.id }}" class="btn btn-danger w-100 mb-2 fw-bold">
+                            <i class="fas fa-bolt me-1"></i>오늘 볼 어법TEST ({{ u.range_test.range_label }})
+                        </a>
+                        {% endif %}
+                        <div class="text-muted small mb-1"><i class="fas fa-pen me-1"></i>시험 범위 (20문제씩)</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for ch in u.chunks %}
+                            <a href="{% url 'grammar:start_session' u.id %}?chunk={{ ch.num }}" class="btn btn-outline-primary btn-sm" title="{{ ch.start }}~{{ ch.end }}번">{{ ch.start }}~{{ ch.end }}</a>
+                            {% empty %}
+                            <span class="text-muted small">문항이 없습니다.</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info text-center py-5">
+        {% if is_assigned_view %}아직 배정받은 어법 단원이 없습니다. 선생님께 문의하세요.{% else %}등록된 어법 단원이 없습니다. 로컬 어법웹동기화로 올려주세요.{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
