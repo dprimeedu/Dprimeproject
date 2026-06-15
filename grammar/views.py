@@ -2,6 +2,7 @@
 학생 응시/채점 UI는 Phase 2.
 """
 import json
+import random
 from collections import OrderedDict, defaultdict
 
 from django.conf import settings
@@ -17,32 +18,49 @@ from django.views.decorators.http import require_POST
 
 from .models import (
     GrammarUnit, GrammarProblem, GrammarAssignment, GrammarRangeTest,
-    GrammarSession, GrammarAnswer,
+    GrammarSession, GrammarAnswer, GrammarWrongAnswer,
 )
 from .services import grade_from_school, auto_grade
 from member.auto_assign import auto_assign_unit
 
-# 한 차시(청크) 문항 수
-CHUNK_SIZE = 20
+# 한 세트 문항 수 (어법은 40개씩)
+SET_SIZE = 40
 
 
-def _chunks_from_indices(idxs):
-    """정렬 index 리스트 → CHUNK_SIZE 단위 청크 [{num,start,end,count}]."""
-    chunks = []
-    for i in range(0, len(idxs), CHUNK_SIZE):
-        seg = idxs[i:i + CHUNK_SIZE]
-        if seg:
-            chunks.append({'num': i // CHUNK_SIZE + 1, 'start': seg[0], 'end': seg[-1], 'count': len(seg)})
-    return chunks
+def _student_sets(student_id, unit_id, idxs, size=SET_SIZE):
+    """시험범위 idxs를 학생별로 '고정 셔플' 후 size씩 분할(비겹침·골고루 랜덤).
+    같은 학생·단원·범위면 항상 같은 세트 → '세트1'은 늘 같은 40문항."""
+    if not idxs:
+        return []
+    shuffled = list(idxs)
+    seed = f'{student_id}-{unit_id}-{idxs[0]}-{idxs[-1]}-{len(idxs)}'
+    random.Random(seed).shuffle(shuffled)
+    return [shuffled[i:i + size] for i in range(0, len(shuffled), size)]
+
+
+def _range_indices(all_idx, rt):
+    """오늘 볼 어법TEST(rt) 범위가 있으면 그 안의 번호만, 없으면 전체."""
+    if rt and rt.start_index and rt.end_index:
+        return [i for i in all_idx if rt.start_index <= i <= rt.end_index]
+    return all_idx
 
 
 def _ranged_problems(session):
+    """세션이 실제 출제한 문항 목록(출제 순서 유지). problem_indices 있으면 그것, 없으면 범위."""
+    if session.problem_indices:
+        try:
+            idxs = json.loads(session.problem_indices)
+        except (ValueError, TypeError):
+            idxs = []
+        if idxs:
+            by_idx = {p.index: p for p in session.unit.problems.filter(index__in=idxs)}
+            return [by_idx[i] for i in idxs if i in by_idx]
     qs = session.unit.problems.all().order_by('index')
     if session.start_index is not None:
         qs = qs.filter(index__gte=session.start_index)
     if session.end_index is not None:
         qs = qs.filter(index__lte=session.end_index)
-    return qs
+    return list(qs)
 
 
 # ─────────────────────────────────────────────
@@ -290,44 +308,57 @@ def student_home(request):
                    .order_by('unit_id', '-created_at')):
             rt_map.setdefault(rt.unit_id, rt)
     for u in units:
-        u.num_problems = len(idx_map.get(u.id, []))
-        u.chunks = _chunks_from_indices(idx_map.get(u.id, []))
-        u.range_test = rt_map.get(u.id)
+        all_idx = idx_map.get(u.id, [])
+        u.num_problems = len(all_idx)
+        rt = rt_map.get(u.id)
+        u.range_test = rt
+        if is_assigned_view:
+            rng = _range_indices(all_idx, rt)
+            sets = _student_sets(request.user.id, u.id, rng)
+            u.sets = [{'no': i + 1, 'count': len(s)} for i, s in enumerate(sets)]
+        else:
+            u.sets = []
     return render(request, 'grammar/home.html', {'units': units, 'is_assigned_view': is_assigned_view})
 
 
 @login_required
 def start_session(request, unit_id):
+    """세트 출제 — 시험범위를 학생별 고정 셔플 후 40개씩 비겹침. ?set=N (없으면 1)."""
     unit = get_object_or_404(GrammarUnit, pk=unit_id, is_active=True)
     if not is_teacher(request.user):
         if not GrammarAssignment.objects.filter(student=request.user, unit=unit).exists():
             messages.error(request, '이 단원은 배정되지 않았습니다.')
             return redirect('grammar:home')
-    idxs = list(unit.problems.order_by('index').values_list('index', flat=True))
-    if not idxs:
+    all_idx = list(unit.problems.order_by('index').values_list('index', flat=True))
+    if not all_idx:
         messages.error(request, '이 단원에 문항이 없습니다.')
         return redirect('grammar:home')
 
-    start_i = end_i = None
+    # 범위 결정: ?rt=N 또는 이 단원의 활성 오늘볼TEST, 없으면 전체
+    rt = None
     rt_id = request.GET.get('rt')
     if rt_id:
         rt = GrammarRangeTest.objects.filter(pk=rt_id, student=request.user, is_active=True).first()
-        if rt:
-            start_i, end_i = rt.start_index, rt.end_index
-    chunk = request.GET.get('chunk')
-    if start_i is None and chunk:
-        try:
-            c = int(chunk)
-        except (TypeError, ValueError):
-            c = 1
-        seg = idxs[(c - 1) * CHUNK_SIZE: c * CHUNK_SIZE]
-        if not seg:
-            messages.error(request, '해당 범위가 없습니다.')
-            return redirect('grammar:home')
-        start_i, end_i = seg[0], seg[-1]
+    if rt is None:
+        rt = (GrammarRangeTest.objects.filter(student=request.user, unit=unit, is_active=True)
+              .order_by('-created_at').first())
+    rng = _range_indices(all_idx, rt)
+    sets = _student_sets(request.user.id, unit.id, rng)
+    if not sets:
+        messages.error(request, '해당 범위가 없습니다.')
+        return redirect('grammar:home')
+    try:
+        n = int(request.GET.get('set') or request.GET.get('chunk') or 1)
+    except (TypeError, ValueError):
+        n = 1
+    if n < 1 or n > len(sets):
+        n = 1
+    chosen = sets[n - 1]
 
     session = GrammarSession.objects.create(
-        student=request.user, unit=unit, start_index=start_i, end_index=end_i)
+        student=request.user, unit=unit,
+        start_index=min(chosen), end_index=max(chosen),
+        problem_indices=json.dumps(chosen), set_no=n)
     return redirect('grammar:session', session_id=session.id)
 
 
@@ -471,16 +502,35 @@ def grade_update_api(request, session_id):
     if changed:
         GrammarAnswer.objects.bulk_update(changed, ['admin_verdict'])
 
-    all_a = list(session.answers.all())
+    was_graded = session.status == GrammarSession.STATUS_GRADED
+    all_a = list(session.answers.select_related('problem').all())
     session.correct_count = sum(1 for a in all_a if a.is_correct)
     session.total_count = len(all_a)
     fields = ['correct_count', 'total_count']
+    wrong_saved = 0
     if finalize:
         session.status = GrammarSession.STATUS_GRADED
         session.graded_at = timezone.now()
         session.graded_by = request.user
         fields += ['status', 'graded_at', 'graded_by']
     session.save(update_fields=fields)
+
+    # 최초 검수완료에만 개인 오답 누적(재검수 시 중복 카운트 방지) — 구글 '틀린횟수' 패턴
+    if finalize and not was_graded:
+        for a in all_a:
+            if not a.is_correct:
+                wa, _ = GrammarWrongAnswer.objects.get_or_create(
+                    student=session.student, problem=a.problem, defaults={'wrong_count': 0})
+                wa.wrong_count = (wa.wrong_count or 0) + 1
+                wa.resolved = False
+                wa.save(update_fields=['wrong_count', 'resolved', 'last_wrong_at'])
+                wrong_saved += 1
+            else:
+                # 맞춘 문항이 기존 오답이면 해결 표시(누적 횟수는 보존)
+                GrammarWrongAnswer.objects.filter(
+                    student=session.student, problem=a.problem).update(resolved=True)
+
     return JsonResponse({'success': True, 'correct': session.correct_count,
                          'total': session.total_count, 'percent': session.percent,
-                         'status': session.status}, json_dumps_params={'ensure_ascii': False})
+                         'status': session.status, 'wrong_saved': wrong_saved},
+                        json_dumps_params={'ensure_ascii': False})

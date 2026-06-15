@@ -94,6 +94,9 @@ class GrammarSession(models.Model):
     unit = models.ForeignKey(GrammarUnit, on_delete=models.CASCADE, related_name='sessions')
     start_index = models.IntegerField(null=True, blank=True, verbose_name='시작 문항')
     end_index = models.IntegerField(null=True, blank=True, verbose_name='끝 문항')
+    # 이 세션이 실제 출제한 문항 번호들(JSON 리스트). 랜덤 40개 비순차 출제용 — 있으면 start/end보다 우선.
+    problem_indices = models.TextField(blank=True, default='', verbose_name='출제 문항(JSON)')
+    set_no = models.IntegerField(null=True, blank=True, verbose_name='세트 번호')
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_IN_PROGRESS, db_index=True)
     started_at = models.DateTimeField(auto_now_add=True)
@@ -117,9 +120,29 @@ class GrammarSession(models.Model):
 
     @property
     def range_label(self):
+        if self.set_no:
+            return f'세트{self.set_no}'
         if self.start_index and self.end_index:
             return f'{self.start_index}~{self.end_index}'
         return '전체'
+
+
+class GrammarWrongAnswer(models.Model):
+    """학생 개인 어법 오답 — 교사 검수에서 X 확정된 문항. 틀린횟수 누적(구글 E열 패턴)."""
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='grammar_wrong_answers')
+    problem = models.ForeignKey(GrammarProblem, on_delete=models.CASCADE, related_name='wrong_answers')
+    wrong_count = models.IntegerField(default=1, verbose_name='틀린 횟수')
+    resolved = models.BooleanField(default=False, verbose_name='해결됨(맞춤)')
+    last_wrong_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'grammar_wrong_answer'
+        verbose_name = '어법 개인오답'
+        verbose_name_plural = '어법 개인오답'
+        unique_together = [['student', 'problem']]
+        ordering = ['-wrong_count', '-last_wrong_at']
 
 
 class GrammarAnswer(models.Model):

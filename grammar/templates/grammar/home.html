@@ -33,10 +33,10 @@
                             <i class="fas fa-bolt me-1"></i>오늘 볼 어법TEST ({{ u.range_test.range_label }})
                         </a>
                         {% endif %}
-                        <div class="text-muted small mb-1"><i class="fas fa-pen me-1"></i>시험 범위 (20문제씩)</div>
+                        <div class="text-muted small mb-1"><i class="fas fa-shuffle me-1"></i>세트 (랜덤 40문제씩 · 겹치지 않게)</div>
                         <div class="d-flex flex-wrap gap-2">
-                            {% for ch in u.chunks %}
-                            <a href="{% url 'grammar:start_session' u.id %}?chunk={{ ch.num }}" class="btn btn-outline-primary btn-sm" title="{{ ch.start }}~{{ ch.end }}번">{{ ch.start }}~{{ ch.end }}</a>
+                            {% for s in u.sets %}
+                            <a href="{% url 'grammar:start_session' u.id %}?set={{ s.no }}" class="btn btn-outline-primary btn-sm">세트 {{ s.no }} <span class="opacity-75">({{ s.count }}문제)</span></a>
                             {% empty %}
                             <span class="text-muted small">문항이 없습니다.</span>
                             {% endfor %}
