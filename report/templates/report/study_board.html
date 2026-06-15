@@ -66,6 +66,17 @@
                                 </div>
                             {% elif key == 'writing' and row.cells.writing.did %}
                                 <span class="badge rounded-pill bg-info-subtle text-info-emphasis">{{ row.cells.writing.label }}</span>
+                            {% elif key == 'grammar' and row.cells.grammar.did %}
+                                <div class="d-flex flex-column gap-1" style="max-width:170px;margin:0 auto;">
+                                {% for c in row.cells.grammar.detail %}
+                                    <a href="{% url 'grammar:grade_detail' c.sid %}"
+                                       class="badge text-decoration-none text-start border
+                                       {% if c.cls == 'pending' %}bg-warning text-dark{% else %}bg-success-subtle text-success-emphasis{% endif %}"
+                                       title="어법 검수">
+                                        <span class="opacity-75">{{ c.range }}</span> · {{ c.status }}
+                                    </a>
+                                {% endfor %}
+                                </div>
                             {% elif key == 'exam' and row.cells.exam.did %}
                                 <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">{{ row.cells.exam.label }}</span>
                                 {% if row.cells.exam.pending %}<span class="badge bg-warning text-dark">채점</span>{% endif %}
@@ -83,7 +94,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6" class="text-center text-muted py-4">재원생이 없습니다.</td></tr>
+                <tr><td colspan="7" class="text-center text-muted py-4">재원생이 없습니다.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

@@ -17,6 +17,7 @@ from summary.models import (
 )
 from writing.models import WritingSession, WritingAttempt, DailyStudyGoal
 from exam.models import ExamSession, ExamAnswer, ExamAssignment
+from grammar.models import GrammarSession
 
 
 # (key, 라벨, 학생 홈 URL)
@@ -24,6 +25,7 @@ SUBJECT_META = [
     ('vocab', '단어', '/training/vocab/'),
     ('summary', '요약문', '/training/summary/'),
     ('writing', '영작', '/training/writing/'),
+    ('grammar', '어법', '/training/grammar/'),
     ('exam', '시험', '/training/exam/'),
 ]
 
@@ -109,6 +111,31 @@ def _exam_cell(sessions):
             'label': ' · '.join(parts)}
 
 
+def _grammar_cell(sessions):
+    """어법 — 제출 시 자동채점(submitted=검수대기, graded=검수완료). 차시별 칩(채점 링크용)."""
+    if not sessions:
+        return {'did': False}
+    graded = [s for s in sessions if s.status == GrammarSession.STATUS_GRADED]
+    pending = [s for s in sessions if s.status == GrammarSession.STATUS_SUBMITTED]
+    pcts = [s.percent for s in sessions if s.total_count]
+    best = max(pcts) if pcts else None
+    detail = []
+    for s in sorted(sessions, key=lambda x: ((x.start_index or 0), x.started_at)):
+        if s.status == GrammarSession.STATUS_GRADED:
+            st, cls = f'{s.percent}점', 'graded'
+        else:
+            st, cls = f'{s.percent}점·검수대기', 'pending'
+        detail.append({'range': s.range_label, 'status': st, 'cls': cls, 'sid': s.id})
+    parts = [f'{len(sessions)}회']
+    if best is not None:
+        parts.append(f'최고 {best}점')
+    if pending:
+        parts.append(f'검수대기 {len(pending)}')
+    return {'did': True, 'n': len(sessions), 'done': len(graded),
+            'best': best, 'pending': len(pending), 'detail': detail,
+            'label': ' · '.join(parts)}
+
+
 def _bucket(qs):
     out = defaultdict(list)
     for s in qs:
@@ -148,6 +175,7 @@ def board(date):
     su = _bucket(SummarySession.objects.filter(started_at__date=date).select_related('unit'))
     w = _bucket(WritingSession.objects.filter(started_at__date=date).select_related('unit'))
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
+    g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
 
     # 오늘 볼 단어 TEST(VocabRangeTest) — 학생별 활성 범위(접속 안 한 학생도 표시 위해 별도 집계)
     vrt = defaultdict(list)
@@ -155,12 +183,13 @@ def board(date):
         vrt[rt.student_id].append(rt)
 
     out = {}
-    for sid in set(v) | set(su) | set(w) | set(e) | set(vrt):
+    for sid in set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt):
         vs = v.get(sid, [])
         cells = {
             'vocab': _vocab_cell(vs),
             'summary': _summary_cell(su.get(sid, [])),
             'writing': _writing_cell(w.get(sid, [])),
+            'grammar': _grammar_cell(g.get(sid, [])),
             'exam': _exam_cell(e.get(sid, [])),
         }
         # 단어 '오늘 볼 TEST' 범위/합격 — 정식시험(MODE_TEST) 완료 세션 기준
