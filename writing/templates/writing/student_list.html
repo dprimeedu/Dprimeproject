@@ -803,6 +803,15 @@ document.addEventListener('DOMContentLoaded', function () {
                         <dd class="col-sm-8">${escapeHtml(d.username || '-')}</dd>
                         <dt class="col-sm-4">이메일</dt>
                         <dd class="col-sm-8">${escapeHtml(d.email || '-')}</dd>
+                        <dt class="col-sm-4">학교·학년</dt>
+                        <dd class="col-sm-8">
+                            <div class="input-group input-group-sm" style="max-width:280px;">
+                                <input type="text" id="sgSchool" class="form-control" placeholder="학교 (예: 동백중)" value="${escapeHtml(d.school || '')}" style="max-width:130px;">
+                                <input type="text" id="sgGrade" class="form-control" placeholder="학년 (예: 중2)" value="${escapeHtml(d.grade || '')}" style="max-width:80px;">
+                                <button type="button" id="sgSaveBtn" class="btn btn-outline-primary">저장</button>
+                            </div>
+                            <div style="font-size:.72rem; color:#6b7280; margin-top:.2rem;">자동배정 매칭에 사용 — 예: 학교 <code>동백중</code> / 학년 <code>중2</code></div>
+                        </dd>
                         <dt class="col-sm-4">활성</dt>
                         <dd class="col-sm-8">${d.is_active ? '<span class="badge bg-success">활성</span>' : '<span class="badge bg-secondary">비활성</span>'}</dd>
                         <dt class="col-sm-4">재원생 승인</dt>
@@ -829,6 +838,27 @@ document.addEventListener('DOMContentLoaded', function () {
                             <div style="font-size:.75rem; color:#6b7280; margin-top:.15rem;">${escapeHtml(d.title || '')}</div>
                         </div>
                     </div>`;
+                const sgBtn = document.getElementById('sgSaveBtn');
+                if (sgBtn) {
+                    sgBtn.addEventListener('click', async () => {
+                        const school = (document.getElementById('sgSchool').value || '').trim();
+                        const grade = (document.getElementById('sgGrade').value || '').trim();
+                        sgBtn.disabled = true; sgBtn.textContent = '저장중';
+                        try {
+                            const fd = new FormData();
+                            fd.append('school', school); fd.append('grade', grade);
+                            const rr = await fetch(`/training/writing/admin/api/students/${sid}/set-school/`, {
+                                method: 'POST', credentials: 'same-origin',
+                                headers: { 'X-CSRFToken': CSRF }, body: fd });
+                            if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
+                            sgBtn.textContent = '저장됨 ✓';
+                            setTimeout(() => { sgBtn.disabled = false; sgBtn.textContent = '저장'; }, 1500);
+                        } catch (e3) {
+                            sgBtn.disabled = false; sgBtn.textContent = '저장';
+                            alert('저장 실패: ' + e3.message);
+                        }
+                    });
+                }
             } catch (e2) {
                 infoBodyEl.innerHTML = `<div class="alert alert-danger m-2">불러오기 실패: ${e2.message}</div>`;
             }

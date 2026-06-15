@@ -20,6 +20,7 @@ from .models import (
     SummaryUnit, SummaryProblem, SummaryAssignment,
     SummarySession, SummaryBlankAnswer, SummaryRangeTest,
 )
+from member.auto_assign import auto_assign_unit
 
 
 # ─────────────────────────────────────────────
@@ -802,11 +803,17 @@ def import_api(request):
             ok_names.append(student.username)
         assigned_many = {'assigned': ok_names, 'failed': fail, 'units': len(created_units)}
 
+    # 학교·학년 자동배정 (unit.school='동백고2' 등 토큰 매칭 학생들에게)
+    auto_assigned = 0
+    for u in created_units:
+        auto_assigned += auto_assign_unit(u, u.school, SummaryAssignment)
+
     return JsonResponse({
         'success': True,
         'school': school,
         'units': results,
         'created': created_total,
+        'auto_assigned': auto_assigned,
         'assigned': assigned,
         'assigned_many': assigned_many,
         'skipped': [], 'skipped_count': 0,

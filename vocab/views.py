@@ -25,6 +25,7 @@ from .models import (
     VocabSession, VocabAttempt, VocabRangeTest,
     WordCardSet, WordCard, WordCardStar, DictionaryCache, DictionaryEntry,
 )
+from member.auto_assign import auto_assign_unit
 from .services import (
     grade_meaning, select_test_words,
     ensure_quizlet_ranges, remove_quizlet_ranges,
@@ -805,16 +806,25 @@ def student_upload(request):
 
     User = get_user_model()
     created = 0
+    updated_sg = 0
     skipped = []
     for s in result['students']:
         login_id, name = s['login_id'], s['name']
-        if User.objects.filter(login_id=login_id).exists():
+        school, grade = s.get('school', ''), s.get('grade', '')
+        existing = User.objects.filter(login_id=login_id).first()
+        if existing:
+            if (school or grade) and (existing.school != school or existing.grade != grade):
+                existing.school = school
+                existing.grade = grade
+                existing.save(update_fields=['school', 'grade'])
+                updated_sg += 1
             skipped.append(login_id)
             continue
         try:
             user = User(
                 login_id=login_id, username=name, email=None,
                 member_type='user', is_active=True, is_approved=True, is_academy=False,
+                school=school, grade=grade,
             )
             user.set_password(DEFAULT_STUDENT_PASSWORD)
             user.save()
@@ -823,6 +833,8 @@ def student_upload(request):
             skipped.append(f'{login_id} ({e})')
 
     parts = [f'{created}명 등록 완료', f'기본 비번: {DEFAULT_STUDENT_PASSWORD}']
+    if updated_sg:
+        parts.append(f'기존 학생 학교·학년 {updated_sg}명 갱신')
     if skipped:
         sample = ', '.join(skipped[:5])
         more = '…' if len(skipped) > 5 else ''
@@ -833,17 +845,18 @@ def student_upload(request):
 
 @teacher_required
 def student_template_xlsx(request):
-    """학생 일괄 등록용 빈 양식. 1열 색인 · 2열 ID · 3열 이름."""
+    """학생 일괄 등록용 빈 양식. 1열 색인 · 2열 ID · 3열 이름 · 4열 학교학년(선택)."""
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = '학생 명단'
-    ws.append(['색인', 'ID', '이름'])
-    ws.append([1, 'primeedu100', '홍길동'])
-    ws.append([2, 'primeedu101', '김철수'])
+    ws.append(['색인', 'ID', '이름', '학교학년'])
+    ws.append([1, 'primeedu100', '홍길동', '동백중2'])
+    ws.append([2, 'primeedu101', '김철수', '백현고1'])
     ws.column_dimensions['A'].width = 8
     ws.column_dimensions['B'].width = 20
     ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['D'].width = 14
     _style_header_row(ws)
     return _xlsx_response(wb, 'vocab_students_template.xlsx')
 
@@ -1108,10 +1121,14 @@ def words_import_api(request):
             ok_names.append(student.username)
         assigned_many = {'assigned': ok_names, 'failed': fail}
 
+    # 학교·학년 자동배정 (unit.school='청덕고3' 등 토큰 매칭 학생들에게)
+    auto_assigned = auto_assign_unit(unit, unit.school, VocabAssignment)
+
     return JsonResponse({
         'success': True, 'school': school, 'exam': exam,
         'unit_id': unit.id, 'created': created,
         'assigned': assigned, 'assigned_many': assigned_many,
+        'auto_assigned': auto_assigned,
     })
 
 

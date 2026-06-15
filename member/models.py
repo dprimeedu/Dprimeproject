@@ -37,6 +37,16 @@ class Member(AbstractBaseUser, PermissionsMixin):
         verbose_name='별명',
         help_text='리더보드/대전에서 표시될 별명. 비어있으면 로그인 ID로 표시.',
     )
+    school = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='학교',
+        help_text="학년 숫자를 뺀 학교명. 예: '동백중', '백현고'. 단원 자동배정 매칭에 사용.",
+    )
+    grade = models.CharField(
+        max_length=10, blank=True, default='',
+        verbose_name='학년',
+        help_text="단원 학년과 동일 포맷. 예: '중2', '고3'. 단원 자동배정 매칭에 사용.",
+    )
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)

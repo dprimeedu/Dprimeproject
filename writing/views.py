@@ -25,6 +25,7 @@ from .models import (
 )
 from .services.excel import parse_writing_excel, parse_filename
 from .services.students_excel import parse_students_excel
+from member.auto_assign import auto_assign_unit, split_school_grade
 from .services.ai import generate_word_hints, generate_word_hints_batch, split_sentence_clauses
 from .services import scoring, level as level_service
 
@@ -198,6 +199,11 @@ def import_api(request):
             ok_names.append(student.username)
         assigned_many = {'assigned': ok_names, 'failed': fail, 'units': len(created_units)}
 
+    # 학교·학년 자동배정 (school='동백중2' 등 토큰 매칭 학생들에게 추가 배정)
+    auto_assigned = 0
+    for u in created_units:
+        auto_assigned += auto_assign_unit(u, school, UnitAssignment)
+
     # 업로드 직후: 고등학교 단원에 한해 긴 문장(20단어 초과)을 절·쉼표 기준 분할 + AI 한글뜻 힌트.
     # (엑셀 업로드 경로와 동일하게 split_first=True. 중/초/기타 단원은 _split_unit_for_training 에서 스킵)
     for u in created_units:
@@ -209,6 +215,7 @@ def import_api(request):
     return JsonResponse({
         'success': True, 'school': school, 'units': results,
         'created': created_total, 'assigned': assigned, 'assigned_many': assigned_many,
+        'auto_assigned': auto_assigned,
     })
 
 
@@ -1256,6 +1263,7 @@ def upload_view(request):
     created_units = []
     total_problems = 0
     total_skipped = 0
+    total_assigned = 0
     file_errors = []
     duplicates = []
 
@@ -1301,6 +1309,9 @@ def upload_view(request):
             created_units.append(unit)
             total_problems += len(result['problems'])
             total_skipped += result.get('skipped_short', 0)
+            # 학교·학년 자동배정 (publisher에 '동백중2' 등 학교토큰이 있으면 해당 학생들에게)
+            total_assigned += auto_assign_unit(
+                unit, unit.publisher, UnitAssignment, assigned_by=request.user)
         except Exception as e:
             file_errors.append(f'{f.name}: 저장 실패 — {e}')
 
@@ -1325,9 +1336,10 @@ def upload_view(request):
     skip_msg = f' · 3단어 이하 제외 {total_skipped}행' if total_skipped else ''
     dup_msg = f' · 중복 skip {len(duplicates)}개' if duplicates else ''
     hint_msg = f' · AI 한글뜻 생성 {hint_started}개 단원 자동 시작 (단원 관리 표에서 진행도 확인)' if hint_started else ''
+    assign_msg = f' · 학교·학년 매칭 자동배정 {total_assigned}건' if total_assigned else ''
     messages.success(
         request,
-        f'단원 {len(created_units)}개 생성 · 문제 {total_problems}개 등록{skip_msg}{dup_msg}{hint_msg}',
+        f'단원 {len(created_units)}개 생성 · 문제 {total_problems}개 등록{skip_msg}{dup_msg}{hint_msg}{assign_msg}',
     )
 
     if len(created_units) == 1:
@@ -2010,18 +2022,19 @@ def _style_header_row(ws):
 
 @teacher_required
 def student_template_xlsx(request):
-    """학생 일괄 등록용 빈 양식. 1열 색인 · 2열 ID · 3열 이름."""
+    """학생 일괄 등록용 빈 양식. 1열 색인 · 2열 ID · 3열 이름 · 4열 학교학년(선택)."""
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = '학생 명단'
-    ws.append(['색인', 'ID', '이름'])
-    ws.append([1, 'dprimeedu1', '홍길동'])
-    ws.append([2, 'dprimeedu2', '김철수'])
-    ws.append([3, 'dprimeedu3', '이영희'])
+    ws.append(['색인', 'ID', '이름', '학교학년'])
+    ws.append([1, 'dprimeedu1', '홍길동', '동백중2'])
+    ws.append([2, 'dprimeedu2', '김철수', '백현고1'])
+    ws.append([3, 'dprimeedu3', '이영희', '청덕고3'])
     ws.column_dimensions['A'].width = 8
     ws.column_dimensions['B'].width = 20
     ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['D'].width = 14
     _style_header_row(ws)
     return _xlsx_response(wb, 'students_template.xlsx')
 
@@ -2106,10 +2119,20 @@ def student_upload(request):
     User = get_user_model()
     created = 0
     skipped = []
+    updated_sg = 0
     for s in result['students']:
         login_id = s['login_id']
         name = s['name']
-        if User.objects.filter(login_id=login_id).exists():
+        school = s.get('school', '')
+        grade = s.get('grade', '')
+        existing = User.objects.filter(login_id=login_id).first()
+        if existing:
+            # 이미 있는 학생이라도 학교학년이 새로 들어오면 채워준다.
+            if (school or grade) and (existing.school != school or existing.grade != grade):
+                existing.school = school
+                existing.grade = grade
+                existing.save(update_fields=['school', 'grade'])
+                updated_sg += 1
             skipped.append(login_id)
             continue
         try:
@@ -2121,6 +2144,8 @@ def student_upload(request):
                 is_active=True,
                 is_approved=True,
                 is_academy=False,
+                school=school,
+                grade=grade,
             )
             user.set_password(DEFAULT_STUDENT_PASSWORD)
             user.save()
@@ -2129,6 +2154,8 @@ def student_upload(request):
             skipped.append(f'{login_id} ({e})')
 
     parts = [f'{created}명 등록 완료', f'기본 비번: {DEFAULT_STUDENT_PASSWORD}']
+    if updated_sg:
+        parts.append(f'기존 학생 학교·학년 {updated_sg}명 갱신')
     if skipped:
         sample = ', '.join(skipped[:5])
         more = '…' if len(skipped) > 5 else ''
@@ -2200,6 +2227,8 @@ def student_info_api(request, student_id):
         'username': s.username or '',
         'login_id': getattr(s, 'login_id', '') or '',
         'email': s.email or '',
+        'school': getattr(s, 'school', '') or '',
+        'grade': getattr(s, 'grade', '') or '',
         'is_active': s.is_active,
         'is_approved': bool(getattr(s, 'is_approved', False)),
         'date_joined': s.date_joined.strftime('%Y-%m-%d %H:%M') if s.date_joined else '',
@@ -2210,6 +2239,23 @@ def student_info_api(request, student_id):
         'level': level,
         'title': scoring.compute_title(level),
     }, json_dumps_params={'ensure_ascii': False})
+
+
+@teacher_required
+@require_POST
+def student_set_school(request, student_id):
+    """학생 학교·학년 설정 (학생 정보 모달의 인라인 편집용)."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    s = get_object_or_404(
+        User.objects.exclude(is_staff=True).exclude(is_superuser=True), pk=student_id)
+    school = (request.POST.get('school') or '').strip()
+    grade = (request.POST.get('grade') or '').strip()
+    s.school = school
+    s.grade = grade
+    s.save(update_fields=['school', 'grade'])
+    return JsonResponse({'ok': True, 'school': school, 'grade': grade},
+                        json_dumps_params={'ensure_ascii': False})
 
 
 @teacher_required
