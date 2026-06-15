@@ -16,6 +16,7 @@ urlpatterns = [
 
     # 선생님 / 관리자 — 채점
     path('admin/grading/', views.grade_list, name='grade_list'),
+    path('admin/grading/student/<int:student_id>/', views.grade_student, name='grade_student'),
     path('admin/grading/<int:session_id>/', views.grade_detail, name='grade_detail'),
     path('admin/grading/<int:session_id>/update/', views.grade_update_api, name='grade_update'),
 

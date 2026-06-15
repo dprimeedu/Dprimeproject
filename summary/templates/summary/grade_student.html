@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.sum-q { max-width:460px; white-space:normal; color:#374151; line-height:1.55; }
+.sum-blank { color:#7c3aed; font-weight:800; letter-spacing:1px; white-space:nowrap; }
+.rv-input { color:#374151; }
+.rv-input.empty { color:#d1d5db; font-style:italic; }
+.rv-2nd { color:#6366f1; }
+tr.wrong td { background:#fef2f2; }
+.vc { font-weight:800; }
+.vc.o { color:#16a34a; }
+.vc.x { color:#dc2626; }
+.cha-head { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; }
+</style>
+
+<div class="home-wrap">
+    <a href="{% url 'summary:grade_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>채점 목록</a>
+
+    <div class="section-header">
+        <h3 class="mb-1"><i class="fas fa-user me-2"></i>{{ student.username }} <small class="text-muted">{{ student.login_id }}</small> — 차시별 입력 보기</h3>
+        <p class="section-desc mb-0">학생이 1차시·2차시·3차시에 무엇을 입력해 맞고 틀렸는지 한 화면에서 확인하세요.</p>
+    </div>
+
+    {% for b in blocks %}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 mt-3 p-2 px-3 cha-head">
+        <div>
+            <span class="badge bg-primary-subtle text-primary-emphasis fs-6">{{ b.session.chashi_label }} · {{ b.session.range_label }}</span>
+            <span class="ms-2 text-muted small">{{ b.session.unit.school }}{% if b.session.unit.unit %} · {{ b.session.unit.unit }}{% endif %}</span>
+            {% if b.session.status == 'graded' %}
+                <span class="badge bg-success ms-1">채점완료 {{ b.session.percent }}점</span>
+            {% else %}
+                <span class="badge bg-warning text-dark ms-1">채점대기 (가채점 {{ b.o }}/{{ b.total }})</span>
+            {% endif %}
+        </div>
+        <a href="{% url 'summary:grade_detail' b.session.id %}" class="btn btn-sm btn-outline-primary">이 차시 채점</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead class="table-light">
+                <tr><th>#</th><th>빈칸</th><th>요약문 (문제)</th><th>학생 입력</th><th>정답</th><th>한글뜻</th><th class="text-center">정오</th></tr>
+            </thead>
+            <tbody>
+                {% for r in b.rows %}
+                <tr class="{% if r.verdict == 'X' %}wrong{% endif %}">
+                    <td class="text-muted">{{ r.ba.problem.index }}</td>
+                    <td><b>{{ r.label }}</b></td>
+                    <td class="sum-q">{{ r.sentence_html }}</td>
+                    <td>
+                        <span class="rv-input {% if not r.ba.first_input %}empty{% endif %}">{{ r.ba.first_input|default:"(미입력)" }}</span>
+                        {% if r.ba.korean_shown %}<span class="rv-2nd">→ {{ r.ba.second_input|default:"(재입력 없음)" }}</span>{% endif %}
+                    </td>
+                    <td class="text-success"><b>{{ r.ba.correct_answer }}</b></td>
+                    <td class="text-muted small">{{ r.korean }}</td>
+                    <td class="text-center"><span class="vc {% if r.verdict == 'O' %}o{% else %}x{% endif %}">{{ r.verdict }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-2">응답이 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% empty %}
+    <div class="alert alert-info text-center py-4">제출된 차시가 없습니다.</div>
+    {% endfor %}
+</div>
+{% endblock %}

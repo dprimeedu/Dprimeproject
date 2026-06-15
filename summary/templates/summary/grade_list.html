@@ -16,7 +16,9 @@
         <div class="card-body py-2 px-3">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="fw-semibold" style="min-width:130px;">
-                    {{ g.student.username }} <small class="text-muted">{{ g.student.login_id }}</small>
+                    <a href="{% url 'summary:grade_student' g.student.id %}" class="text-decoration-none" title="이 학생의 전 차시 입력 한눈에 보기">
+                        {{ g.student.username }} <small class="text-muted">{{ g.student.login_id }}</small>
+                    </a>
                     {% if g.pending %}<span class="badge bg-warning text-dark ms-1">대기 {{ g.pending }}</span>{% endif %}
                 </div>
                 <div class="d-flex flex-wrap gap-2 justify-content-end flex-grow-1">

@@ -40,42 +40,17 @@
                             <i class="fas fa-bolt me-1"></i>오늘 볼 TEST ({{ u.range_test.range_label }})
                         </a>
                         {% endif %}
-                        <div class="text-muted small mb-1">
-                            <i class="fas fa-pen me-1"></i>차시 (10문제씩)
-                            {% if is_student and u.all_passed %}· <span class="text-success fw-bold">전 차시 통과 ✓</span>{% endif %}
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <div class="text-muted small mb-1"><i class="fas fa-pen me-1"></i>시험 범위 (10문제씩)</div>
+                        <div class="d-flex flex-wrap gap-2">
                             {% for ch in u.chunks %}
-                            {% if is_student and ch.leading_passed %}
-                            {# 통과한 앞 차시 — 생략(작게). 누르면 다시 풀 수 있음 #}
                             <a href="{% url 'summary:start_session' u.id %}?chunk={{ ch.num }}"
-                               class="btn btn-sm btn-outline-success" style="opacity:.6;"
-                               title="이미 통과({{ ch.score }}점) · 생략 가능 — 누르면 다시 풀기">
-                                ✓ {{ ch.num }}차시
+                               class="btn btn-outline-primary btn-sm" title="{{ ch.start }}~{{ ch.end }}번 문항 시험">
+                                {{ ch.start }}~{{ ch.end }}
                             </a>
-                            {% elif is_student and ch.is_current %}
-                            {# 지금 볼 차시 — 강조 #}
-                            <a href="{% url 'summary:start_session' u.id %}?chunk={{ ch.num }}"
-                               class="btn btn-primary fw-bold" title="{{ ch.start }}~{{ ch.end }}번 — 지금 볼 차시">
-                                ▶ {{ ch.num }}차시 <span class="opacity-75">{{ ch.start }}~{{ ch.end }}</span>
-                                {% if ch.state == 'retry' %} · 다시 {{ ch.score }}점{% elif ch.state == 'pending' %} · 채점대기{% endif %}
-                            </a>
-                            {% else %}
-                            {# 뒤 차시(아직) 또는 관리자 — 일반 버튼 #}
-                            <a href="{% url 'summary:start_session' u.id %}?chunk={{ ch.num }}"
-                               class="btn btn-sm {% if ch.state == 'pending' %}btn-warning text-dark{% elif ch.state == 'passed' %}btn-outline-success{% else %}btn-outline-secondary{% endif %}"
-                               title="{{ ch.start }}~{{ ch.end }}번 문항 시험">
-                                {{ ch.num }}차시 <span class="opacity-75">{{ ch.start }}~{{ ch.end }}</span>
-                                {% if ch.state == 'passed' %} ✓{% elif ch.state == 'pending' %} 대기{% endif %}
-                            </a>
-                            {% endif %}
                             {% empty %}
                             <span class="text-muted small">문항이 없습니다.</span>
                             {% endfor %}
                         </div>
-                        {% if is_student %}
-                        <p class="text-muted mb-0 mt-1" style="font-size:.72rem;">앞 차시를 {{ pass_percent }}점 이상으로 통과하면 다음 차시로 넘어가요. 통과한 차시(✓)는 생략해도 됩니다.</p>
-                        {% endif %}
                     </div>
                 </div>
             </div>
