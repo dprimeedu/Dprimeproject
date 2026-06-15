@@ -133,7 +133,9 @@ def _vocab_today_tests(range_tests, day_test_sessions):
             status, ok = f'합격 {best}', True
         else:
             status, ok = f'미달 {best}', False
-        out.append({'book': rt.unit.title, 'range': rt.range_label, 'status': status, 'ok': ok})
+        rng = f'{rt.start_index}~{rt.end_index}' if rt.start_index and rt.end_index else ''
+        out.append({'book': rt.source_label or rt.unit.title, 'range': rng,
+                    'status': status, 'ok': ok})
     return out
 
 
@@ -292,8 +294,9 @@ def _next_actions(student, date):
             status, ok = f'합격 ({best}점)', True
         else:
             status, ok = f'미달 ({best}점)', False
+        _rng = f'{rt.start_index}~{rt.end_index}' if rt.start_index and rt.end_index else ''
         out['vocab_tests'].append({
-            'label': f'{rt.unit.title} {rt.range_label}', 'status': status, 'ok': ok})
+            'label': f'{rt.source_label or rt.unit.title} {_rng}'.strip(), 'status': status, 'ok': ok})
 
     # 요약문 오늘 볼 TEST (SummaryRangeTest) — unit+범위로 매칭, 채점완료 점수
     day_s = list(SummarySession.objects.filter(student=student, started_at__date=date))
