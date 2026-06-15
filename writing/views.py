@@ -1250,6 +1250,35 @@ def _start_hint_generation(unit_id, force=False, split_first=False):
     return True
 
 
+# ── 영작 업로드 누적 — 학교 영작은 '{학교} 영작 통합' 한 단원에 문장 단위로 쌓는다 ──
+_W_SCHOOL_RE = re.compile(r'([가-힣A-Za-z]+(?:초|중|고)\s*[1-3])')
+
+
+def _w_school_token(*texts):
+    """문자열에서 '동백고2' 같은 학교+학년 토큰 추출(공백 제거). 없으면 ''."""
+    for t in texts:
+        m = _W_SCHOOL_RE.search(t or '')
+        if m:
+            return re.sub(r'\s+', '', m.group(1))
+    return ''
+
+
+def _w_norm_en(s):
+    return re.sub(r'[^a-z]', '', (s or '').lower())
+
+
+def _w_find_or_create_canonical(school_tok, grade, publisher, user):
+    """학교+학년의 누적 대상 단원(제목에 '통합' 포함) 찾기, 없으면 생성. (unit, created)."""
+    cands = [u for u in WritingUnit.objects.filter(is_active=True, grade=grade)
+             if '통합' in u.title and _w_school_token(u.title, u.publisher) == school_tok]
+    if cands:
+        return max(cands, key=lambda u: u.problem_count), False
+    u = WritingUnit.objects.create(
+        title=f'{school_tok} 영작 통합', publisher=publisher,
+        grade=grade, created_by=user)
+    return u, True
+
+
 @teacher_required
 def upload_view(request):
     if request.method != 'POST':
@@ -1260,8 +1289,11 @@ def upload_view(request):
         messages.error(request, '엑셀 파일을 1개 이상 선택해주세요.')
         return render(request, 'writing/upload.html', {})
 
-    created_units = []
-    total_problems = 0
+    created_units = []        # 새로 만든 단원(부교재 등 비-학교, 또는 새로 만든 통합)
+    touched_units = {}        # id -> unit : 한글뜻 생성 대상(누적된 통합 포함)
+    total_problems = 0        # 새 단원에 넣은 문제 수
+    total_added = 0           # 기존 통합 단원에 누적된 새 문장 수
+    total_dup_sent = 0        # 이미 있어 건너뛴 문장 수
     total_skipped = 0
     total_assigned = 0
     file_errors = []
@@ -1280,70 +1312,111 @@ def upload_view(request):
         grade = meta['grade'] if meta['grade'] in VALID_GRADES else '기타'
         publisher = meta['publisher']
 
-        # 중복 체크: 학년 + 출판사 + 단원명이 모두 같으면 skip
-        if WritingUnit.objects.filter(title=title, grade=grade, publisher=publisher).exists():
-            duplicates.append(f'{f.name} → "{title}" ({grade} / {publisher or "출판사 없음"}) 이미 존재')
-            continue
-
         result = parse_writing_excel(f)
         if not result['success']:
             file_errors.append(f'{f.name}: {"; ".join(result["errors"])}')
             continue
+        total_skipped += result.get('skipped_short', 0)
 
-        try:
-            with transaction.atomic():
-                unit = WritingUnit.objects.create(
-                    title=title,
-                    publisher=publisher,
-                    grade=grade,
-                    created_by=request.user,
-                )
-                for p in result['problems']:
-                    WritingProblem.objects.create(
-                        unit=unit,
-                        index=p['index'],
-                        korean=p['korean'],
-                        english=p['english'],
-                        word_hints=[],
-                    )
-            created_units.append(unit)
-            total_problems += len(result['problems'])
-            total_skipped += result.get('skipped_short', 0)
-            # 학교·학년 자동배정 (publisher에 '동백중2' 등 학교토큰이 있으면 해당 학생들에게)
-            total_assigned += auto_assign_unit(
-                unit, unit.publisher, UnitAssignment, assigned_by=request.user)
-        except Exception as e:
-            file_errors.append(f'{f.name}: 저장 실패 — {e}')
+        # 고등학교는 긴 문장을 절 단위로 미리 분할(기존 split_first 동작과 동일).
+        new_rows = []
+        for p in result['problems']:
+            if grade in _HIGH_SCHOOL_GRADES:
+                for c in split_sentence_clauses(p['english'], p['korean']):
+                    new_rows.append((c['english'], c['korean']))
+            else:
+                new_rows.append((p['english'], p['korean']))
+
+        school_tok = _w_school_token(publisher, title)
+
+        if school_tok:
+            # ── 누적 모드: 학교 영작은 '{학교} 영작 통합' 한 단원에 문장 단위로 쌓는다 ──
+            try:
+                with transaction.atomic():
+                    canonical, created = _w_find_or_create_canonical(
+                        school_tok, grade, publisher, request.user)
+                    seen = set(_w_norm_en(e) for e in WritingProblem.objects
+                               .filter(unit=canonical).values_list('english', flat=True))
+                    idx = packing._max_index(canonical)
+                    to_add = []
+                    for en, ko in new_rows:
+                        ne = _w_norm_en(en)
+                        if not ne or ne in seen:
+                            total_dup_sent += 1
+                            continue
+                        seen.add(ne)
+                        idx += 1
+                        to_add.append(WritingProblem(
+                            unit=canonical, index=idx, korean=ko, english=en, word_hints=[]))
+                    if to_add:
+                        WritingProblem.objects.bulk_create(to_add)
+                touched_units[canonical.id] = canonical
+                if created:
+                    created_units.append(canonical)
+                total_added += len(to_add)
+                total_assigned += auto_assign_unit(
+                    canonical, canonical.publisher or publisher, UnitAssignment,
+                    assigned_by=request.user)
+            except Exception as e:
+                file_errors.append(f'{f.name}: 누적 실패 — {e}')
+        else:
+            # ── 기존 동작: 학교 토큰 없는 영작(부교재 등)은 제목별 단원 생성 ──
+            if WritingUnit.objects.filter(title=title, grade=grade, publisher=publisher).exists():
+                duplicates.append(f'{f.name} → "{title}" ({grade} / {publisher or "출판사 없음"}) 이미 존재')
+                continue
+            try:
+                with transaction.atomic():
+                    unit = WritingUnit.objects.create(
+                        title=title, publisher=publisher, grade=grade, created_by=request.user)
+                    WritingProblem.objects.bulk_create([
+                        WritingProblem(unit=unit, index=i, korean=ko, english=en, word_hints=[])
+                        for i, (en, ko) in enumerate(new_rows, start=1)])
+                created_units.append(unit)
+                touched_units[unit.id] = unit
+                total_problems += len(new_rows)
+                total_assigned += auto_assign_unit(
+                    unit, unit.publisher, UnitAssignment, assigned_by=request.user)
+            except Exception as e:
+                file_errors.append(f'{f.name}: 저장 실패 — {e}')
 
     for err in file_errors:
         messages.warning(request, err)
     for dup in duplicates:
         messages.info(request, f'중복 skip: {dup}')
 
-    if not created_units:
+    if not touched_units:
         if duplicates:
-            messages.warning(request, '선택한 파일 모두 이미 등록된 단원이라 생성된 단원이 없습니다.')
+            messages.warning(request, '선택한 파일 모두 이미 등록된 단원이라 변경이 없습니다.')
         else:
-            messages.error(request, '생성된 단원이 없습니다.')
+            messages.error(request, '처리된 내용이 없습니다.')
         return render(request, 'writing/upload.html', {})
 
-    # 새로 생긴 단원들에 대해 AI 한글뜻 생성 자동 시작 (고등학교는 문장 자동 분할 후)
+    # 새 문장에 대해 AI 한글뜻 생성 자동 시작 (이미 절 분할했으므로 split_first=False)
     hint_started = 0
-    for u in created_units:
-        if _start_hint_generation(u.id, split_first=True):
+    for u in touched_units.values():
+        if _start_hint_generation(u.id, split_first=False):
             hint_started += 1
 
-    skip_msg = f' · 3단어 이하 제외 {total_skipped}행' if total_skipped else ''
-    dup_msg = f' · 중복 skip {len(duplicates)}개' if duplicates else ''
-    hint_msg = f' · AI 한글뜻 생성 {hint_started}개 단원 자동 시작 (단원 관리 표에서 진행도 확인)' if hint_started else ''
-    assign_msg = f' · 학교·학년 매칭 자동배정 {total_assigned}건' if total_assigned else ''
-    messages.success(
-        request,
-        f'단원 {len(created_units)}개 생성 · 문제 {total_problems}개 등록{skip_msg}{dup_msg}{hint_msg}{assign_msg}',
-    )
+    parts = []
+    if total_added:
+        parts.append(f'기존 통합 단원에 문장 {total_added}개 누적')
+    if total_problems:
+        parts.append(f'새 단원 문제 {total_problems}개 등록')
+    if total_dup_sent:
+        parts.append(f'중복 문장 {total_dup_sent}개 skip')
+    if total_skipped:
+        parts.append(f'3단어 이하 제외 {total_skipped}행')
+    if duplicates:
+        parts.append(f'중복 단원 skip {len(duplicates)}개')
+    if hint_started:
+        parts.append(f'AI 한글뜻 {hint_started}개 단원 생성 시작')
+    if total_assigned:
+        parts.append(f'학교·학년 자동배정 {total_assigned}건')
+    messages.success(request, ' · '.join(parts) or '처리 완료')
 
-    if len(created_units) == 1:
-        return redirect('writing:unit_detail', unit_id=created_units[0].id)
+    if len(touched_units) == 1:
+        only = next(iter(touched_units.values()))
+        return redirect('writing:unit_detail', unit_id=only.id)
     return redirect('writing:unit_list')
 
 
