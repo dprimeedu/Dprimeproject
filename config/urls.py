@@ -28,6 +28,7 @@ urlpatterns = [
     path('training/vocab/', include('vocab.urls')),
     path('training/summary/', include('summary.urls')),
     path('training/exam/', include('exam.urls')),
+    path('training/grammar/', include('grammar.urls')),
     path('report/', include('report.urls')),
     path('tools/', include('academy_tools.urls')),
 ]

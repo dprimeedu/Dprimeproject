@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'academy_tools',
     'exam',
     'report',
+    'grammar',
 
 ]
 
@@ -190,6 +191,9 @@ EXAM_IMPORT_TOKEN = os.getenv('EXAM_IMPORT_TOKEN', 'pedu-exam-2026')
 
 # 영작(writing) import API 토큰 (부교재 출력/AI 자동화 → 영작웹동기화 연동)
 WRITING_IMPORT_TOKEN = os.getenv('WRITING_IMPORT_TOKEN', 'pedu-writing-2026')
+
+# 어법(grammar) import API 토큰 (개별단어장생성 어법 → 어법웹동기화 연동)
+GRAMMAR_IMPORT_TOKEN = os.getenv('GRAMMAR_IMPORT_TOKEN', 'pedu-grammar-2026')
 
 # 일일리포트 카톡 페처 토큰 (회사 PC 카톡전송_웹.py 연동)
 REPORT_KAKAO_TOKEN = os.getenv('REPORT_KAKAO_TOKEN', 'pedu-report-2026')

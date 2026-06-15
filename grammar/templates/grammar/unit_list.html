@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="home-wrap">
+    <a href="{% url 'training' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>재원생 메뉴</a>
+    <div class="section-header">
+        <h3><i class="fas fa-spell-check me-2"></i>어법훈련 단원 (관리)</h3>
+        <p class="section-desc">로컬 어법웹동기화로 올라온 어법 단원입니다. (학생 응시 화면은 준비 중 — Phase 2)</p>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead class="table-light">
+                <tr><th>단원</th><th>학교</th><th>학년</th><th class="text-center">문항</th><th class="text-center">활성</th></tr>
+            </thead>
+            <tbody>
+                {% for u in units %}
+                <tr>
+                    <td>{{ u.title }}</td>
+                    <td>{{ u.school }}</td>
+                    <td>{{ u.grade }}</td>
+                    <td class="text-center">{{ u._pc }}</td>
+                    <td class="text-center">{% if u.is_active %}<span class="badge bg-success">활성</span>{% else %}<span class="badge bg-secondary">비활성</span>{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">아직 어법 단원이 없습니다. 로컬에서 어법웹동기화로 올려주세요.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
