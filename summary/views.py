@@ -373,8 +373,18 @@ def grade_list(request):
     if show == 'pending':
         qs = qs.filter(status=SummarySession.STATUS_SUBMITTED)
     sessions = list(qs[:300])
+    # 학생별 그룹 — 한 학생의 1차시·2차시·3차시를 모아 한눈에
+    from collections import OrderedDict
+    groups = OrderedDict()
+    for s in sessions:
+        g = groups.setdefault(s.student_id, {'student': s.student, 'sessions': []})
+        g['sessions'].append(s)
+    for g in groups.values():
+        g['sessions'].sort(key=lambda x: (x.unit_id, x.start_index or 0, x.started_at))
+        g['pending'] = sum(1 for x in g['sessions'] if x.status == SummarySession.STATUS_SUBMITTED)
+    grouped = sorted(groups.values(), key=lambda g: (-g['pending'], g['student'].username or ''))
     return render(request, 'summary/grade_list.html', {
-        'sessions': sessions, 'show': show,
+        'grouped': grouped, 'show': show,
     })
 
 

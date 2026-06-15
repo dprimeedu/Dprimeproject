@@ -175,6 +175,18 @@ class SummarySession(models.Model):
             return f'{self.start_index}~{self.end_index}'
         return '전체'
 
+    @property
+    def chunk_no(self):
+        """차시 번호 — 10문제 청크 기준(1~10=1차시, 11~20=2차시…). 범위 없으면 None."""
+        if self.start_index:
+            return (self.start_index - 1) // 10 + 1
+        return None
+
+    @property
+    def chashi_label(self):
+        n = self.chunk_no
+        return f'{n}차시' if n else '전체'
+
 
 class SummaryBlankAnswer(models.Model):
     """세션 × 문항 × 빈칸(ⓐ/ⓑ) 한 칸의 응답 + 관리자 판정."""

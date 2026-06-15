@@ -10,42 +10,32 @@
         </div>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>학생</th><th>학교/단원</th><th>제출</th>
-                    <th class="text-center">점수</th><th class="text-center">상태</th><th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for s in sessions %}
-                <tr>
-                    <td>{{ s.student.username }} <small class="text-muted">{{ s.student.login_id }}</small></td>
-                    <td>{{ s.unit.school }}{% if s.unit.unit %} · {{ s.unit.unit }}{% endif %}
-                        <span class="badge bg-light text-dark border">{{ s.range_label }}</span></td>
-                    <td><small>{{ s.submitted_at|date:"m/d H:i" }}</small></td>
-                    <td class="text-center">
-                        {% if s.status == 'graded' %}<b>{{ s.percent }}</b>{% else %}<span class="text-muted">-</span>{% endif %}
-                    </td>
-                    <td class="text-center">
-                        {% if s.status == 'graded' %}
-                            <span class="badge bg-success">채점 완료</span>
-                        {% else %}
-                            <span class="badge bg-warning text-dark">채점 대기</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">
-                        <a href="{% url 'summary:grade_detail' s.id %}" class="btn btn-sm btn-primary">채점</a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="6" class="text-center text-muted py-4">
-                    {% if show == 'pending' %}채점할 제출이 없습니다.{% else %}제출된 세션이 없습니다.{% endif %}
-                </td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <p class="small text-muted mb-2">학생별로 1차시·2차시·3차시(10문제 청크)를 한 줄에 모았습니다. <span class="badge bg-warning text-dark">노란색</span>=채점 대기, <span class="badge bg-outline-success border text-success">초록</span>=완료. 칩을 누르면 채점 화면.</p>
+    {% for g in grouped %}
+    <div class="card mb-2">
+        <div class="card-body py-2 px-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="fw-semibold" style="min-width:130px;">
+                    {{ g.student.username }} <small class="text-muted">{{ g.student.login_id }}</small>
+                    {% if g.pending %}<span class="badge bg-warning text-dark ms-1">대기 {{ g.pending }}</span>{% endif %}
+                </div>
+                <div class="d-flex flex-wrap gap-2 justify-content-end flex-grow-1">
+                    {% for s in g.sessions %}
+                    <a href="{% url 'summary:grade_detail' s.id %}"
+                       class="btn btn-sm {% if s.status == 'graded' %}btn-outline-success{% else %}btn-warning{% endif %}"
+                       title="{{ s.unit.school }} {{ s.range_label }}">
+                        <b>{{ s.chashi_label }}</b> <span class="opacity-75">{{ s.range_label }}</span>
+                        {% if s.status == 'graded' %}· {{ s.percent }}점{% else %}· 채점{% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
     </div>
+    {% empty %}
+    <div class="alert alert-info text-center py-4">
+        {% if show == 'pending' %}채점할 제출이 없습니다.{% else %}제출된 세션이 없습니다.{% endif %}
+    </div>
+    {% endfor %}
 </div>
 {% endblock %}

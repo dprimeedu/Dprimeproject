@@ -56,13 +56,24 @@ def _summary_cell(sessions):
     pending = [s for s in sessions if s.status == SummarySession.STATUS_SUBMITTED]
     pcts = [s.percent for s in graded if s.total_blanks]
     best = max(pcts) if pcts else None
+    # 차시별(10문제 청크) 상세 — 범위 순으로 1차시·2차시·3차시 …
+    chashi = []
+    for s in sorted(sessions, key=lambda x: ((x.start_index or 0), x.started_at)):
+        if s.status == SummarySession.STATUS_GRADED:
+            st, cls = f'{s.percent}점', 'graded'
+        elif s.status == SummarySession.STATUS_SUBMITTED:
+            st, cls = '채점대기', 'pending'
+        else:
+            st, cls = '진행중', 'progress'
+        chashi.append({'no': s.chunk_no, 'range': s.range_label,
+                       'status': st, 'cls': cls, 'sid': s.id})
     parts = [f'{len(sessions)}회']
     if best is not None:
         parts.append(f'최고 {best}점')
     if pending:
         parts.append(f'채점대기 {len(pending)}')
     return {'did': True, 'n': len(sessions), 'done': len(graded),
-            'best': best, 'pending': len(pending),
+            'best': best, 'pending': len(pending), 'chashi': chashi,
             'label': ' · '.join(parts)}
 
 

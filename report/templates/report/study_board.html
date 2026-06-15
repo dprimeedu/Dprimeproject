@@ -43,8 +43,16 @@
                             {% if key == 'vocab' and row.cells.vocab.did %}
                                 <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
                             {% elif key == 'summary' and row.cells.summary.did %}
-                                <span class="badge rounded-pill bg-success-subtle text-success-emphasis">{{ row.cells.summary.label }}</span>
-                                {% if row.cells.summary.pending %}<span class="badge bg-warning text-dark">채점</span>{% endif %}
+                                <div class="d-flex flex-column gap-1" style="max-width:170px;margin:0 auto;">
+                                {% for c in row.cells.summary.chashi %}
+                                    <a href="{% url 'summary:grade_detail' c.sid %}"
+                                       class="badge text-decoration-none text-start border
+                                       {% if c.cls == 'pending' %}bg-warning text-dark{% elif c.cls == 'graded' %}bg-success-subtle text-success-emphasis{% else %}bg-light text-muted{% endif %}">
+                                        <b>{% if c.no %}{{ c.no }}차시{% else %}전체{% endif %}</b>
+                                        <span class="opacity-75">{{ c.range }}</span> · {{ c.status }}
+                                    </a>
+                                {% endfor %}
+                                </div>
                             {% elif key == 'writing' and row.cells.writing.did %}
                                 <span class="badge rounded-pill bg-info-subtle text-info-emphasis">{{ row.cells.writing.label }}</span>
                             {% elif key == 'exam' and row.cells.exam.did %}

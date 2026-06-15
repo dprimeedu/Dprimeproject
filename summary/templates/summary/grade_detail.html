@@ -17,7 +17,9 @@ tr.wrong td { background:#fef2f2; }
     <a href="{% url 'summary:grade_list' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>채점 목록</a>
 
     <div class="section-header">
-        <h3 class="mb-1"><i class="fas fa-user-check me-2"></i>{{ session.student.username }} 채점</h3>
+        <h3 class="mb-1"><i class="fas fa-user-check me-2"></i>{{ session.student.username }} 채점
+            <span class="badge bg-primary-subtle text-primary-emphasis align-middle">{{ session.chashi_label }} · {{ session.range_label }}</span>
+        </h3>
         <p class="section-desc mb-0">
             {{ session.unit.school }}{% if session.unit.unit %} · {{ session.unit.unit }}{% endif %}
             · 제출 {{ session.submitted_at|date:"Y-m-d H:i" }}
