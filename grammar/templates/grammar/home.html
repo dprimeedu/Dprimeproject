@@ -26,7 +26,7 @@
             <div class="card h-100">
                 <div class="card-body d-flex flex-column">
                     <h5 class="card-title">{{ u.title }}</h5>
-                    <p class="text-muted small mb-2">{{ u.grade }} · 문항 {{ u._problem_count }}개{% if u.school %} · {{ u.school }}{% endif %}</p>
+                    <p class="text-muted small mb-2">{{ u.grade }} · 문항 {{ u.num_problems }}개{% if u.school %} · {{ u.school }}{% endif %}</p>
                     <div class="mt-auto">
                         {% if u.range_test %}
                         <a href="{% url 'grammar:start_session' u.id %}?rt={{ u.range_test.id }}" class="btn btn-danger w-100 mb-2 fw-bold">

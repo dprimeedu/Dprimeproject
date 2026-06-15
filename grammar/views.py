@@ -290,7 +290,7 @@ def student_home(request):
                    .order_by('unit_id', '-created_at')):
             rt_map.setdefault(rt.unit_id, rt)
     for u in units:
-        u._problem_count = len(idx_map.get(u.id, []))
+        u.num_problems = len(idx_map.get(u.id, []))
         u.chunks = _chunks_from_indices(idx_map.get(u.id, []))
         u.range_test = rt_map.get(u.id)
     return render(request, 'grammar/home.html', {'units': units, 'is_assigned_view': is_assigned_view})
@@ -404,7 +404,7 @@ def result_view(request, session_id):
 def unit_list(request):
     units = list(GrammarUnit.objects.order_by('-created_at'))
     for u in units:
-        u._pc = u.problem_count
+        u.pc = u.problem_count
     return render(request, 'grammar/unit_list.html', {'units': units})
 
 
