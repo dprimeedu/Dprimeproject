@@ -13,15 +13,10 @@ class HomeView(generic.TemplateView):
     template_name = 'home.html'
 
 
-class MockExamView(generic.TemplateView):
-    template_name = 'mock_exam.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['grades'] = ['고1', '고2', '고3']
-        context['years'] = [str(x) for x in range(2019, datetime.now().year + 1)]
-        context['months'] = ['3', '6', '9', '11']
-        return context
+class MockExamView(generic.RedirectView):
+    """모고 데이터 다운로드 — 검색·필터 가능한 모의고사 리스트(academy_list)로 통합."""
+    pattern_name = 'academy:academy_list'
+    permanent = False
 
 
 class TrainingView(generic.TemplateView):

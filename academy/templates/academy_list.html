@@ -1,86 +1,152 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block content %}
-<div class="container">
-    <!-- 학년 -->
-    <div class="section" style="margin-top: 50px;">
-        <label><b>학년 : </b></label>
-        {% for grade in grades %}
-            <input type="checkbox" id="grade_{{ forloop.counter }}" class="screen-reader filter-checkbox"
-                data-filter="grade" value="{{ grade.name }}" {% if grade.checked %}checked{% endif %}
-                onchange="filterExams()">
-            <label class="label-box" for="grade_{{ forloop.counter }}">
-                <span class="check-icon" aria-hidden="true"></span> {{ grade.name }}
-            </label>
-        {% endfor %}
-    </div>
+<style>
+:root{
+  --pe-primary:#6d28d9; --pe-primary-light:#ede9fe; --pe-ink:#1f2937;
+  --pe-muted:#6b7280; --pe-line:#eceef1; --pe-tag:#f97316; --pe-tag-bg:#fff1e6;
+}
+.mx-wrap{ max-width:760px; margin:28px auto 60px; padding:0 16px; }
+.mx-title{ font-size:1.5rem; font-weight:800; color:var(--pe-ink); margin:0 0 18px; letter-spacing:-.5px; }
 
-    <!-- 년도 -->
-    <div class="section" style="margin-bottom: 50px;">
-        <label><b>년도 : </b></label>
-        {% for year in years %}
-            <input type="checkbox" id="year_{{ forloop.counter }}" class="screen-reader filter-checkbox"
-                data-filter="year" value="{{ year.name }}" {% if year.checked %}checked{% endif %}
-                onchange="filterExams()">
-            <label class="label-box" for="year_{{ forloop.counter }}">
-                <span class="check-icon" aria-hidden="true"></span> {{ year.name }}
-            </label>
-        {% endfor %}
+/* 검색 */
+.mx-search{ position:relative; margin-bottom:16px; }
+.mx-search input{
+  width:100%; padding:13px 16px 13px 44px; font-size:1rem;
+  border:1px solid var(--pe-line); border-radius:14px; background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.04); outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.mx-search input:focus{ border-color:var(--pe-primary); box-shadow:0 0 0 3px var(--pe-primary-light); }
+.mx-search .ic{ position:absolute; left:16px; top:50%; transform:translateY(-50%); color:#9ca3af; }
+
+/* 필터 칩 */
+.mx-filters{ display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.mx-frow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.mx-flabel{ font-size:.82rem; font-weight:700; color:var(--pe-muted); width:38px; flex:none; }
+.chip{
+  padding:5px 14px; border:1px solid var(--pe-line); border-radius:999px; background:#fff;
+  font-size:.88rem; font-weight:600; color:#4b5563; cursor:pointer; transition:all .12s; user-select:none;
+}
+.chip:hover{ border-color:var(--pe-primary); color:var(--pe-primary); }
+.chip.on{ background:var(--pe-primary); border-color:var(--pe-primary); color:#fff; }
+
+/* 결과 리스트 */
+.mx-count{ font-size:.85rem; color:var(--pe-muted); margin:0 4px 6px; }
+.mx-list{ background:#fff; border:1px solid var(--pe-line); border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.exam-row{
+  display:flex; align-items:center; gap:12px; padding:14px 18px;
+  border-bottom:1px solid var(--pe-line); text-decoration:none; color:inherit; transition:background .12s;
+}
+.exam-row:last-child{ border-bottom:none; }
+.exam-row:hover{ background:#faf9ff; }
+.exam-row .chev{ color:#c4c7cc; font-size:1rem; flex:none; transition:transform .12s, color .12s; }
+.exam-row:hover .chev{ color:var(--pe-primary); transform:translateX(2px); }
+.exam-check{ width:17px; height:17px; accent-color:var(--pe-primary); flex:none; cursor:pointer; }
+.exam-title{ flex:1; font-size:.98rem; font-weight:600; color:var(--pe-ink); }
+.exam-tag{ font-size:.72rem; font-weight:700; color:var(--pe-tag); background:var(--pe-tag-bg); padding:3px 9px; border-radius:7px; flex:none; }
+.mx-empty{ text-align:center; color:var(--pe-muted); padding:60px 20px; font-size:1rem; }
+
+/* 선택 바 */
+.mx-selbar{
+  position:sticky; bottom:14px; margin-top:16px; display:none;
+  align-items:center; justify-content:space-between; gap:12px;
+  background:var(--pe-primary); color:#fff; padding:12px 18px; border-radius:14px;
+  box-shadow:0 8px 24px rgba(109,40,217,.3);
+}
+.mx-selbar.show{ display:flex; }
+.mx-selbar b{ font-weight:800; }
+.mx-selbar button{ background:#fff; color:var(--pe-primary); border:none; padding:9px 20px; border-radius:10px; font-weight:700; cursor:pointer; }
+</style>
+
+<div class="mx-wrap">
+  <h2 class="mx-title">모의고사 자료</h2>
+
+  <div class="mx-search">
+    <span class="ic"><i class="fas fa-search"></i></span>
+    <input type="text" id="mxSearch" placeholder="제목 검색" autocomplete="off">
+  </div>
+
+  <div class="mx-filters">
+    <div class="mx-frow"><span class="mx-flabel">학년</span>
+      {% for g in grades %}<span class="chip" data-k="grade" data-v="{{ g }}">{{ g }}</span>{% endfor %}
     </div>
+    <div class="mx-frow"><span class="mx-flabel">년도</span>
+      {% for y in years %}<span class="chip" data-k="year" data-v="{{ y }}">{{ y }}년</span>{% endfor %}
+    </div>
+    <div class="mx-frow"><span class="mx-flabel">월</span>
+      {% for m in months %}<span class="chip" data-k="month" data-v="{{ m }}">{{ m }}월</span>{% endfor %}
+    </div>
+  </div>
+
+  <div class="mx-count"><span id="mxCount">{{ exams|length }}</span>개</div>
+
+  <div class="mx-list" id="mxList">
+    {% for e in exams %}
+    <a class="exam-row" data-grade="{{ e.grade }}" data-year="{{ e.year }}" data-month="{{ e.month }}"
+       data-title="{{ e.title|lower }}"
+       href="{% url 'academy:academy_list_result' %}?year={{ e.year }}&grade={{ e.grade }}&month={{ e.month }}">
+      <input type="checkbox" class="exam-check" onclick="event.stopPropagation();event.preventDefault();this.closest('.exam-row').classList.toggle('sel',this.checked);mxSel();">
+      <span class="exam-title">{{ e.title }}</span>
+      <span class="exam-tag">모의고사</span>
+      <span class="chev"><i class="fas fa-chevron-right"></i></span>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="mx-empty" id="mxEmpty" style="display:none;">조건에 맞는 모의고사가 없습니다.</div>
+
+  <div class="mx-selbar" id="mxSelbar">
+    <span>선택 <b id="mxSelN">0</b>개</span>
+    <button type="button" onclick="mxOpenSelected()">선택 항목 열기</button>
+  </div>
 </div>
 
-<script src="{% static 'js/filterExams.js' %}"></script>
+<script>
+(function(){
+  const active = {grade:new Set(), year:new Set(), month:new Set()};
+  const rows = Array.from(document.querySelectorAll('.exam-row'));
+  const search = document.getElementById('mxSearch');
+  const countEl = document.getElementById('mxCount');
+  const emptyEl = document.getElementById('mxEmpty');
+  const listEl  = document.getElementById('mxList');
 
-<div class="table-container">
-    {% if exams %}
-        {% with exams|dictsort:"year" as sorted_exams %}
-            {% regroup sorted_exams by year as exams_by_year %}
-            {% for year_group in exams_by_year %}
-                <h2>{{ year_group.grouper }}</h2>
-                <table class="exam-table">
-                    <thead>
-                        <tr>
-                            <th>색인</th>
-                            <th>학년</th>
-                            <th>년도</th>
-                            <th>월</th>
-                            <th>제목</th>
-                            <th>보기</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for exam in year_group.list %}
-                            <tr>
-                                <td>{{ forloop.parentloop.counter }}</td>
-                                <td>{{ exam.grade }}</td>
-                                <td>{{ exam.year }}년</td>
-                                <td>{{ exam.month }}월</td>
-                                <td>{{ exam.title }}</td>
-                                <td>
-                                    {% if exam.link %}
-                                        <a href="{% url 'academy:academy_list_result' %}?year={{ exam.year }}&grade={{ exam.grade }}&month={{ exam.month }}">클릭</a>
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% endfor %}
-        {% endwith %}
-    {% else %}
-        <div class="section" style="margin-bottom: 380px;">
-            <p class="no-data-message" style="text-align: center;">조건에 맞는 테이블이 없습니다.</p>
-        </div>
-    {% endif %}
-</div>
-{% endblock %}
+  function apply(){
+    const q = (search.value || '').trim().toLowerCase();
+    let shown = 0;
+    rows.forEach(r=>{
+      const okG = !active.grade.size || active.grade.has(r.dataset.grade);
+      const okY = !active.year.size  || active.year.has(r.dataset.year);
+      const okM = !active.month.size || active.month.has(r.dataset.month);
+      const okQ = !q || r.dataset.title.includes(q);
+      const ok = okG && okY && okM && okQ;
+      r.style.display = ok ? '' : 'none';
+      if(ok) shown++;
+    });
+    countEl.textContent = shown;
+    emptyEl.style.display = shown ? 'none' : 'block';
+    listEl.style.display = shown ? '' : 'none';
+  }
 
-{% block footer %}
-<footer>
-    <div class="container" style="text-align: center;">
-        <p>© 2024 프라임에듀</p>
-    </div>
-</footer>
+  document.querySelectorAll('.chip').forEach(c=>{
+    c.addEventListener('click', ()=>{
+      const k=c.dataset.k, v=c.dataset.v;
+      if(active[k].has(v)){ active[k].delete(v); c.classList.remove('on'); }
+      else { active[k].add(v); c.classList.add('on'); }
+      apply();
+    });
+  });
+  search.addEventListener('input', apply);
+
+  // 체크박스 선택 바
+  window.mxSel = function(){
+    const sel = rows.filter(r=>r.classList.contains('sel') && r.style.display!=='none');
+    document.getElementById('mxSelN').textContent = sel.length;
+    document.getElementById('mxSelbar').classList.toggle('show', sel.length>0);
+  };
+  window.mxOpenSelected = function(){
+    rows.filter(r=>r.classList.contains('sel')).forEach(r=>window.open(r.href,'_blank'));
+  };
+
+  apply();
+})();
+</script>
 {% endblock %}

@@ -23,56 +23,38 @@ DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQues
             "중요영작":Translation_Data, "내신단어":WordTest_Data}
 
 def academy_list(request):
-    """
-    이거를 이제 전체 문제에서 끌고 올 필요가 없음
-    KEY_TABLE -> 연도 학년 월 제목
-    이걸로 끌고오기    
-    """
+    """모의고사 선택 — 상단 학년/년도/월 필터 + 제목 검색, 아래 리스트는 클라이언트에서 즉시 필터링."""
+    def _int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
 
-    # GET 요청에서 필터링 값 가져오기
-    selected_grades = request.GET.get("grades", "").split(",") if request.GET.get("grades") else []
-    selected_years = request.GET.get("years", "").split(",") if request.GET.get("years") else []
-
-    # 모든 문제 가져오기 및 필터링
-    questions = KeyTable.objects.all()
-    if selected_years:
-        questions = questions.filter(year__in=selected_years)
-    if selected_grades:
-        questions = questions.filter(grade__in=selected_grades)
-
-    # 학년, 연도 및 유형 데이터베이스에서 가져오기
-    grades = KeyTable.objects.values_list('grade', flat=True).distinct()
-    years = sorted(KeyTable.objects.values_list('year', flat=True).distinct(), reverse=False)  # 내림차순 정렬
-
-    # 필요한 필드만 가져오기
-    exams = questions.values('pk_number', 'grade', 'year', 'month')
-
-    # 결과를 원하는 형식으로 변환
+    # 전체 모의고사(중복 제목 1개씩) — 필터/검색은 화면에서 즉시 처리
     formatted_exams = []
     seen_titles = set()
-    for exam in exams:
+    for exam in KeyTable.objects.values('pk_number', 'grade', 'year', 'month'):
         title = f"{exam['grade']} {exam['year']}년 {exam['month']}월 모의고사"
-        if title not in seen_titles:
-            formatted_exam = {
-                'grade': exam['grade'], 
-                'year': exam['year'],
-                'month': exam['month'],
-                'title': title,
-                'link': exam['pk_number'],
-            }
-            formatted_exams.append(formatted_exam)
-            seen_titles.add(title)
-    exams = formatted_exams
+        if title in seen_titles:
+            continue
+        seen_titles.add(title)
+        formatted_exams.append({
+            'grade': exam['grade'], 'year': exam['year'], 'month': exam['month'],
+            'title': title, 'link': exam['pk_number'],
+        })
+    # 최신 년도 → 학년 → 월 순
+    formatted_exams.sort(key=lambda e: (-_int(e['year']), str(e['grade']), _int(e['month'])))
 
-    context = {
-        "exams": exams,
-        "grades": [{"name": grade, "checked": grade in selected_grades} for grade in grades],
-        "years": [{"name": year, "checked": str(year) in selected_years} for year in years],
-        "selected_years": selected_years,
-        "selected_grades": selected_grades,
-    }
+    grades = sorted(KeyTable.objects.values_list('grade', flat=True).distinct())
+    years = sorted(KeyTable.objects.values_list('year', flat=True).distinct(), key=_int, reverse=True)
+    months = sorted(KeyTable.objects.values_list('month', flat=True).distinct(), key=_int)
 
-    return render(request, "academy_list.html", context)
+    return render(request, "academy_list.html", {
+        "exams": formatted_exams,
+        "grades": grades,
+        "years": years,
+        "months": months,
+    })
 
 def academy_list_result(request):
     TABLE_NAMES_DICT = {"Additional_text":"원문추가", "Descriptive_Question":"직보서술형",
