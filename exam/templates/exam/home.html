@@ -77,6 +77,7 @@
                         <h5 class="card-title">{{ a.paper.resolved_title }}</h5>
                         <p class="text-muted small mb-3">
                             {% if a.paper.source == 'naesin' %}내신 · {{ a.paper.category }}{% else %}모의고사{% endif %}
+                            {% if a.daily_goal %}<span class="badge bg-primary-subtle text-primary-emphasis ms-1">오늘 목표 {{ a.daily_goal }}문항</span>{% endif %}
                         </p>
                         <div class="mt-auto d-grid gap-2">
                             <a href="{% url 'exam:start_paper' a.paper.id %}" class="btn btn-primary"><i class="fas fa-pen me-1"></i>응시 시작</a>

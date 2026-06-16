@@ -33,4 +33,5 @@ urlpatterns = [
     path('api/import-naesin/', views.import_naesin_api, name='import_naesin'),
     path('api/import-image/', views.import_image_api, name='import_image'),
     path('api/import-student-schedule/', views.import_student_schedule, name='import_student_schedule'),
+    path('api/import-student-mock/', views.import_student_mock_api, name='import_student_mock'),
 ]

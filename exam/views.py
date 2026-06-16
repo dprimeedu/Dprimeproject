@@ -904,6 +904,98 @@ def import_student_schedule(request):
                         json_dumps_params={'ensure_ascii': False})
 
 
+# exam_key 규약: 회차 = 'YYYY-고N-M' (예: '2013-고3-11'). 유형 = '고N-유형명-YYYY'(콘텐츠 미정).
+_MOCK_KEY_ROUND_RE = re.compile(r'^(\d{4})-(고[123])-(\d{1,2})$')
+
+
+@csrf_exempt
+@require_POST
+def import_student_mock_api(request):
+    """학생별 모의고사 배정 (개별단어장생성.py ⑤ → 웹 푸시).
+
+    body: { token, items: [ {name, school?, kind, exam_key, start?, end?, goal?}, ... ] }
+      - kind='round': exam_key 'YYYY-고N-M' → 회차 모의고사 ExamPaper(source=mock) 배정.
+                       콘텐츠는 QuestionData(학년·연도·강)에서 자동 출제, 응시화면 기존 OMR 재사용.
+      - kind='type' : 유형별(순서/문장넣기 등) — 콘텐츠 원천 미정이라 현재 보류(type_pending).
+    name=Member.username 매칭, 동명이인/미존재 skip(기존 규약). goal 있으면 배정에 하루목표 저장.
+    응답: {success, assigned, updated_goal, skipped_dup, not_found, no_content, type_pending, bad_key, results}
+    """
+    ok, reason = _check_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        items = data.get('items') or []
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+
+    User = get_user_model()
+    assigned = updated_goal = skipped_dup = not_found = no_content = type_pending = bad_key = 0
+    results = []
+
+    def goal_of(it):
+        try:
+            return int(it.get('goal'))
+        except (TypeError, ValueError):
+            return None
+
+    for it in items:
+        name = str(it.get('name') or '').strip()
+        kind = str(it.get('kind') or 'round').strip().lower()
+        exam_key = str(it.get('exam_key') or '').strip()
+        if not name or not exam_key:
+            continue
+
+        if kind == 'type':
+            # 유형별 콘텐츠 원천 미정 — 합의 후 별도 구현(섹션 7-1)
+            type_pending += 1
+            results.append({'name': name, 'kind': 'type', 'exam_key': exam_key,
+                            'status': 'pending_content'})
+            continue
+
+        m = _MOCK_KEY_ROUND_RE.match(exam_key)
+        if not m:
+            bad_key += 1
+            results.append({'name': name, 'exam_key': exam_key, 'status': 'bad_exam_key'})
+            continue
+        year, grade, month = m.group(1), m.group(2), m.group(3)
+
+        qs = User.objects.filter(username=name)
+        cnt = qs.count()
+        if cnt == 0:
+            not_found += 1
+            results.append({'name': name, 'exam_key': exam_key, 'status': 'not_found'})
+            continue
+        if cnt > 1:
+            skipped_dup += 1
+            results.append({'name': name, 'exam_key': exam_key, 'status': 'dup_name'})
+            continue
+        student = qs.first()
+
+        paper = get_or_create_mock_paper(grade, year, month)
+        qn = len(paper.get_questions())
+        a, created = ExamAssignment.objects.get_or_create(
+            paper=paper, student=student, defaults={'assigned_by': None})
+        g = goal_of(it)
+        if g is not None and a.daily_goal != g:
+            a.daily_goal = g
+            a.save(update_fields=['daily_goal'])
+            updated_goal += 1
+        if created:
+            assigned += 1
+        if qn == 0:
+            no_content += 1
+        results.append({'name': name, 'exam_key': exam_key, 'paper_id': paper.id,
+                        'questions': qn, 'created': created,
+                        'status': 'assigned' if qn else 'assigned_no_content'})
+
+    return JsonResponse({'success': True, 'assigned': assigned, 'updated_goal': updated_goal,
+                         'skipped_dup': skipped_dup, 'not_found': not_found,
+                         'no_content': no_content, 'type_pending': type_pending,
+                         'bad_key': bad_key, 'results': results},
+                        json_dumps_params={'ensure_ascii': False})
+
+
 @csrf_exempt
 @require_POST
 def import_image_api(request):

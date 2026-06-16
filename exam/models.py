@@ -133,6 +133,8 @@ class ExamAssignment(models.Model):
     )
     assigned_at = models.DateTimeField(auto_now_add=True)
     due_date = models.DateTimeField(null=True, blank=True, verbose_name='마감일')
+    # 학생별 '오늘 목표 문항수'(모의고사 배정 시 학생관리표에서 전달) — 응시화면/홈 표시용
+    daily_goal = models.IntegerField('하루 목표 문항', null=True, blank=True)
 
     class Meta:
         db_table = 'exam_assignment'
