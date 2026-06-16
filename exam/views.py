@@ -159,6 +159,26 @@ def _split_redblue(text):
     return mark('\n'.join(passage).strip()), mark(red), mark(blue)
 
 
+def redblue_qmap_for_mock(paper):
+    """모의고사(QuestionData) paper → 같은 회차 빨파 시험지의 {번호: ExamQuestion} 매핑.
+
+    빨파 시험지: source=naesin, category=빨파, school_grade=모고학년, season='YYYY M월 모의고사'.
+    문항 번호 체계가 모고와 동일해 번호로 1:1 매칭된다. 못 찾으면 {}.
+    """
+    if paper.source != ExamPaper.SOURCE_MOCK:
+        return {}
+    season = f'{paper.year} {paper.month}월 모의고사'
+    rb = (ExamPaper.objects.filter(category='빨파', school_grade=paper.grade, season=season)
+          .first())
+    if rb is None:   # 표기 흔들림 대비(접미사 등) — 접두 매칭 폴백
+        rb = (ExamPaper.objects.filter(
+            category='빨파', school_grade=paper.grade,
+            season__startswith=f'{paper.year} {paper.month}월').first())
+    if rb is None:
+        return {}
+    return {q.number: q for q in rb.questions.all()}
+
+
 def available_mock_exams():
     """QuestionData에 존재하는 모의고사 1회분 목록 (학년·연도·강 + 문항 수)."""
     rows = (QuestionData.objects
@@ -393,6 +413,25 @@ def result_view(request, session_id):
             if a.q_ref or a.q_text or a.q_expl or a.q_img:
                 has_detail = True
 
+    # 모의고사 1차 오답 → 같은 회차 '빨파' 문제/정답을 번호로 붙인다.
+    #  · 학생: 2차에 빨파 문제(지문) 표시. 정답이미지는 교사 공개(redblue_released) 후에만.
+    #  · 교사: 항상 빨파 정답이미지 열람 + '공개' 버튼.
+    is_mock = session.paper.source == ExamPaper.SOURCE_MOCK
+    rb_map = redblue_qmap_for_mock(session.paper) if (is_mock and wrong) else {}
+    released = session.redblue_released
+    show_rb_answer = teacher or released        # 빨파 정답이미지 노출 여부
+    has_redblue = False
+    for a in wrong:
+        q = rb_map.get(a.number)
+        a.rb_has = q is not None
+        if q is None:
+            a.rb_passage = a.rb_red = a.rb_blue = ''
+            a.rb_img = ''
+            continue
+        has_redblue = True
+        a.rb_passage, a.rb_red, a.rb_blue = _split_redblue(q.text or '')
+        a.rb_img = (q.explanation_image.url if (show_rb_answer and q.explanation_image) else '')
+
     return render(request, 'exam/result.html', {
         'session': session,
         'answers': answers,
@@ -404,6 +443,8 @@ def result_view(request, session_id):
         'round2_done': round2_done,
         'round2_total': len(wrong),
         'has_detail': has_detail,
+        'has_redblue': has_redblue,
+        'redblue_released': released,
     })
 
 
@@ -545,6 +586,20 @@ def submit_round2_api(request):
     return JsonResponse({'success': True,
                          'redirect_url': f'/training/exam/result/{session.id}/'},
                         json_dumps_params={'ensure_ascii': False})
+
+
+@require_POST
+def release_redblue(request, session_id):
+    """교사가 '빨파정답 공개' → 학생이 자기 1차 오답의 빨파 정답이미지를 볼 수 있게 한다."""
+    if not is_teacher(request.user):
+        return HttpResponseBadRequest('권한 없음')
+    session = get_object_or_404(ExamSession, pk=session_id)
+    if not session.redblue_released:
+        session.redblue_released = True
+        session.redblue_released_at = timezone.now()
+        session.teacher_checked = True
+        session.save(update_fields=['redblue_released', 'redblue_released_at', 'teacher_checked'])
+    return JsonResponse({'success': True})
 
 
 # ─────────────────────────────────────────────

@@ -20,6 +20,9 @@ urlpatterns = [
     path('api/submit2/', views.submit_round2_api, name='submit2'),
     path('api/set-exam-date/', views.set_exam_date, name='set_exam_date'),
 
+    # 교사 — 빨파정답 학생 공개
+    path('api/release-redblue/<int:session_id>/', views.release_redblue, name='release_redblue'),
+
     # 선생님 / 관리자
     path('admin/results/', views.result_list, name='result_list'),
     path('admin/paper/<int:paper_id>/wrong/', views.wrong_summary, name='wrong_summary'),
