@@ -36,6 +36,7 @@ class UserCreateView(generic.CreateView):
             user.member_type = 'academy_admin'
             user.is_active = False        # 학원: 관리자 승인 대기
             user.is_approved = False
+            user.academy_access = 'variant'  # 승인 시 변형문제만 열람(관리자가 access-admin에서 조정)
         else:
             user.is_academy = False
             user.member_type = 'user'

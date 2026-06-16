@@ -602,9 +602,9 @@ def access_admin(request):
         return redirect('academy:access_admin')
 
     q = (request.GET.get('q') or '').strip()
-    # 관리자/학원운영자는 항상 전체라 설정 대상에서 제외
+    # 관리자(is_staff/superuser)는 항상 전체라 설정 대상에서 제외. 학원 계정은 관리 대상에 포함.
     members = (User.objects
-               .filter(is_staff=False, is_superuser=False, is_academy=False)
+               .filter(is_staff=False, is_superuser=False)
                .order_by('-date_joined'))
     if q:
         members = members.filter(

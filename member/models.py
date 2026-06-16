@@ -89,8 +89,9 @@ class Member(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_admin_level(self) -> bool:
-        """관리자급 — 모고/변형 데이터 전체 접근. 학원운영자 포함."""
-        return bool(self.is_staff or self.is_superuser or self.is_academy)
+        """관리자급 — 모고 전체 접근 + 운영 메뉴. is_staff/is_superuser만.
+        학원(is_academy) 셀프가입 계정은 관리자가 아니며 academy_access로 제어(기본 variant=변형문제만)."""
+        return bool(self.is_staff or self.is_superuser)
 
     @property
     def can_view_mock_full(self) -> bool:
