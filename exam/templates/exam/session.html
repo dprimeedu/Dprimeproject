@@ -60,6 +60,29 @@
         입력은 <b>자동 저장</b>되어, 다시 들어오면 이어서 풀 수 있어요.
     </div>
 
+    {% if show_goal %}
+    <div class="goal-panel" id="goalPanel"
+         style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:12px;">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <label for="examDateInput" class="mb-0 fw-semibold"><i class="far fa-calendar-check me-1"></i>시험 시작일자</label>
+            <input type="date" id="examDateInput" class="form-control form-control-sm" style="max-width:170px;"
+                   value="{{ goal_info.exam_date|date:'Y-m-d' }}">
+            <span class="text-muted small">입력·수정하면 하루 목표가 자동 계산돼요.</span>
+        </div>
+        <div class="mt-2 d-flex flex-wrap gap-3" id="goalLine">
+            <span>📚 배정 문항 <b id="gTotal">{{ goal_info.total_q }}</b></span>
+            <span id="gClassesWrap">📅 남은 수업 <b id="gClasses">{{ goal_info.classes_left|default:'-' }}</b>번</span>
+            <span id="gDdayWrap">{% if goal_info.dday != None %}D-{{ goal_info.dday }}{% endif %}</span>
+            <span class="goal-badge" style="font-weight:700; color:#0369a1;">
+                오늘 목표 <b id="gGoal">{{ goal_info.goal|default:'-' }}</b>문제
+            </span>
+        </div>
+        <div id="goalNote" class="small text-danger mt-1" style="{% if goal_info.goal %}display:none;{% endif %}">
+            {% if not goal_info.weekdays %}수업 요일이 없어 목표를 계산할 수 없어요(선생님께 문의).{% elif not goal_info.exam_date %}시험 시작일자를 입력해 주세요.{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="mb-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleDone">
             <i class="fas fa-eye me-1"></i>이미 입력한 <b id="doneCnt">{{ done_count }}</b>개 보기/숨기기
@@ -104,9 +127,7 @@
             <span class="done">입력 <b id="cntDone">0</b></span>
             <span class="left">남은 <b id="cntLeft">{{ total_questions }}</b></span>
             <span class="flag">오류 <b id="cntFlag">0</b></span>
-            {% if daily_goal %}<span class="goal">오늘 목표 <b>{{ daily_goal }}</b></span>{% endif %}
-            {% if exam_date %}<span>📅 시험 {{ exam_date|date:'n/j' }}{% if dday >= 0 %} · D-{{ dday }}{% endif %}</span>{% endif %}
-            {% if classes_left != None %}<span class="goal">📚 남은 수업 <b>{{ classes_left }}</b>번</span>{% endif %}
+            {% if show_goal and goal_info.goal %}<span class="goal">오늘 목표 <b id="footGoal">{{ goal_info.goal }}</b></span>{% endif %}
         </div>
         <button id="submitBtn" class="btn btn-success btn-submit"><i class="fas fa-paper-plane me-1"></i>제출하고 채점</button>
     </div>
@@ -118,7 +139,7 @@
     const SAVE_URL = '{% url "exam:save_progress" %}';
     const SUBMIT_URL = '{% url "exam:submit" %}';
     const TOTAL = {{ total_questions }};
-    const GOAL = {{ daily_goal|default:0 }};
+    let GOAL = {{ goal_info.goal|default:0 }};
     const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
     const grid = document.getElementById('questionGrid');
@@ -222,6 +243,41 @@
         })
         .catch(() => { alert('네트워크 오류. 다시 시도해주세요.'); submitBtn.disabled = false; submitBtn.innerHTML = '제출하고 채점'; });
     });
+
+    // ── 시험 시작일자 입력 → 하루목표 실시간 계산 ──
+    const examDateInput = document.getElementById('examDateInput');
+    if (examDateInput) {
+        examDateInput.addEventListener('change', function () {
+            const val = examDateInput.value;
+            fetch('{% url "exam:set_exam_date" %}', {
+                method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({exam_date: val})
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) { alert(d.error || '저장 실패'); return; }
+                const g = d.goal_info;
+                const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+                setTxt('gTotal', g.total_q);
+                setTxt('gClasses', g.classes_left == null ? '-' : g.classes_left);
+                setTxt('gGoal', g.goal == null ? '-' : g.goal);
+                setTxt('footGoal', g.goal == null ? '-' : g.goal);
+                const dday = document.getElementById('gDdayWrap');
+                if (dday) dday.textContent = (g.dday == null ? '' : 'D-' + g.dday);
+                GOAL = g.goal || 0;
+                const note = document.getElementById('goalNote');
+                if (note) {
+                    if (g.goal) { note.style.display = 'none'; }
+                    else {
+                        note.style.display = '';
+                        note.textContent = !g.weekdays ? '수업 요일이 없어 목표를 계산할 수 없어요(선생님께 문의).'
+                                          : (!g.exam_date ? '시험 시작일자를 입력해 주세요.' : '');
+                    }
+                }
+            })
+            .catch(() => alert('네트워크 오류로 저장하지 못했어요.'));
+        });
+    }
 })();
 </script>
 {% endblock %}

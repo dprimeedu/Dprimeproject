@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/save/', views.save_progress_api, name='save_progress'),
     path('api/submit/', views.submit_session_api, name='submit'),
     path('api/submit2/', views.submit_round2_api, name='submit2'),
+    path('api/set-exam-date/', views.set_exam_date, name='set_exam_date'),
 
     # 선생님 / 관리자
     path('admin/results/', views.result_list, name='result_list'),
@@ -28,4 +29,5 @@ urlpatterns = [
     # 외부 연동 — 내신 정답 import (토큰)
     path('api/import-naesin/', views.import_naesin_api, name='import_naesin'),
     path('api/import-image/', views.import_image_api, name='import_image'),
+    path('api/import-student-schedule/', views.import_student_schedule, name='import_student_schedule'),
 ]

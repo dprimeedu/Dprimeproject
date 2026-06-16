@@ -7,6 +7,7 @@
 채점은 객관식(1~5) 숫자 비교 자동채점.
 """
 import json
+import math
 import os
 import re
 
@@ -107,6 +108,38 @@ def class_days_until(weekdays_str, exam_date, today):
             n += 1
         d += timedelta(days=1)
     return n
+
+
+NAESIN_GOAL_CATEGORIES = ['Part1', 'Part2', 'Part3', 'Part4']
+
+
+def naesin_daily_goal(student):
+    """학생의 내신 '하루 목표' 계산.
+
+    하루목표 = (배정된 Part1~4 총 문항수) / (시험까지 남은 수업일수), 올림.
+    - exam_date: 학생이 응시화면에서 입력(StudentInfo.naesin_exam_date)
+    - weekdays:  StudentInfo.attend_weekdays (학생Data D열 동기화)
+    값이 없으면 goal=None(입력 유도). 시험이 임박/지나 남은수업=0이면 남은 전량(total_q).
+    """
+    si = getattr(student, 'report_info', None)
+    exam_date = getattr(si, 'naesin_exam_date', None) if si else None
+    weekdays = getattr(si, 'attend_weekdays', '') if si else ''
+    total_q = ExamQuestion.objects.filter(
+        paper__source=ExamPaper.SOURCE_NAESIN,
+        paper__category__in=NAESIN_GOAL_CATEGORIES,
+        paper__assignments__student=student,
+    ).count()
+    today = timezone.now().date()
+    classes_left = class_days_until(weekdays, exam_date, today)
+    if total_q and classes_left:
+        goal = math.ceil(total_q / classes_left)
+    elif total_q and classes_left == 0:
+        goal = total_q          # 시험 임박/당일 — 남은 전량
+    else:
+        goal = None
+    dday = (exam_date - today).days if exam_date else None
+    return {'goal': goal, 'total_q': total_q, 'classes_left': classes_left,
+            'exam_date': exam_date, 'dday': dday, 'weekdays': weekdays}
 
 
 def _split_redblue(text):
@@ -291,28 +324,43 @@ def session_view(request, session_id):
             item['passage'], item['red'], item['blue'] = _split_redblue(q.get('text', ''))
         q_view.append(item)
 
-    # 시험일 D-day + 남은 수업 수 (학생 출석요일 기준)
-    today = timezone.now().date()
-    exam_date = session.paper.exam_date
-    dday = (exam_date - today).days if exam_date else None
-    weekdays = ''
-    try:
-        weekdays = request.user.report_info.attend_weekdays
-    except Exception:
-        weekdays = ''
-    classes_left = class_days_until(weekdays, exam_date, today)
+    # 내신 Part1~4 응시 → 학생이 시험일 입력하고 하루목표(남은수업 기준) 실시간 계산
+    is_naesin = (session.paper.source == ExamPaper.SOURCE_NAESIN
+                 and session.paper.category != '빨파')
+    goal_info = naesin_daily_goal(request.user) if is_naesin else None
 
     return render(request, 'exam/session.html', {
         'session': session,
         'questions': q_view,
         'total_questions': len(q_view),
         'done_count': done_count,
-        'daily_goal': session.paper.daily_goal,
-        'exam_date': exam_date,
-        'dday': dday,
-        'classes_left': classes_left,
         'redblue': redblue,
+        'show_goal': is_naesin,
+        'goal_info': goal_info,
     })
+
+
+@login_required
+@require_POST
+def set_exam_date(request):
+    """학생이 응시화면에서 내신 시험시작일을 입력/수정 → StudentInfo 저장 + 하루목표 재계산 반환."""
+    from report.models import StudentInfo
+    from django.utils.dateparse import parse_date
+    try:
+        data = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+    raw = str(data.get('exam_date') or '').strip()
+    d = parse_date(raw) if raw else None
+    if raw and d is None:
+        return JsonResponse({'success': False, 'error': '날짜 형식 오류(YYYY-MM-DD)'}, status=400)
+    si, _ = StudentInfo.objects.get_or_create(student=request.user)
+    si.naesin_exam_date = d
+    si.save(update_fields=['naesin_exam_date'])
+    info = naesin_daily_goal(request.user)
+    info['exam_date'] = info['exam_date'].isoformat() if info['exam_date'] else None
+    return JsonResponse({'success': True, 'goal_info': info},
+                        json_dumps_params={'ensure_ascii': False})
 
 
 @login_required
@@ -736,6 +784,54 @@ def import_naesin_api(request):
     return JsonResponse({'success': True, 'school_grade': school_grade, 'season': season,
                          'exam_date': raw_date or None, 'daily_goal': daily_goal,
                          'papers': results, 'total_questions': total},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+@require_POST
+def import_student_schedule(request):
+    """학생 수업요일 동기화 — 로컬 학생요일동기화.py → StudentInfo.attend_weekdays 세팅.
+
+    body: { token, schedules: [ {name, weekdays} | {name, daytime} ] }
+      - weekdays: '월수' 처럼 요일만. 없으면 daytime('월수44시')에서 요일 글자만 추출.
+      - Member.username(이름)으로 매칭. 동명이인/미존재는 건너뜀(카운트 반환).
+    """
+    ok, reason = _check_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    from report.models import StudentInfo
+    User = get_user_model()
+    try:
+        data = json.loads(request.body or '{}')
+        schedules = data.get('schedules') or []
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+
+    _WD = '월화수목금토일'
+    updated, skipped_dup, not_found = 0, 0, 0
+    for it in schedules:
+        name = str(it.get('name') or '').strip()
+        wd = str(it.get('weekdays') or '').strip()
+        if not wd:
+            wd = ''.join(c for c in str(it.get('daytime') or '') if c in _WD)
+        if not name or not wd:
+            continue
+        qs = User.objects.filter(username=name)
+        cnt = qs.count()
+        if cnt == 0:
+            not_found += 1
+            continue
+        if cnt > 1:
+            skipped_dup += 1
+            continue
+        si, _ = StudentInfo.objects.get_or_create(student=qs.first())
+        if si.attend_weekdays != wd:
+            si.attend_weekdays = wd
+            si.save(update_fields=['attend_weekdays'])
+        updated += 1
+
+    return JsonResponse({'success': True, 'updated': updated,
+                         'skipped_dup': skipped_dup, 'not_found': not_found},
                         json_dumps_params={'ensure_ascii': False})
 
 
