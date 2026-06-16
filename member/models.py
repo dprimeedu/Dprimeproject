@@ -57,14 +57,16 @@ class Member(AbstractBaseUser, PermissionsMixin):
     member_type = models.CharField(max_length=20, choices=MEMBER_TYPES, default='user')
     ACADEMY_ACCESS = (
         ('none', '접근 없음'),
-        ('variant', '변형문제만'),
+        ('variant_view', '변형문제 열람만'),
+        ('variant_down', '변형문제 열람+다운로드'),
         ('full', '모고 전체'),
     )
     academy_access = models.CharField(
-        max_length=10, choices=ACADEMY_ACCESS, default='none',
+        max_length=15, choices=ACADEMY_ACCESS, default='none',
         verbose_name='모고 데이터 접근범위',
-        help_text="외부 승인 계정용. none=접근X, variant=변형문제만, full=모고 전체. "
-                  "관리자/학원운영자(is_staff·is_superuser·is_academy)는 이 값과 무관하게 항상 전체.",
+        help_text="외부/학원 계정용. none=접근X, variant_view=변형문제 열람만, "
+                  "variant_down=변형문제 열람+다운로드, full=모고 전체. "
+                  "관리자(is_staff·is_superuser)는 이 값과 무관하게 항상 전체.",
     )
     phone = models.CharField(max_length=15, null=True, blank=True)
     is_academy = models.BooleanField(default=False)
@@ -100,8 +102,13 @@ class Member(AbstractBaseUser, PermissionsMixin):
 
     @property
     def can_view_variant(self) -> bool:
-        """변형문제(최소) 이상 열람 가능 여부. full이면 당연히 포함."""
-        return self.can_view_mock_full or self.academy_access == 'variant'
+        """변형문제(최소) 이상 '열람' 가능 여부. variant_view부터 허용, full 포함."""
+        return self.can_view_mock_full or self.academy_access in ('variant_view', 'variant_down')
+
+    @property
+    def can_download(self) -> bool:
+        """볼 수 있는 자료를 '다운로드'할 권한. variant_down(승인) 또는 full/관리자."""
+        return self.can_view_mock_full or self.academy_access == 'variant_down'
 
 
 class Profile(models.Model):

@@ -13,11 +13,12 @@
     .access-table th { background: #f9fafb; color: #374151; font-weight: 600; }
     .access-table tr:last-child td { border-bottom: none; }
     .badge-resident { display: inline-block; background: #eef2ff; color: #4338ca; border-radius: 6px; padding: 2px 7px; font-size: .72rem; margin-left: 6px; }
+    .badge-academy { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 6px; padding: 2px 7px; font-size: .72rem; margin-left: 6px; }
     .access-table select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 7px; }
     .access-table form { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
     .btn-save { background: #2563eb; color: #fff; border: none; border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: .85rem; }
     .btn-save:hover { background: #1d4ed8; }
-    .lvl-none { color: #9ca3af; } .lvl-variant { color: #b45309; } .lvl-full { color: #047857; font-weight: 600; }
+    .lvl-none { color: #9ca3af; } .lvl-variant_view { color: #b45309; } .lvl-variant_down { color: #c2410c; font-weight: 600; } .lvl-full { color: #047857; font-weight: 600; }
     .muted { color: #9ca3af; font-size: .8rem; }
     .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: .9rem; }
     .flash.success { background: #ecfdf5; color: #065f46; }
@@ -30,9 +31,9 @@
     <h1><i class="fas fa-user-shield"></i> 모고 데이터 접근권한 설정</h1>
     <p class="desc">
         아이디별로 모고/변형문제 데이터를 어디까지 볼 수 있는지 설정합니다.<br>
-        <b>접근 없음</b> = 차단 · <b>변형문제만</b> = 외부 승인(변형문제 다운로드만) · <b>모고 전체</b> = 모든 카테고리.<br>
-        관리자·학원운영자(is_staff/superuser/academy)는 항상 전체라 목록에 표시되지 않습니다.
-        재원생(<code>primeedu*</code>)은 기본 <b>접근 없음</b>으로 두세요.
+        <b>접근 없음</b> = 차단 · <b>변형문제 열람만</b> = 보기만(다운로드X) · <b>변형문제 열람+다운로드</b> = 승인(다운로드 허용) · <b>모고 전체</b> = 모든 카테고리.<br>
+        <b>학원</b> 가입 계정은 기본 <b>변형문제 열람만</b> → 승인 시 <b>열람+다운로드</b>로 올려주세요.
+        관리자(is_staff/superuser)는 항상 전체라 목록에 없습니다. 재원생(<code>primeedu*</code>)은 기본 <b>접근 없음</b>.
     </p>
 
     {% if messages %}
@@ -61,6 +62,7 @@
             <tr>
                 <td>
                     {{ row.m.login_id|default:row.m.email|default:"—" }}
+                    {% if row.is_academy %}<span class="badge-academy">학원</span>{% endif %}
                     {% if row.is_resident %}<span class="badge-resident">재원생</span>{% endif %}
                 </td>
                 <td>{{ row.m.username|default:"—" }}</td>

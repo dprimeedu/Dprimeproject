@@ -35,8 +35,9 @@ def _require_access(check):
         return wrapped
     return deco
 
-require_variant = _require_access(lambda u: getattr(u, 'can_view_variant', False))
-require_mock_full = _require_access(lambda u: getattr(u, 'can_view_mock_full', False))
+require_variant = _require_access(lambda u: getattr(u, 'can_view_variant', False))      # 열람(변형 이상)
+require_download = _require_access(lambda u: getattr(u, 'can_download', False))          # 다운로드(승인됨)
+require_mock_full = _require_access(lambda u: getattr(u, 'can_view_mock_full', False))   # 모고 전체
 
 
 # 선택한 카테고리를 이용해서 DB를 결정
@@ -423,7 +424,7 @@ def save_translation_log(request):
     return JsonResponse({'status': 'ok'})
 
 
-@require_variant
+@require_download
 def download_pdf(request):
     """
     이것도 카테고리에 따라 출력 양식을 지정하거나 해야 함
@@ -507,7 +508,7 @@ def _hwpx_choices(option_str):
 # ---------------------------------------------------------------------------
 # 변형문제 HWPX 다운로드
 # ---------------------------------------------------------------------------
-@require_variant
+@require_download
 def download_modified_hwpx(request):
     from common.hwpx import TEMPLATE_PATH
     from common.hwpx.hwpx_builder import build_hwpx_bytes
@@ -575,7 +576,8 @@ require_admin = _require_access(lambda u: getattr(u, 'is_admin_level', False))
 
 ACCESS_CHOICES = [
     ('none', '접근 없음'),
-    ('variant', '변형문제만'),
+    ('variant_view', '변형문제 열람만'),
+    ('variant_down', '변형문제 열람+다운로드'),
     ('full', '모고 전체'),
 ]
 
@@ -615,7 +617,7 @@ def access_admin(request):
     for m in members[:500]:
         # 재원생(primeedu*) 여부 표시 — 기본 차단 대상 안내용
         is_resident = bool(m.is_approved) or bool(re.match(r'^primeedu\d+$', m.login_id or ''))
-        rows.append({'m': m, 'is_resident': is_resident})
+        rows.append({'m': m, 'is_resident': is_resident, 'is_academy': bool(m.is_academy)})
 
     return render(request, 'access_admin.html', {
         'rows': rows,
