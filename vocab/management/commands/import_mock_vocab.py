@@ -24,6 +24,16 @@ from django.db import transaction
 from vocab.models import MockVocab
 
 
+def clean_text(s):
+    """엑셀에서 들어온 lone surrogate·제어문자 제거(utf-8/sqlite 안전)."""
+    if not s:
+        return ''
+    return ''.join(
+        ch for ch in str(s)
+        if not (0xD800 <= ord(ch) <= 0xDFFF) and (ch in '\t\n' or ord(ch) >= 32)
+    ).strip()
+
+
 def norm_key(word):
     return ' '.join((word or '').split()).lower()[:200]
 
@@ -49,8 +59,11 @@ def _rows_from_xlsx(path, only):
                 continue
             if only and (grade, year, month) not in only:
                 continue
+            w, mng = clean_text(word)[:200], clean_text(meaning)
+            if not w or not mng:
+                continue
             yield {'grade': grade, 'year': year, 'month': month, 'number': number,
-                   'word': str(word).strip()[:200], 'meaning': str(meaning).strip()}
+                   'word': w, 'meaning': mng}
 
 
 def _rows_from_stdin(only):
@@ -65,8 +78,8 @@ def _rows_from_stdin(only):
         try:
             d = json.loads(line)
             rec = {'grade': int(d['grade']), 'year': int(d['year']), 'month': int(d['month']),
-                   'number': int(d['number']), 'word': str(d['word']).strip()[:200],
-                   'meaning': str(d['meaning']).strip()}
+                   'number': int(d['number']), 'word': clean_text(d['word'])[:200],
+                   'meaning': clean_text(d['meaning'])}
         except (ValueError, KeyError, TypeError):
             continue
         if not rec['word'] or not rec['meaning']:
