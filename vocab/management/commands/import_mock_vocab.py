@@ -54,6 +54,10 @@ def _rows_from_xlsx(path, only):
 
 
 def _rows_from_stdin(only):
+    try:
+        sys.stdin.reconfigure(encoding='utf-8')   # Windows 기본 cp949 stdin 방지
+    except Exception:
+        pass
     for line in sys.stdin:
         line = line.strip()
         if not line:
