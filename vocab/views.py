@@ -1579,6 +1579,50 @@ def dict_lookup_api(request):
                         json_dumps_params={'ensure_ascii': False})
 
 
+def lookup_mock_word(grade, year, month, number, word):
+    """모의고사 회차·문항 한정 단어 뜻. 반환 (meaning, source).
+
+    우선순위: MockVocab(그 지문 맥락) → 없으면 Gemini(+캐시). 다의어/지문 전용 명사 정확도용.
+    구(phrase) 항목은 더블클릭한 단어를 첫 토큰/포함 토큰으로 매칭.
+    """
+    from .models import MockVocab
+    w = ' '.join((word or '').split()).lower()
+    if not w:
+        return '', ''
+    rows = list(MockVocab.objects
+                .filter(grade=grade, year=year, month=month, number=number)
+                .values_list('word_key', 'meaning'))
+    # 1) 정확히 같은 단어
+    for k, m in rows:
+        if k == w:
+            return m, 'mockdb'
+    # 2) 구의 첫 토큰이 일치 (예: 'allow 사람 to v' ← 더블클릭 'allow')
+    for k, m in rows:
+        toks = k.split()
+        if toks and toks[0] == w:
+            return m, 'mockdb'
+    # 3) 구 안의 아무 토큰이나 일치
+    for k, m in rows:
+        if w in k.split():
+            return m, 'mockdb'
+
+    # 4) Gemini 폴백 (회차 단어DB에 빠진 단어) — 단어 기준 캐시
+    cached = DictionaryCache.objects.filter(word=w).first()
+    if cached:
+        return cached.meaning, cached.source
+    try:
+        from writing.services.ai import translate_word_en_ko
+        meaning = translate_word_en_ko(word)
+    except Exception as e:
+        print(f'[mockvocab] Gemini 조회 실패: {e}')
+        meaning = ''
+    if meaning:
+        DictionaryCache.objects.get_or_create(
+            word=w, defaults={'meaning': meaning, 'source': DictionaryCache.SRC_AI})
+        return meaning, DictionaryCache.SRC_AI
+    return '', ''
+
+
 # 지문에서 더블클릭으로 찾은 단어가 모이는 학생 개인 세트(자동)
 FOUND_WORDS_SET_TITLE = '📖 지문에서 찾은 단어'
 
@@ -1613,7 +1657,9 @@ def _save_found_word(student, word, meaning):
 def lookup_save_api(request):
     """지문 단어 더블클릭 → 영→한 뜻 조회 + 학생 개인 낱말카드 자동 저장.
 
-    body: {word} → {success, meaning, source, saved, set_title}
+    body: {word, grade?, year?, month?, number?} → {success, meaning, source, saved, set_title}
+    회차·문항(grade,year,month,number)이 오면 모의고사 회차 단어DB→Gemini 순으로(맥락 한정),
+    없으면 전체 사전(lookup_meaning).
     """
     try:
         data = json.loads(request.body or '{}')
@@ -1624,7 +1670,16 @@ def lookup_save_api(request):
     if not word:
         return JsonResponse({'success': True, 'meaning': '', 'source': '', 'saved': False})
 
-    meaning, source = lookup_meaning(word)
+    def _int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+    g, y, mo, n = _int(data.get('grade')), _int(data.get('year')), _int(data.get('month')), _int(data.get('number'))
+    if g and y and mo and n:
+        meaning, source = lookup_mock_word(g, y, mo, n, word)
+    else:
+        meaning, source = lookup_meaning(word)
     saved = _save_found_word(request.user, word, meaning) if meaning else False
     return JsonResponse({'success': True, 'word': word, 'meaning': meaning, 'source': source,
                          'saved': saved, 'set_title': FOUND_WORDS_SET_TITLE},

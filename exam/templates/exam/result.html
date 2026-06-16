@@ -148,7 +148,7 @@
                             {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
                         </div>
                         {% if a.rb_has %}
-                            {% if a.rb_passage %}<div class="rb-passage vocab-text">{{ a.rb_passage }}</div>{% endif %}
+                            {% if a.rb_passage %}<div class="rb-passage vocab-text" data-number="{{ a.number }}">{{ a.rb_passage }}</div>{% endif %}
                             {% if a.rb_red %}<div class="rb-red">[빨] {{ a.rb_red }}</div>{% endif %}
                             {% if a.rb_blue %}<div class="rb-blue">[파] {{ a.rb_blue }}</div>{% endif %}
                         {% else %}
@@ -187,7 +187,7 @@
                 {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
                 <span class="ms-auto small">내 1차답 <b>{{ a.student_choice|default:"-" }}</b>{% if round2_done %} · 2차답 <b>{{ a.second_choice|default:"-" }}</b>{% endif %} · 정답 <b class="text-success">{{ a.correct_answer }}</b></span>
             </div>
-            {% if a.rb_passage %}<div class="rb-passage vocab-text mb-2">{{ a.rb_passage }}</div>{% endif %}
+            {% if a.rb_passage %}<div class="rb-passage vocab-text mb-2" data-number="{{ a.number }}">{{ a.rb_passage }}</div>{% endif %}
             {% if a.rb_img %}
                 <a href="{{ a.rb_img }}" target="_blank"><img src="{{ a.rb_img }}" class="rb-ans-img" alt="{{ a.number }}번 빨파정답"></a>
             {% else %}
@@ -275,6 +275,7 @@
 <script>
 (function () {
     const URL = '{% url "vocab:lookup_save" %}';
+    const MGRADE = {{ mock_ctx.grade|default:0 }}, MYEAR = {{ mock_ctx.year|default:0 }}, MMONTH = {{ mock_ctx.month|default:0 }};
     const tokEl = document.querySelector('[name=csrfmiddlewaretoken]');
     if (!tokEl) return;
     const csrftoken = tokEl.value;
@@ -304,10 +305,11 @@
             try { r = sel.getRangeAt(0).getBoundingClientRect(); }
             catch (_) { const b = el.getBoundingClientRect(); r = {left:b.left, bottom:b.top}; }
             const px = r.left + window.scrollX, py = r.bottom + window.scrollY;
+            const num = parseInt(el.dataset.number || '0', 10) || 0;
             show(px, py, '<div class="vp-w">' + esc(word) + '</div><div class="vp-m">조회 중…</div>');
             fetch(URL, { method:'POST',
                 headers:{'Content-Type':'application/json','X-CSRFToken':csrftoken},
-                body: JSON.stringify({word: word}) })
+                body: JSON.stringify({word: word, grade: MGRADE, year: MYEAR, month: MMONTH, number: num}) })
             .then(r => r.json())
             .then(d => {
                 if (d.success && d.meaning) {

@@ -417,6 +417,15 @@ def result_view(request, session_id):
     #  · 학생: 2차에 빨파 문제(지문) 표시. 정답이미지는 교사 공개(redblue_released) 후에만.
     #  · 교사: 항상 빨파 정답이미지 열람 + '공개' 버튼.
     is_mock = session.paper.source == ExamPaper.SOURCE_MOCK
+    # 더블클릭 단어조회용 회차 컨텍스트(학년 int/년도/월) — 회차 단어DB 매칭 키
+    mock_ctx = None
+    if is_mock:
+        gm = re.search(r'(\d+)', session.paper.grade or '')
+        mock_ctx = {
+            'grade': int(gm.group(1)) if gm else 0,
+            'year': int(session.paper.year) if str(session.paper.year).isdigit() else 0,
+            'month': int(session.paper.month) if str(session.paper.month).isdigit() else 0,
+        }
     rb_map = redblue_qmap_for_mock(session.paper) if (is_mock and wrong) else {}
     released = session.redblue_released
     show_rb_answer = teacher or released        # 빨파 정답이미지 노출 여부
@@ -445,6 +454,7 @@ def result_view(request, session_id):
         'has_detail': has_detail,
         'has_redblue': has_redblue,
         'redblue_released': released,
+        'mock_ctx': mock_ctx,
     })
 
 

@@ -355,6 +355,33 @@ class DictionaryEntry(models.Model):
         return f'{self.word} → {self.meaning[:20]}'
 
 
+class MockVocab(models.Model):
+    """모의고사 회차·문항별 단어 뜻 (지문 맥락 한정).
+
+    출처: '고1 - 고3 전체모의고사 단어 DB.xlsx' (시트 고1/고2/고3),
+    컬럼 번호/단어/의미/년도/학년/월. 다의어·지문 전용 명사를 그 지문 맥락의 뜻으로 저장한다.
+    빨파 지문에서 단어 더블클릭 시 (grade,year,month,number)로 조회 → 없으면 Gemini.
+    word_key = 공백정규화·소문자 (단건 더블클릭 토큰 매칭용; 구(phrase)도 첫 토큰으로 매칭).
+    """
+    grade = models.PositiveSmallIntegerField('학년', db_index=True)      # 1/2/3 (고1/고2/고3)
+    year = models.PositiveSmallIntegerField('년도')
+    month = models.PositiveSmallIntegerField('월')                       # 3/6/9/11 등
+    number = models.PositiveSmallIntegerField('문항번호')
+    word = models.CharField('단어', max_length=200)
+    word_key = models.CharField('매칭키', max_length=200, db_index=True)
+    meaning = models.TextField('의미')
+
+    class Meta:
+        db_table = 'vocab_mock_vocab'
+        verbose_name = '모의고사 단어'
+        verbose_name_plural = '모의고사 단어'
+        unique_together = [['grade', 'year', 'month', 'number', 'word_key']]
+        indexes = [models.Index(fields=['grade', 'year', 'month', 'number'])]
+
+    def __str__(self):
+        return f'[고{self.grade} {self.year} {self.month}월 {self.number}] {self.word} → {self.meaning[:16]}'
+
+
 class DictionaryCache(models.Model):
     """영→한 사전 조회 캐시 — 같은 단어 반복 조회/AI 재호출 방지."""
     SRC_DB = 'db'
