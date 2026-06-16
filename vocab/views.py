@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Case, When, IntegerField, Value
+from django.db.models import Count, Case, When, IntegerField, Value, Max
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -1576,4 +1576,56 @@ def dict_lookup_api(request):
 
     meaning, source = lookup_meaning(word)
     return JsonResponse({'success': True, 'meaning': meaning, 'source': source},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+# 지문에서 더블클릭으로 찾은 단어가 모이는 학생 개인 세트(자동)
+FOUND_WORDS_SET_TITLE = '📖 지문에서 찾은 단어'
+
+
+def _save_found_word(student, word, meaning):
+    """더블클릭으로 찾은 단어를 학생 개인 '지문에서 찾은 단어' 낱말카드 세트에 추가.
+
+    중복(대소문자 무시)이면 추가 안 함. 저장됐으면 True.
+    """
+    word = (word or '').strip()[:200]
+    meaning = (meaning or '').strip()
+    if not word or not meaning:
+        return False
+    s, _ = WordCardSet.objects.get_or_create(
+        student=student, title=FOUND_WORDS_SET_TITLE,
+        defaults={'status': WordCardSet.STATUS_PUBLISHED, 'start_index': 1, 'end_index': 0,
+                  'description': '지문에서 더블클릭해 찾은 단어가 자동 저장됩니다.'},
+    )
+    if s.cards.filter(word__iexact=word).exists():
+        return False
+    nxt = (s.cards.aggregate(m=Max('index'))['m'] or 0) + 1
+    WordCard.objects.create(card_set=s, index=nxt, word=word, meaning=meaning)
+    if s.status != WordCardSet.STATUS_PUBLISHED or (s.end_index or 0) < nxt:
+        s.status = WordCardSet.STATUS_PUBLISHED
+        s.end_index = nxt
+        s.save(update_fields=['status', 'end_index'])
+    return True
+
+
+@login_required
+@require_POST
+def lookup_save_api(request):
+    """지문 단어 더블클릭 → 영→한 뜻 조회 + 학생 개인 낱말카드 자동 저장.
+
+    body: {word} → {success, meaning, source, saved, set_title}
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        word = str(data.get('word', '')).strip()
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    if not word:
+        return JsonResponse({'success': True, 'meaning': '', 'source': '', 'saved': False})
+
+    meaning, source = lookup_meaning(word)
+    saved = _save_found_word(request.user, word, meaning) if meaning else False
+    return JsonResponse({'success': True, 'word': word, 'meaning': meaning, 'source': source,
+                         'saved': saved, 'set_title': FOUND_WORDS_SET_TITLE},
                         json_dumps_params={'ensure_ascii': False})

@@ -12,6 +12,14 @@
 .rb-blue{ color:#2563eb; font-weight:600; margin-top:4px; white-space:pre-wrap; }
 .rb-input-row{ display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:12px; border-top:1px dashed #e2e8f0; }
 .rb-ans-img{ max-width:100%; border:1px solid #e2e8f0; border-radius:8px; margin-top:8px; }
+.vocab-text{ cursor:help; }
+.vocab-text::selection{ background:#fde68a; }
+.vocab-pop{ position:absolute; z-index:3000; max-width:250px; background:#0f172a; color:#fff;
+    border-radius:10px; padding:10px 12px; box-shadow:0 8px 24px rgba(0,0,0,.28); font-size:.9rem; }
+.vocab-pop .vp-w{ font-weight:700; color:#fcd34d; margin-bottom:2px; }
+.vocab-pop .vp-m{ line-height:1.45; white-space:pre-wrap; }
+.vocab-pop .vp-s{ margin-top:6px; font-size:.78rem; color:#86efac; }
+.vocab-pop .vp-s.dim{ color:#94a3b8; }
 </style>
 <div class="home-wrap" style="max-width:880px;">
     <a href="{% url 'exam:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>시험 목록</a>
@@ -119,6 +127,7 @@
 
     {% else %}
     {# ───────── 학생: 정답 비공개. 1차 점수 + 틀린문제 2차(빨파) 재입력 ───────── #}
+    {% csrf_token %}
     {% if not wrong %}
         <div class="alert alert-success text-center fs-5">전부 정답입니다! 🎉</div>
 
@@ -129,8 +138,8 @@
                 <i class="fas fa-rotate-left me-1"></i>틀린 {{ wrong|length }}문제 — 빨파로 다시 풀기 (2차)
             </div>
             <div class="card-body">
-                <p class="small text-muted mb-3">아래 빨파 지문을 보며 답을 다시 입력하고 제출하세요. <b>정답은 선생님 확인 후 공개</b>됩니다.</p>
-                {% csrf_token %}
+                <p class="small text-muted mb-1">아래 빨파 지문을 보며 답을 다시 입력하고 제출하세요. <b>정답은 선생님 확인 후 공개</b>됩니다.</p>
+                <p class="small mb-3"><i class="fas fa-hand-pointer me-1 text-primary"></i>지문에서 <b>모르는 영어 단어를 더블클릭</b>하면 뜻이 뜨고 <b>내 단어장에 자동 저장</b>돼요.</p>
                 <div id="r2grid">
                     {% for a in wrong %}
                     <div class="r2-cell rb-card" data-number="{{ a.number }}">
@@ -139,7 +148,7 @@
                             {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
                         </div>
                         {% if a.rb_has %}
-                            {% if a.rb_passage %}<div class="rb-passage">{{ a.rb_passage }}</div>{% endif %}
+                            {% if a.rb_passage %}<div class="rb-passage vocab-text">{{ a.rb_passage }}</div>{% endif %}
                             {% if a.rb_red %}<div class="rb-red">[빨] {{ a.rb_red }}</div>{% endif %}
                             {% if a.rb_blue %}<div class="rb-blue">[파] {{ a.rb_blue }}</div>{% endif %}
                         {% else %}
@@ -169,6 +178,7 @@
         {# 교사 공개 완료 → 학생이 자기 1차 오답의 빨파 정답 확인 #}
         <div class="alert alert-success text-center mb-3">
             <i class="fas fa-unlock me-1"></i>선생님이 빨파 정답을 공개했어요. 아래에서 확인하세요.
+            <div class="small mt-1"><i class="fas fa-hand-pointer me-1"></i>지문의 영어 단어를 더블클릭하면 뜻이 뜨고 내 단어장에 저장돼요.</div>
         </div>
         {% for a in wrong %}
         <div class="rb-card">
@@ -177,6 +187,7 @@
                 {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
                 <span class="ms-auto small">내 1차답 <b>{{ a.student_choice|default:"-" }}</b>{% if round2_done %} · 2차답 <b>{{ a.second_choice|default:"-" }}</b>{% endif %} · 정답 <b class="text-success">{{ a.correct_answer }}</b></span>
             </div>
+            {% if a.rb_passage %}<div class="rb-passage vocab-text mb-2">{{ a.rb_passage }}</div>{% endif %}
             {% if a.rb_img %}
                 <a href="{{ a.rb_img }}" target="_blank"><img src="{{ a.rb_img }}" class="rb-ans-img" alt="{{ a.number }}번 빨파정답"></a>
             {% else %}
@@ -254,6 +265,62 @@
         .then(d => { if (d.success) location.reload();
                      else { alert('공개 실패'); btn.disabled = false; btn.innerHTML = '학생에게 빨파정답 공개'; } })
         .catch(() => { alert('네트워크 오류'); btn.disabled = false; btn.innerHTML = '학생에게 빨파정답 공개'; });
+    });
+})();
+</script>
+{% endif %}
+
+{% if not is_teacher and wrong %}
+{# 지문 단어 더블클릭 → 뜻 팝업 + 개인 단어장 자동저장 #}
+<script>
+(function () {
+    const URL = '{% url "vocab:lookup_save" %}';
+    const tokEl = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!tokEl) return;
+    const csrftoken = tokEl.value;
+
+    const pop = document.createElement('div');
+    pop.className = 'vocab-pop';
+    pop.style.display = 'none';
+    document.body.appendChild(pop);
+
+    function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function show(x, y, html){
+        pop.innerHTML = html; pop.style.display = 'block';
+        pop.style.left = Math.max(8, Math.min(x, window.innerWidth - 260)) + 'px';
+        pop.style.top = (y + 8) + 'px';
+    }
+    function hide(){ pop.style.display = 'none'; }
+    document.addEventListener('click', e => { if (!pop.contains(e.target)) hide(); });
+    document.addEventListener('scroll', hide, true);
+
+    document.querySelectorAll('.vocab-text').forEach(function (el) {
+        el.addEventListener('dblclick', function () {
+            const sel = window.getSelection();
+            const m = (sel.toString() || '').trim().match(/[A-Za-z][A-Za-z'\-]*/);
+            if (!m) return;
+            const word = m[0];
+            let r;
+            try { r = sel.getRangeAt(0).getBoundingClientRect(); }
+            catch (_) { const b = el.getBoundingClientRect(); r = {left:b.left, bottom:b.top}; }
+            const px = r.left + window.scrollX, py = r.bottom + window.scrollY;
+            show(px, py, '<div class="vp-w">' + esc(word) + '</div><div class="vp-m">조회 중…</div>');
+            fetch(URL, { method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':csrftoken},
+                body: JSON.stringify({word: word}) })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success && d.meaning) {
+                    const tag = d.saved
+                        ? '<div class="vp-s"><i class="fas fa-star me-1"></i>내 단어장에 저장됨</div>'
+                        : '<div class="vp-s dim">이미 내 단어장에 있어요</div>';
+                    show(px, py, '<div class="vp-w">' + esc(d.word || word) + '</div><div class="vp-m">' + esc(d.meaning) + '</div>' + tag);
+                } else {
+                    show(px, py, '<div class="vp-w">' + esc(word) + '</div><div class="vp-m dim">뜻을 찾지 못했어요</div>');
+                }
+            })
+            .catch(() => show(px, py, '<div class="vp-m">조회 실패</div>'));
+        });
     });
 })();
 </script>

@@ -25,6 +25,7 @@ urlpatterns = [
     path('cards/<int:set_id>/delete/', views.wordcard_delete, name='wordcard_delete'),
     path('api/cards/save/', views.wordcard_save_api, name='wordcard_save'),
     path('api/dict/lookup/', views.dict_lookup_api, name='dict_lookup'),
+    path('api/dict/lookup-save/', views.lookup_save_api, name='lookup_save'),
 
     # AJAX API
     path('api/star/toggle/', views.star_toggle_api, name='star_toggle'),
