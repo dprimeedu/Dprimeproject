@@ -198,6 +198,32 @@ def get_or_create_mock_paper(grade, year, month):
     return paper
 
 
+def get_or_create_mock_type_paper(grade, type_name, tags, start, end):
+    """유형별 가상 시험지 get_or_create. 식별 = (grade, type_name, range) — season에 범위 인코딩.
+
+    tags = ['[순서]','[문장넣기]',...] (클라이언트가 COMBO_TYPES로 해석해 전달).
+    """
+    tags_str = ','.join(t for t in tags if t)
+    season = f'{start}-{end}'
+    paper, created = ExamPaper.objects.get_or_create(
+        source=ExamPaper.SOURCE_MOCK_TYPE, grade=grade, category=type_name,
+        season=season, year='', month='', school_grade='',
+        defaults={'title': f'{grade} {type_name} ({start}-{end})',
+                  'type_tags': tags_str, 'range_start': start, 'range_end': end},
+    )
+    # 태그/범위가 바뀌었으면 갱신(같은 식별이라도 태그 보강 시 반영)
+    fields = []
+    if paper.type_tags != tags_str and tags_str:
+        paper.type_tags = tags_str; fields.append('type_tags')
+    if paper.range_start != start:
+        paper.range_start = start; fields.append('range_start')
+    if paper.range_end != end:
+        paper.range_end = end; fields.append('range_end')
+    if fields:
+        paper.save(update_fields=fields)
+    return paper
+
+
 def _can_access(user, paper):
     if is_teacher(user):
         return True
@@ -913,12 +939,14 @@ _MOCK_KEY_ROUND_RE = re.compile(r'^(\d{4})-(고[123])-(\d{1,2})$')
 def import_student_mock_api(request):
     """학생별 모의고사 배정 (개별단어장생성.py ⑤ → 웹 푸시).
 
-    body: { token, items: [ {name, school?, kind, exam_key, start?, end?, goal?}, ... ] }
-      - kind='round': exam_key 'YYYY-고N-M' → 회차 모의고사 ExamPaper(source=mock) 배정.
-                       콘텐츠는 QuestionData(학년·연도·강)에서 자동 출제, 응시화면 기존 OMR 재사용.
-      - kind='type' : 유형별(순서/문장넣기 등) — 콘텐츠 원천 미정이라 현재 보류(type_pending).
-    name=Member.username 매칭, 동명이인/미존재 skip(기존 규약). goal 있으면 배정에 하루목표 저장.
-    응답: {success, assigned, updated_goal, skipped_dup, not_found, no_content, type_pending, bad_key, results}
+    body: { token, items: [ ... ] }
+      - kind='round': {name, exam_key:'YYYY-고N-M', goal?} → 회차 ExamPaper(source=mock) 배정.
+                       콘텐츠=QuestionData(학년·연도·강) 자동출제.
+      - kind='type' : {name, grade:'고N', type_name, types:['[순서]',...], start, end, goal?}
+                       → QuestionData를 학년+유형태그 필터, 색인(연도·강·번호)순 재번호, [start-end] 슬라이스한
+                       가상 시험지(source=mock_type) 배정. import 불필요(같은 모집단·태그 이미 보유).
+      두 경우 모두 응시화면=기존 OMR 재사용. name=Member.username 매칭, 동명이인/미존재 skip.
+    응답: {success, assigned, updated_goal, skipped_dup, not_found, no_content, bad_key, results}
     """
     ok, reason = _check_token(request)
     if not ok:
@@ -930,7 +958,7 @@ def import_student_mock_api(request):
         return HttpResponseBadRequest('Invalid JSON')
 
     User = get_user_model()
-    assigned = updated_goal = skipped_dup = not_found = no_content = type_pending = bad_key = 0
+    assigned = updated_goal = skipped_dup = not_found = no_content = bad_key = 0
     results = []
 
     def goal_of(it):
@@ -939,20 +967,54 @@ def import_student_mock_api(request):
         except (TypeError, ValueError):
             return None
 
+    def find_student(name):
+        qs = User.objects.filter(username=name)
+        return qs.count(), (qs.first() if qs.count() == 1 else None)
+
     for it in items:
         name = str(it.get('name') or '').strip()
         kind = str(it.get('kind') or 'round').strip().lower()
         exam_key = str(it.get('exam_key') or '').strip()
-        if not name or not exam_key:
+        if not name:
             continue
 
         if kind == 'type':
-            # 유형별 콘텐츠 원천 미정 — 합의 후 별도 구현(섹션 7-1)
-            type_pending += 1
-            results.append({'name': name, 'kind': 'type', 'exam_key': exam_key,
-                            'status': 'pending_content'})
+            # 유형별: QuestionData(같은 모집단)를 학년+유형태그 필터→색인순 재번호→범위 슬라이스.
+            grade = str(it.get('grade') or '').strip()
+            type_name = str(it.get('type_name') or '').strip()
+            tags = [str(t).strip() for t in (it.get('types') or []) if str(t).strip()]
+            try:
+                start, end = int(it.get('start')), int(it.get('end'))
+            except (TypeError, ValueError):
+                start = end = 0
+            if not (grade and tags and start and end and start <= end):
+                bad_key += 1
+                results.append({'name': name, 'kind': 'type', 'exam_key': exam_key,
+                                'status': 'bad_type_params'})
+                continue
+            cnt, student = find_student(name)
+            if cnt == 0:
+                not_found += 1; results.append({'name': name, 'status': 'not_found'}); continue
+            if cnt > 1:
+                skipped_dup += 1; results.append({'name': name, 'status': 'dup_name'}); continue
+            paper = get_or_create_mock_type_paper(grade, type_name, tags, start, end)
+            qn = len(paper.get_questions())
+            a, created = ExamAssignment.objects.get_or_create(
+                paper=paper, student=student, defaults={'assigned_by': None})
+            g = goal_of(it)
+            if g is not None and a.daily_goal != g:
+                a.daily_goal = g; a.save(update_fields=['daily_goal']); updated_goal += 1
+            if created:
+                assigned += 1
+            if qn == 0:
+                no_content += 1
+            results.append({'name': name, 'kind': 'type', 'type_name': type_name,
+                            'range': f'{start}-{end}', 'paper_id': paper.id, 'questions': qn,
+                            'created': created,
+                            'status': 'assigned' if qn else 'assigned_no_content'})
             continue
 
+        # kind == 'round'
         m = _MOCK_KEY_ROUND_RE.match(exam_key)
         if not m:
             bad_key += 1
@@ -960,8 +1022,7 @@ def import_student_mock_api(request):
             continue
         year, grade, month = m.group(1), m.group(2), m.group(3)
 
-        qs = User.objects.filter(username=name)
-        cnt = qs.count()
+        cnt, student = find_student(name)
         if cnt == 0:
             not_found += 1
             results.append({'name': name, 'exam_key': exam_key, 'status': 'not_found'})
@@ -970,7 +1031,6 @@ def import_student_mock_api(request):
             skipped_dup += 1
             results.append({'name': name, 'exam_key': exam_key, 'status': 'dup_name'})
             continue
-        student = qs.first()
 
         paper = get_or_create_mock_paper(grade, year, month)
         qn = len(paper.get_questions())
@@ -991,8 +1051,7 @@ def import_student_mock_api(request):
 
     return JsonResponse({'success': True, 'assigned': assigned, 'updated_goal': updated_goal,
                          'skipped_dup': skipped_dup, 'not_found': not_found,
-                         'no_content': no_content, 'type_pending': type_pending,
-                         'bad_key': bad_key, 'results': results},
+                         'no_content': no_content, 'bad_key': bad_key, 'results': results},
                         json_dumps_params={'ensure_ascii': False})
 
 

@@ -16,7 +16,9 @@ class ExamPaper(models.Model):
     """시험지 1장. 모의고사 1회분 또는 내신 카테고리 1개."""
     SOURCE_MOCK = 'mock'
     SOURCE_NAESIN = 'naesin'
-    SOURCE_CHOICES = [(SOURCE_MOCK, '모의고사'), (SOURCE_NAESIN, '내신')]
+    SOURCE_MOCK_TYPE = 'mock_type'   # 유형별 — QuestionData를 유형 필터+색인순 재번호+범위 슬라이스
+    SOURCE_CHOICES = [(SOURCE_MOCK, '모의고사'), (SOURCE_NAESIN, '내신'),
+                      (SOURCE_MOCK_TYPE, '유형별')]
 
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, db_index=True)
     title = models.CharField('시험명', max_length=200, blank=True, default='')
@@ -25,6 +27,11 @@ class ExamPaper(models.Model):
     grade = models.CharField('학년', max_length=10, blank=True, default='')
     year = models.CharField('연도', max_length=4, blank=True, default='')
     month = models.CharField('강', max_length=50, blank=True, default='')
+
+    # 유형별(mock_type)용 — QuestionData를 학년+유형태그로 필터, 색인(연도·강·번호)순 재번호 후 범위 슬라이스
+    type_tags = models.CharField('유형 태그', max_length=200, blank=True, default='')   # 예 '[순서],[문장넣기],[무관한문장]'
+    range_start = models.IntegerField('재번호 시작', null=True, blank=True)
+    range_end = models.IntegerField('재번호 끝', null=True, blank=True)
 
     # 내신용
     school_grade = models.CharField('학교학년', max_length=50, blank=True, default='')  # 예: 동백고2
@@ -60,6 +67,8 @@ class ExamPaper(models.Model):
             return self.title
         if self.source == self.SOURCE_MOCK:
             return f'{self.year} {self.grade} {self.month}'.strip()
+        if self.source == self.SOURCE_MOCK_TYPE:
+            return f'{self.grade} {self.category} ({self.range_start}-{self.range_end})'.strip()
         return f'{self.school_grade} {self.season} {self.category}'.strip()
 
     def get_questions(self):
@@ -83,6 +92,30 @@ class ExamPaper(models.Model):
                 'choices': q.보기 or '',
                 'ref_number': '', 'text': '', 'explanation': '', 'explanation_image': '',
             } for q in qs]
+        if self.source == self.SOURCE_MOCK_TYPE:
+            # 유형별 가상 시험지: 학년+유형태그 필터 → 색인(연도·강·번호)순 재번호 → range 슬라이스.
+            # 번호 = 재번호값(range_start..range_end) — 클라이언트(모고엑셀답지생성.py)와 동일 규칙.
+            from academy.models import QuestionData
+            tags = [t for t in (self.type_tags or '').split(',') if t]
+            if not tags or not self.range_start or not self.range_end:
+                return []
+            qs = (QuestionData.objects
+                  .filter(학년=self.grade, 유형__in=tags)
+                  .order_by('연도', '강', '번호'))
+            rows = list(qs)[self.range_start - 1:self.range_end]
+            out = []
+            for i, q in enumerate(rows, start=self.range_start):
+                out.append({
+                    'number': i,
+                    'qtype': q.유형 or '',
+                    'answer': (q.정답 or '').strip(),
+                    'passage': q.지문 or '',
+                    'question': q.문제 or '',
+                    'choices': q.보기 or '',
+                    'ref_number': f'{q.연도}-{int(q.강):02d}-{int(q.번호):02d}',
+                    'text': '', 'explanation': '', 'explanation_image': '',
+                })
+            return out
         return [{
             'number': q.number,
             'qtype': q.qtype or '',
