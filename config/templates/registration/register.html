@@ -56,7 +56,6 @@
 
 <script>
     const radios = document.querySelectorAll('input[name="user_type"]');
-    const businessRegistrationField = document.querySelector('[name="business_registration"]').closest('.mb-3');
     const checkIcons = document.querySelectorAll('.fa-check-circle');
 
     function updateUI(selectedValue) {
@@ -67,9 +66,6 @@
         if (activeIcon) {
             activeIcon.style.display = 'inline';
         }
-
-        // 사업자등록증 필드 표시/숨기기
-        businessRegistrationField.style.display = selectedValue === 'academy' ? 'block' : 'none';
     }
 
     // 이벤트 리스너 추가

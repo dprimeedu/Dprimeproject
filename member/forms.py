@@ -3,13 +3,6 @@ from django.contrib.auth.forms import UserCreationForm
 from .models import Member, Profile
 
 class SignupForm(UserCreationForm):
-    # 사업자등록증 업로드 필드
-    business_registration = forms.FileField(
-        required=False,  # 선택적으로 파일을 업로드하도록 설정
-        label="사업자등록증 업로드",
-        widget=forms.ClearableFileInput(attrs={"accept": ".pdf,.jpg,.jpeg,.png"})
-    )
-
     class Meta:
         model = Member
         fields = ['username', 'email', 'password1', 'password2']
