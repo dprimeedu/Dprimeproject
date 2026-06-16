@@ -139,7 +139,7 @@
             </div>
             <div class="card-body">
                 <p class="small text-muted mb-1">아래 빨파 지문을 보며 답을 다시 입력하고 제출하세요. <b>정답은 선생님 확인 후 공개</b>됩니다.</p>
-                <p class="small mb-3"><i class="fas fa-hand-pointer me-1 text-primary"></i>지문에서 <b>모르는 영어 단어를 더블클릭</b>하면 뜻이 뜨고 <b>내 단어장에 자동 저장</b>돼요.</p>
+                <p class="small mb-3"><i class="fas fa-hand-pointer me-1 text-primary"></i>지문에서 <b>모르는 영어 단어를 클릭</b>하면 뜻이 뜨고 <b>내 단어장에 자동 저장</b>돼요.</p>
                 <div id="r2grid">
                     {% for a in wrong %}
                     <div class="r2-cell rb-card" data-number="{{ a.number }}">
@@ -178,7 +178,7 @@
         {# 교사 공개 완료 → 학생이 자기 1차 오답의 빨파 정답 확인 #}
         <div class="alert alert-success text-center mb-3">
             <i class="fas fa-unlock me-1"></i>선생님이 빨파 정답을 공개했어요. 아래에서 확인하세요.
-            <div class="small mt-1"><i class="fas fa-hand-pointer me-1"></i>지문의 영어 단어를 더블클릭하면 뜻이 뜨고 내 단어장에 저장돼요.</div>
+            <div class="small mt-1"><i class="fas fa-hand-pointer me-1"></i>지문의 영어 단어를 클릭하면 뜻이 뜨고 내 단어장에 저장돼요.</div>
         </div>
         {% for a in wrong %}
         <div class="rb-card">
@@ -271,7 +271,7 @@
 {% endif %}
 
 {% if not is_teacher and wrong %}
-{# 지문 단어 더블클릭 → 뜻 팝업 + 개인 단어장 자동저장 #}
+{# 지문 단어 한 번 클릭 → 뜻 팝업 + 작업 중인 낱말카드에 자동저장 #}
 <script>
 (function () {
     const URL = '{% url "vocab:lookup_save" %}';
@@ -292,20 +292,43 @@
         pop.style.top = (y + 8) + 'px';
     }
     function hide(){ pop.style.display = 'none'; }
-    document.addEventListener('click', e => { if (!pop.contains(e.target)) hide(); });
+    document.addEventListener('click', e => {
+        if (!pop.contains(e.target) && !e.target.closest('.vocab-text')) hide();
+    });
     document.addEventListener('scroll', hide, true);
 
+    const isW = c => /[A-Za-z'\-]/.test(c || '');
+    function caretFromPoint(x, y){
+        if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); return r ? {node:r.startContainer, off:r.startOffset} : null; }
+        if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); return p ? {node:p.offsetNode, off:p.offset} : null; }
+        return null;
+    }
+    function wordAt(node, off){
+        if (!node || node.nodeType !== 3) return null;
+        const t = node.textContent;
+        let s = off, e = off;
+        if (s >= t.length) s = e = t.length - 1;
+        if (s < 0) return null;
+        if (!isW(t[s]) && s > 0 && isW(t[s-1])) { s = e = s - 1; }   // 글자 사이 클릭 보정
+        if (!isW(t[s])) return null;                                  // 공백 클릭 → 무시
+        while (s > 0 && isW(t[s-1])) s--;
+        while (e < t.length && isW(t[e])) e++;
+        const m = t.slice(s, e).match(/[A-Za-z][A-Za-z'\-]*/);
+        if (!m) return null;
+        const r = document.createRange(); r.setStart(node, s); r.setEnd(node, e);
+        return { word: m[0], rect: r.getBoundingClientRect() };
+    }
+
     document.querySelectorAll('.vocab-text').forEach(function (el) {
-        el.addEventListener('dblclick', function () {
-            const sel = window.getSelection();
-            const m = (sel.toString() || '').trim().match(/[A-Za-z][A-Za-z'\-]*/);
-            if (!m) return;
-            const word = m[0];
-            let r;
-            try { r = sel.getRangeAt(0).getBoundingClientRect(); }
-            catch (_) { const b = el.getBoundingClientRect(); r = {left:b.left, bottom:b.top}; }
-            const px = r.left + window.scrollX, py = r.bottom + window.scrollY;
-            const num = parseInt(el.dataset.number || '0', 10) || 0;
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', function (e) {
+            const c = caretFromPoint(e.clientX, e.clientY);
+            if (!c) return;
+            const hit = wordAt(c.node, c.off);
+            if (!hit) return;
+            e.stopPropagation();
+            const word = hit.word, num = parseInt(el.dataset.number || '0', 10) || 0;
+            const px = hit.rect.left + window.scrollX, py = hit.rect.bottom + window.scrollY;
             show(px, py, '<div class="vp-w">' + esc(word) + '</div><div class="vp-m">조회 중…</div>');
             fetch(URL, { method:'POST',
                 headers:{'Content-Type':'application/json','X-CSRFToken':csrftoken},
@@ -313,9 +336,12 @@
             .then(r => r.json())
             .then(d => {
                 if (d.success && d.meaning) {
-                    const tag = d.saved
-                        ? '<div class="vp-s"><i class="fas fa-star me-1"></i>내 단어장에 저장됨</div>'
-                        : '<div class="vp-s dim">이미 내 단어장에 있어요</div>';
+                    let tag = '';
+                    if (d.dup) tag = '<div class="vp-s dim">이미 내 단어장에 있어요</div>';
+                    else if (d.saved) {
+                        tag = '<div class="vp-s"><i class="fas fa-bookmark me-1"></i>내 단어장 ' + esc(d.set_title||'') + '에 저장 (' + d.count + '/' + d.cap + ')</div>';
+                        if (d.set_full) tag += '<div class="vp-s">단어장이 꽉 차 자동저장됐어요 · 새 단어장 시작</div>';
+                    }
                     show(px, py, '<div class="vp-w">' + esc(d.word || word) + '</div><div class="vp-m">' + esc(d.meaning) + '</div>' + tag);
                 } else {
                     show(px, py, '<div class="vp-w">' + esc(word) + '</div><div class="vp-m dim">뜻을 찾지 못했어요</div>');

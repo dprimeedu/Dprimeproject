@@ -1623,33 +1623,54 @@ def lookup_mock_word(grade, year, month, number, word):
     return '', ''
 
 
-# 지문에서 더블클릭으로 찾은 단어가 모이는 학생 개인 세트(자동)
-FOUND_WORDS_SET_TITLE = '📖 지문에서 찾은 단어'
+# 낱말카드 한 세트 용량(wordcard_new 기본과 동일) — 다 차면 자동저장 후 다음 세트
+WORDCARD_CAP = 20
 
 
 def _save_found_word(student, word, meaning):
-    """더블클릭으로 찾은 단어를 학생 개인 '지문에서 찾은 단어' 낱말카드 세트에 추가.
+    """지문에서 찾은 단어를 학생이 작업 중인 낱말카드(미저장 draft)에 채운다.
 
-    중복(대소문자 무시)이면 추가 안 함. 저장됐으면 True.
+    - 안 찬 draft 세트가 있으면 거기에 추가, 없으면 새 세트(번호 이어서) 생성.
+    - 세트가 꽉 차면(WORDCARD_CAP) 자동저장(published) → 다음 단어는 새 세트로.
+    - 이미 학생 낱말카드 어딘가에 있는 단어면 추가 안 함.
+    반환: {saved, dup, set_title, count, cap, set_full, new_set}
     """
     word = (word or '').strip()[:200]
     meaning = (meaning or '').strip()
     if not word or not meaning:
-        return False
-    s, _ = WordCardSet.objects.get_or_create(
-        student=student, title=FOUND_WORDS_SET_TITLE,
-        defaults={'status': WordCardSet.STATUS_PUBLISHED, 'start_index': 1, 'end_index': 0,
-                  'description': '지문에서 더블클릭해 찾은 단어가 자동 저장됩니다.'},
-    )
-    if s.cards.filter(word__iexact=word).exists():
-        return False
+        return {'saved': False}
+    # 학생의 모든 낱말카드에 이미 있으면 중복 → skip
+    if WordCard.objects.filter(card_set__student=student, word__iexact=word).exists():
+        return {'saved': False, 'dup': True}
+
+    # 안 찬 draft 세트(작업 중인 단어장) 우선
+    s = (WordCardSet.objects
+         .filter(student=student, status=WordCardSet.STATUS_DRAFT)
+         .annotate(n=Count('cards')).filter(n__lt=WORDCARD_CAP)
+         .order_by('-updated_at').first())
+    new_set = False
+    if s is None:
+        last = WordCardSet.objects.filter(student=student).order_by('-end_index').first()
+        start = (last.end_index + 1) if last else 1
+        s = WordCardSet.objects.create(
+            student=student, title=f'{start}-{start + WORDCARD_CAP - 1}',
+            start_index=start, end_index=start + WORDCARD_CAP - 1,
+            status=WordCardSet.STATUS_DRAFT,
+            description='지문에서 찾은 단어가 자동 저장됩니다.')
+        new_set = True
+
     nxt = (s.cards.aggregate(m=Max('index'))['m'] or 0) + 1
     WordCard.objects.create(card_set=s, index=nxt, word=word, meaning=meaning)
-    if s.status != WordCardSet.STATUS_PUBLISHED or (s.end_index or 0) < nxt:
+    count = s.cards.count()
+    full = count >= WORDCARD_CAP
+    # 번호 범위 20칸으로 정규화 + 다 차면 자동저장
+    if (s.end_index or 0) < s.start_index + WORDCARD_CAP - 1:
+        s.end_index = s.start_index + WORDCARD_CAP - 1
+    if full:
         s.status = WordCardSet.STATUS_PUBLISHED
-        s.end_index = nxt
-        s.save(update_fields=['status', 'end_index'])
-    return True
+    s.save()   # updated_at 갱신(최근 작업 세트 추적)
+    return {'saved': True, 'set_title': s.title, 'count': count,
+            'cap': WORDCARD_CAP, 'set_full': full, 'new_set': new_set}
 
 
 @login_required
@@ -1680,7 +1701,7 @@ def lookup_save_api(request):
         meaning, source = lookup_mock_word(g, y, mo, n, word)
     else:
         meaning, source = lookup_meaning(word)
-    saved = _save_found_word(request.user, word, meaning) if meaning else False
+    info = _save_found_word(request.user, word, meaning) if meaning else {'saved': False}
     return JsonResponse({'success': True, 'word': word, 'meaning': meaning, 'source': source,
-                         'saved': saved, 'set_title': FOUND_WORDS_SET_TITLE},
+                         **info},
                         json_dumps_params={'ensure_ascii': False})
