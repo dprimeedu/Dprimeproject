@@ -370,6 +370,10 @@ def result_view(request, session_id):
     teacher = is_teacher(request.user)
     if session.student != request.user and not teacher:
         return redirect('exam:home')
+    # 교사가 결과를 열면 '미확인' 뱃지에서 빠진다(자동채점 → '채점대기' 대신 미확인 기준)
+    if teacher and not session.teacher_checked:
+        session.teacher_checked = True
+        session.save(update_fields=['teacher_checked'])
     answers = list(session.answers.all().order_by('number'))
     flagged = [a for a in answers if a.flagged]
     graded = [a for a in answers if not a.flagged]

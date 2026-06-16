@@ -16,8 +16,8 @@
             </thead>
             <tbody>
             {% for s in sessions %}
-                <tr>
-                    <td>{{ s.student.username }}</td>
+                <tr{% if not s.teacher_checked %} class="table-warning"{% endif %}>
+                    <td>{{ s.student.username }}{% if not s.teacher_checked %} <span class="badge rounded-pill bg-danger ms-1">미확인</span>{% endif %}</td>
                     <td>{{ s.title }}</td>
                     <td class="fw-bold">{{ s.percent }}점</td>
                     <td>{{ s.correct_count }} / {{ s.total_questions }}</td>

@@ -181,6 +181,9 @@ class ExamSession(models.Model):
         related_name='exam_sessions_graded', verbose_name='채점자',
     )
 
+    # 교사가 결과를 한 번이라도 열어 확인했는지(자동채점이라 '채점대기' 대신 '미확인' 뱃지 기준)
+    teacher_checked = models.BooleanField('교사 확인', default=False, db_index=True)
+
     class Meta:
         db_table = 'exam_session'
         verbose_name = '시험 세션'

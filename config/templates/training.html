@@ -2,6 +2,14 @@
 {% load static %}
 
 {% block content %}
+<style>
+  .pending-badge{
+    position:absolute; top:10px; right:12px;
+    background:#dc2626; color:#fff; font-size:.72rem; font-weight:700;
+    padding:2px 9px; border-radius:999px; line-height:1.5;
+    box-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+</style>
 <div class="home-wrap">
     <a href="{% url 'index' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>메인으로</a>
 
@@ -29,15 +37,17 @@
             <p>단어별 빈칸 채우기 학습 · 대전</p>
         </a>
 
-        <a href="{% url 'grammar:home' %}" class="menu-card">
+        <a href="{% url 'grammar:home' %}" class="menu-card" style="position:relative;">
+            {% if grammar_pending %}<span class="pending-badge">채점대기 {{ grammar_pending }}</span>{% endif %}
             <div class="menu-card-icon"><i class="fas fa-spell-check" style="color:#0369a1;"></i></div>
             <h4>어법훈련</h4>
             <p>문장 어법 O/고쳐쓰기 TEST · 자동채점 · 선생님 검수</p>
         </a>
 
-        <a href="{% url 'exam:home' %}" class="menu-card">
+        <a href="{% url 'exam:home' %}" class="menu-card" style="position:relative;">
+            {% if exam_pending %}<span class="pending-badge">미확인 {{ exam_pending }}</span>{% endif %}
             <div class="menu-card-icon"><i class="fas fa-file-alt" style="color:#dc2626;"></i></div>
-            <h4>모의고사</h4>
+            <h4>모의고사 · 내신</h4>
             <p>배정받은 모의고사 응시 · 1~5 입력 · 즉시 자동 채점</p>
         </a>
     </div>
