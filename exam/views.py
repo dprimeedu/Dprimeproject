@@ -662,6 +662,8 @@ def import_naesin_api(request):
       token,
       school_grade,           # 예: 동백고2
       season,                 # 예: 2026 1학기 기말
+      exam_date,              # 선택: 'YYYY-MM-DD' (보내면 paper.exam_date 갱신, 생략 시 유지)
+      daily_goal,             # 선택: 정수 (보내면 paper.daily_goal 갱신, 생략 시 유지)
       categories: {           # 카테고리별 문항 목록
         # 기본: [번호, 정답, 유형]  / 확장: [번호, 정답, 유형, 관련번호, 지문, 해설]
         # 또는 dict: {number, answer, qtype, ref_number, text, explanation}
@@ -685,6 +687,18 @@ def import_naesin_api(request):
     if not school_grade or not categories:
         return JsonResponse({'success': False, 'error': 'school_grade/categories 필요'}, status=400)
 
+    # 선택: 시험일(YYYY-MM-DD)·하루목표 — 보내면 paper에 반영(admin 수동입력 대체), 안 보내면 기존 유지
+    from django.utils.dateparse import parse_date
+    raw_date = str(data.get('exam_date') or '').strip()
+    exam_date = parse_date(raw_date) if raw_date else None
+    if raw_date and exam_date is None:
+        return JsonResponse({'success': False, 'error': f'exam_date 형식 오류(YYYY-MM-DD): {raw_date}'}, status=400)
+    raw_goal = data.get('daily_goal', None)
+    try:
+        daily_goal = int(raw_goal) if raw_goal not in (None, '') else None
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': f'daily_goal 정수 아님: {raw_goal}'}, status=400)
+
     results = []
     total = 0
     with transaction.atomic():
@@ -698,6 +712,16 @@ def import_naesin_api(request):
                 grade='', year='', month='',
                 defaults={'title': f'{school_grade} {season} {cat}'.strip()},
             )
+            # 시험일·하루목표는 보낸 경우에만 갱신
+            paper_fields = []
+            if exam_date is not None:
+                paper.exam_date = exam_date
+                paper_fields.append('exam_date')
+            if daily_goal is not None:
+                paper.daily_goal = daily_goal
+                paper_fields.append('daily_goal')
+            if paper_fields:
+                paper.save(update_fields=paper_fields)
             ExamQuestion.objects.filter(paper=paper).delete()
             rows = []
             for it in items:
@@ -710,6 +734,7 @@ def import_naesin_api(request):
             results.append({'paper_id': paper.id, 'category': cat, 'questions': len(rows)})
 
     return JsonResponse({'success': True, 'school_grade': school_grade, 'season': season,
+                         'exam_date': raw_date or None, 'daily_goal': daily_goal,
                          'papers': results, 'total_questions': total},
                         json_dumps_params={'ensure_ascii': False})
 
