@@ -313,9 +313,8 @@ def range_test_take(request, range_test_id):
 
 
 @login_required
-def range_test_swipe_take(request, range_test_id):
-    """스와이프 자기평가 시험 — 단어+뜻 보고 오른쪽=알아요/왼쪽=모름.
-    교사(다른 학생 클릭)는 프리뷰 모드 — 결과 저장 X."""
+def range_test_swipe_menu(request, range_test_id):
+    """스와이프 시험 메뉴 — 전체/별표/카드세트 중 선택."""
     rt = get_object_or_404(
         VocabRangeTest.objects.select_related('unit', 'student'),
         pk=range_test_id, is_active=True,
@@ -324,12 +323,61 @@ def range_test_swipe_take(request, range_test_id):
     if not is_preview and rt.student_id != request.user.id:
         messages.error(request, '본인 시험만 응시 가능합니다.')
         return redirect('vocab:home')
-    words = select_test_words(
-        rt.student, rt.unit, rt.start_index, rt.end_index, count=rt.question_count,
+
+    # 범위 내 단어수
+    total_in_range = (rt.unit.words
+                      .filter(index__gte=rt.start_index, index__lte=rt.end_index)
+                      .count())
+    # 학생 별표(범위 내)
+    star_count = StudentWordStar.objects.filter(
+        student=rt.student,
+        word__unit=rt.unit,
+        word__index__gte=rt.start_index, word__index__lte=rt.end_index,
+    ).count()
+    return render(request, 'vocab/range_test_swipe_menu.html', {
+        'rt': rt,
+        'is_preview': is_preview,
+        'total_in_range': total_in_range,
+        'star_count': star_count,
+    })
+
+
+@login_required
+def range_test_swipe_take(request, range_test_id):
+    """스와이프 자기평가 시험 — 단어+뜻 보고 오른쪽=알아요/왼쪽=모름.
+    교사(다른 학생 클릭)는 프리뷰 모드 — 결과 저장 X.
+    ?src=all (기본, 범위 전체) / ?src=star (별표만)
+    """
+    rt = get_object_or_404(
+        VocabRangeTest.objects.select_related('unit', 'student'),
+        pk=range_test_id, is_active=True,
     )
+    is_preview = is_teacher(request.user) and rt.student_id != request.user.id
+    if not is_preview and rt.student_id != request.user.id:
+        messages.error(request, '본인 시험만 응시 가능합니다.')
+        return redirect('vocab:home')
+
+    src = request.GET.get('src', 'all')
+    if src == 'star':
+        # 범위 내 + 학생이 별표한 단어만
+        star_ids = list(StudentWordStar.objects.filter(
+            student=rt.student,
+            word__unit=rt.unit,
+            word__index__gte=rt.start_index, word__index__lte=rt.end_index,
+        ).values_list('word_id', flat=True))
+        words = list(VocabWord.objects.filter(id__in=star_ids).order_by('index'))
+        import random
+        random.shuffle(words)
+        src_label = '별표만'
+    else:
+        words = select_test_words(
+            rt.student, rt.unit, rt.start_index, rt.end_index, count=rt.question_count,
+        )
+        src_label = '전체 단어'
+
     if not words:
         messages.error(request, '출제할 단어가 없습니다.')
-        return redirect('vocab:home')
+        return redirect('vocab:range_test_swipe_menu', range_test_id=rt.id)
     words_data = [
         {'id': w.id, 'index': w.index, 'word': w.word, 'meaning': w.meaning,
          'sub_unit': w.sub_unit or ''}
@@ -339,7 +387,10 @@ def range_test_swipe_take(request, range_test_id):
         'rt': rt,
         'words_json': json.dumps(words_data, ensure_ascii=False),
         'is_preview': is_preview,
+        'src_label': src_label,
     })
+
+
 
 
 @login_required

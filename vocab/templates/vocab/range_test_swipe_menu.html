@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+.swipe-menu{ max-width:560px; margin:0 auto; padding:8px; }
+.option-card{
+    display:block; padding:18px 20px; margin-bottom:12px;
+    border-radius:14px; border:1.5px solid #e5e7eb; background:#fff;
+    text-decoration:none; color:inherit; transition:.18s;
+}
+.option-card:hover{
+    border-color:#7c3aed; transform:translateY(-2px); box-shadow:0 8px 24px rgba(124,58,237,.12);
+    color:inherit;
+}
+.option-card.disabled{ opacity:.55; pointer-events:none; }
+.option-card .top{ display:flex; align-items:center; gap:10px; }
+.option-card .label{ font-size:1.1rem; font-weight:700; }
+.option-card .count{ margin-left:auto; font-size:.95rem; color:#475569; font-weight:600; }
+.option-card .desc{ margin-top:6px; color:#64748b; font-size:.85rem; }
+.preview-banner{ background:#fef3c7; color:#92400e; padding:10px 14px; border-radius:10px;
+    margin-bottom:12px; font-size:.9rem; font-weight:600; }
+.icon-circle{
+    width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:1.1rem; color:#fff;
+}
+</style>
+
+<div class="swipe-menu">
+    <a href="{% url 'report:study_board' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>현황판</a>
+
+    <div class="section-header text-center">
+        <h4 class="mb-1"><i class="fas fa-layer-group me-1 text-success"></i>{{ rt.source_label|default:'내신단어TEST' }}</h4>
+        <p class="section-desc mb-0">
+            {{ rt.unit.title }} · {{ rt.start_index }}~{{ rt.end_index }}번 ·
+            응시자 <strong>{{ rt.student.username }}</strong>
+        </p>
+    </div>
+
+    {% if is_preview %}
+    <div class="preview-banner"><i class="fas fa-eye me-1"></i>교사 프리뷰 — 결과는 저장되지 않습니다.</div>
+    {% endif %}
+
+    <p class="text-center text-muted small mt-3 mb-3">시험 방식을 골라주세요 — 카드를 좌우로 넘기며 자기 평가</p>
+
+    <a href="{% url 'vocab:range_test_swipe' rt.id %}?src=all" class="option-card {% if not total_in_range %}disabled{% endif %}">
+        <div class="top">
+            <div class="icon-circle" style="background:#7c3aed;"><i class="fas fa-layer-group"></i></div>
+            <div class="label">전체 단어 TEST</div>
+            <div class="count">{{ total_in_range }}단어</div>
+        </div>
+        <div class="desc">범위({{ rt.start_index }}~{{ rt.end_index }}) 전체에서 출제 — 점수 저장</div>
+    </a>
+
+    <a href="{% url 'vocab:range_test_swipe' rt.id %}?src=star" class="option-card {% if not star_count %}disabled{% endif %}">
+        <div class="top">
+            <div class="icon-circle" style="background:#f59e0b;"><i class="fas fa-star"></i></div>
+            <div class="label">별표만 TEST</div>
+            <div class="count">{{ star_count }}단어</div>
+        </div>
+        <div class="desc">이 범위에서 학생이 별표(모르는 단어)로 표시한 것만 — 점수 저장</div>
+    </a>
+
+    <a href="{% url 'vocab:range_flashcard' rt.id %}" class="option-card">
+        <div class="top">
+            <div class="icon-circle" style="background:#0d9488;"><i class="fas fa-book"></i></div>
+            <div class="label">플래시카드 (연습)</div>
+            <div class="count">자유</div>
+        </div>
+        <div class="desc">시험이 아니라 그냥 외울 때 — 점수 저장 안 함</div>
+    </a>
+</div>
+{% endblock %}

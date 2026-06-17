@@ -86,10 +86,10 @@
                         {% if row.cells %}
                             {% if key == 'vocab' %}
                                 {% for t in row.cells.vocab.tests %}
-                                <a href="{% url 'vocab:range_test_swipe' t.rt_id %}"
+                                <a href="{% url 'vocab:range_test_swipe_menu' t.rt_id %}"
                                    class="badge d-block text-start border mb-1 text-decoration-none
                                    {% if t.ok %}bg-success-subtle text-success-emphasis{% elif t.ok == False %}bg-danger-subtle text-danger-emphasis{% else %}bg-light text-muted{% endif %}"
-                                   title="클릭 → 스와이프 TEST 응시">
+                                   title="클릭 → TEST 메뉴 (전체/별표/연습)">
                                     {{ t.book }} <span class="opacity-75">{{ t.range }}</span> · {{ t.status }}
                                 </a>
                                 {% endfor %}
