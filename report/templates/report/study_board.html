@@ -19,6 +19,29 @@
         </div>
     </div>
 
+    {% if summary_pending or grammar_pending or exam_pending %}
+    <div class="d-flex gap-2 flex-wrap mb-3" aria-label="채점 대기 요약">
+        {% if summary_pending %}
+        <a href="{% url 'summary:grade_list' %}" class="badge text-decoration-none bg-warning text-dark fs-6 px-3 py-2"
+           title="요약문 채점대기 — 전체 학생 누적">
+            <i class="fas fa-align-left me-1"></i>요약문 채점대기 <strong>{{ summary_pending }}</strong>
+        </a>
+        {% endif %}
+        {% if grammar_pending %}
+        <a href="{% url 'grammar:grade_list' %}" class="badge text-decoration-none bg-warning text-dark fs-6 px-3 py-2"
+           title="어법 채점대기 — 전체 학생 누적">
+            <i class="fas fa-check-double me-1"></i>어법 채점대기 <strong>{{ grammar_pending }}</strong>
+        </a>
+        {% endif %}
+        {% if exam_pending %}
+        <a href="{% url 'exam:result_list' %}" class="badge text-decoration-none bg-danger fs-6 px-3 py-2"
+           title="시험 미확인 — 학생 1차 제출 후 교사 미확인">
+            <i class="fas fa-file-alt me-1"></i>시험 미확인 <strong>{{ exam_pending }}</strong>
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="table-responsive">
         <table class="table table-sm align-middle table-hover">
             <thead class="table-light">
