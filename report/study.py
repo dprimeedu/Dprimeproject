@@ -7,9 +7,10 @@ report 앱의 수동 DailyRecord(교사 입력 + 카톡 PNG)와는 별개로,
 USE_TZ=False 환경이라 DB 저장값이 naive datetime → started_at__date 로 그대로 비교.
 """
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from django.db.models import Count
+from django.db.models import Count, Max
+from django.utils import timezone
 
 from vocab.models import (
     VocabSession, VocabAttempt, VocabRangeTest, VocabAssignment, StudentWordStar,
@@ -30,6 +31,120 @@ SUBJECT_META = [
     ('grammar', '어법', '/training/grammar/'),
     ('exam', '시험', '/training/exam/'),
 ]
+
+SUBJECT_LABEL = {k: lab for k, lab, _ in SUBJECT_META}
+
+# 라이브 활동 판정 시간(분) — 이 시간 안에 마지막 활동이 있으면 '현재 활동 중'
+LIVE_WINDOW_MIN = 5
+
+
+def _now_naive():
+    """USE_TZ=False 환경 호환: tz-aware 면 naive 로 변환."""
+    n = timezone.now()
+    return n.replace(tzinfo=None) if n.tzinfo else n
+
+
+def current_activity_map(now=None):
+    """{student_id: {'subject': key, 'subject_label': str, 'started_at': dt, 'last_active': dt}}
+
+    학생별 '지금 활동 중'인 과목 — 최근 LIVE_WINDOW_MIN 분 내 활동이 가장 최근인 1과목.
+    각 *Session 의 in_progress 상태 + 최근 답안/입력 시각으로 판정.
+    """
+    now = now or _now_naive()
+    cutoff = now - timedelta(minutes=LIVE_WINDOW_MIN)
+
+    # subject → {sid: (last_active, started_at)}
+    per_subject = {}
+
+    # 영작 — live_updated_at(타이핑 push)
+    rows = (WritingSession.objects
+            .filter(finished_at__isnull=True, live_updated_at__gte=cutoff)
+            .values('student_id', 'started_at', 'live_updated_at'))
+    m = {}
+    for r in rows:
+        sid, t, st = r['student_id'], r['live_updated_at'], r['started_at']
+        cur = m.get(sid)
+        if cur is None or t > cur[0]:
+            m[sid] = (t, st)
+    per_subject['writing'] = m
+
+    # 단어 — VocabAttempt.created_at (Max via session)
+    rows = (VocabSession.objects
+            .filter(finished_at__isnull=True)
+            .annotate(t=Max('attempts__created_at'))
+            .filter(t__gte=cutoff)
+            .values('student_id', 'started_at', 't'))
+    m = {}
+    for r in rows:
+        sid, t, st = r['student_id'], r['t'], r['started_at']
+        cur = m.get(sid)
+        if cur is None or t > cur[0]:
+            m[sid] = (t, st)
+    per_subject['vocab'] = m
+
+    # 요약문 — SummarySession.updated_at(모델 auto_now)
+    rows = (SummarySession.objects
+            .filter(status=SummarySession.STATUS_IN_PROGRESS, updated_at__gte=cutoff)
+            .values('student_id', 'started_at', 'updated_at'))
+    m = {}
+    for r in rows:
+        sid, t, st = r['student_id'], r['updated_at'], r['started_at']
+        cur = m.get(sid)
+        if cur is None or t > cur[0]:
+            m[sid] = (t, st)
+    per_subject['summary'] = m
+
+    # 어법 — GrammarAnswer.updated_at(Max via session)
+    rows = (GrammarSession.objects
+            .filter(status=GrammarSession.STATUS_IN_PROGRESS)
+            .annotate(t=Max('answers__updated_at'))
+            .filter(t__gte=cutoff)
+            .values('student_id', 'started_at', 't'))
+    m = {}
+    for r in rows:
+        sid, t, st = r['student_id'], r['t'], r['started_at']
+        cur = m.get(sid)
+        if cur is None or t > cur[0]:
+            m[sid] = (t, st)
+    per_subject['grammar'] = m
+
+    # 시험 — ExamAnswer.created_at(Max via session; 업데이트는 잡지 못함 — 제한적)
+    rows = (ExamSession.objects
+            .filter(status=ExamSession.STATUS_IN_PROGRESS)
+            .annotate(t=Max('answers__created_at'))
+            .filter(t__gte=cutoff)
+            .values('student_id', 'started_at', 't'))
+    m = {}
+    for r in rows:
+        sid, t, st = r['student_id'], r['t'], r['started_at']
+        cur = m.get(sid)
+        if cur is None or t > cur[0]:
+            m[sid] = (t, st)
+    per_subject['exam'] = m
+
+    # 학생별 가장 최근 활동 과목 1개
+    result = {}
+    for subject, mp in per_subject.items():
+        for sid, (last_active, started_at) in mp.items():
+            cur = result.get(sid)
+            if cur is None or last_active > cur['last_active']:
+                result[sid] = {
+                    'subject': subject,
+                    'subject_label': SUBJECT_LABEL.get(subject, subject),
+                    'started_at': started_at,
+                    'last_active': last_active,
+                }
+    return result
+
+
+def fmt_hms(td):
+    """timedelta → 'HH:MM:SS' (음수/None → '00:00:00')."""
+    if td is None:
+        return '00:00:00'
+    s = max(0, int(td.total_seconds()))
+    h, rem = divmod(s, 3600)
+    m, s = divmod(rem, 60)
+    return f'{h:02d}:{m:02d}:{s:02d}'
 
 
 # ─────────────────────────────────────────────

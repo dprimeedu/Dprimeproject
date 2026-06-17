@@ -211,6 +211,8 @@ def study_board(request):
     data = study.board(date)
 
     target_day = _WD[date.weekday()]
+    activity_now = study.current_activity_map()
+    now_naive = study._now_naive()
 
     rows = []
     active_count = 0
@@ -221,6 +223,16 @@ def study_board(request):
             active_count += 1
         wt = (si.weekday_time if si else '') or (si.attend_weekdays if si else '')
         attends_today = target_day in ''.join(c for c in wt if c in _WD)
+        live = activity_now.get(u.id)
+        live_payload = None
+        if live:
+            elapsed = now_naive - live['started_at']
+            live_payload = {
+                'subject': live['subject'],
+                'label': live['subject_label'],
+                'hms': study.fmt_hms(elapsed),
+                'started_epoch_ms': int(live['started_at'].timestamp() * 1000),
+            }
         rows.append({
             'student': u,
             'school_grade': si.school_grade if si else '',
@@ -228,6 +240,7 @@ def study_board(request):
             'active': bool(cells and cells['active']),
             'attends_today': attends_today,
             'class_hour': _parse_class_hour(wt, target_day),
+            'live': live_payload,
         })
     # 오늘 수업 학생 우선(시간 오름차순 → 이름), 나머지는 학교학년·이름 순
     rows.sort(key=lambda r: (
