@@ -127,7 +127,7 @@ def _exam_cell(sessions):
             if s.round >= 2:
                 cls, status = 'r2', f'{s.percent}점·2차완료'
             elif not s.teacher_checked:
-                cls, status = 'pending', f'{s.percent}점·미확인'
+                cls, status = 'pending', f'{s.percent}점·1차제출'
             else:
                 cls, status = 'graded', f'{s.percent}점'
         else:
@@ -185,6 +185,35 @@ def _bucket(qs):
 # 전체 학생 현황판 (그리드)
 # ─────────────────────────────────────────────
 
+def _summary_today_tests(range_tests, sessions):
+    """학생의 활성 '오늘 볼 요약문 TEST'(SummaryRangeTest) — 단원·범위·응시여부.
+    단어TEST 표시 패턴과 동일. 합격선 없음 — 응시/미응시만 구분."""
+    seen = set()
+    deduped = []
+    for rt in range_tests:
+        key = (rt.source_label or rt.unit.title, rt.start_index, rt.end_index)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(rt)
+    out = []
+    for rt in deduped:
+        matched = [s for s in sessions
+                   if s.unit_id == rt.unit_id
+                   and s.start_index == rt.start_index
+                   and s.end_index == rt.end_index
+                   and s.status != SummarySession.STATUS_IN_PROGRESS]
+        best = max((s.percent for s in matched if s.total_blanks), default=None)
+        if best is None:
+            status, ok = '미응시', None
+        else:
+            status, ok = f'응시 {best}점', True
+        rng = f'{rt.start_index}~{rt.end_index}' if rt.start_index and rt.end_index else ''
+        out.append({'book': rt.source_label or rt.unit.title, 'range': rng,
+                    'status': status, 'ok': ok})
+    return out
+
+
 def _vocab_today_tests(range_tests, day_test_sessions):
     """학생의 활성 단어 '오늘 볼 TEST'(VocabRangeTest) — 단어장·범위·합격여부.
     학생관리표의 '단어시험결과 / 단어장 / 오늘 범위' 칸에 대응."""
@@ -232,8 +261,13 @@ def board(date):
     for rt in VocabRangeTest.objects.filter(is_active=True, source_label='내신단어TEST').select_related('unit'):
         vrt[rt.student_id].append(rt)
 
+    # 오늘 볼 요약문 TEST(SummaryRangeTest) — 접속 안 한 학생도 미응시 표시
+    srt = defaultdict(list)
+    for rt in SummaryRangeTest.objects.filter(is_active=True).select_related('unit'):
+        srt[rt.student_id].append(rt)
+
     out = {}
-    for sid in set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt):
+    for sid in set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt) | set(srt):
         vs = v.get(sid, [])
         cells = {
             'vocab': _vocab_cell(vs),
@@ -246,6 +280,9 @@ def board(date):
         cells['vocab']['tests'] = _vocab_today_tests(
             vrt.get(sid, []),
             [s for s in vs if s.mode == VocabSession.MODE_TEST and s.finished_at])
+        # 요약문 '오늘 볼 TEST' — 동일 단원·범위 세션 응시 여부
+        cells['summary']['tests'] = _summary_today_tests(
+            srt.get(sid, []), su.get(sid, []))
         cells['active'] = any(cells[k].get('did') for k, _, _ in SUBJECT_META)
         cells['subjects_done'] = sum(1 for k, _, _ in SUBJECT_META if cells[k].get('did'))
         cells['pending'] = sum(cells[k].get('pending', 0) for k, _, _ in SUBJECT_META)
