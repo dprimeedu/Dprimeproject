@@ -159,24 +159,56 @@ def _split_redblue(text):
     return mark('\n'.join(passage).strip()), mark(red), mark(blue)
 
 
-def redblue_qmap_for_mock(paper):
-    """모의고사(QuestionData) paper → 같은 회차 빨파 시험지의 {번호: ExamQuestion} 매핑.
+def _find_redblue_paper(school_grade, year, month):
+    season = f'{year} {month}월 모의고사'
+    return (ExamPaper.objects.filter(category='빨파', school_grade=school_grade, season=season).first()
+            or ExamPaper.objects.filter(category='빨파', school_grade=school_grade,
+                                        season__startswith=f'{year} {month}월').first())
 
-    빨파 시험지: source=naesin, category=빨파, school_grade=모고학년, season='YYYY M월 모의고사'.
-    문항 번호 체계가 모고와 동일해 번호로 1:1 매칭된다. 못 찾으면 {}.
+
+def redblue_qmap_for_mock(paper):
+    """모의고사/유형별 paper → {paper번호: 빨파 ExamQuestion} 매핑.
+
+    - SOURCE_MOCK: 같은 회차 빨파 시험지(category=빨파, season='YYYY M월 모의고사'). 번호 1:1.
+    - SOURCE_MOCK_TYPE: 문항별 ref_number='연도-강-번호' 를 파싱해 회차별 빨파에서 원본번호로 매칭.
     """
-    if paper.source != ExamPaper.SOURCE_MOCK:
-        return {}
-    season = f'{paper.year} {paper.month}월 모의고사'
-    rb = (ExamPaper.objects.filter(category='빨파', school_grade=paper.grade, season=season)
-          .first())
-    if rb is None:   # 표기 흔들림 대비(접미사 등) — 접두 매칭 폴백
-        rb = (ExamPaper.objects.filter(
-            category='빨파', school_grade=paper.grade,
-            season__startswith=f'{paper.year} {paper.month}월').first())
-    if rb is None:
-        return {}
-    return {q.number: q for q in rb.questions.all()}
+    if paper.source == ExamPaper.SOURCE_MOCK:
+        rb = _find_redblue_paper(paper.grade, paper.year, paper.month)
+        if rb is None:
+            return {}
+        return {q.number: q for q in rb.questions.all()}
+
+    if paper.source == ExamPaper.SOURCE_MOCK_TYPE:
+        rows = paper.get_questions()
+        refs = []
+        for r in rows:
+            m = re.match(r'(\d+)-(\d+)-(\d+)$', r.get('ref_number') or '')
+            if m:
+                refs.append((r['number'], m.group(1), int(m.group(2)), int(m.group(3))))
+        if not refs:
+            return {}
+        rb_by_ym = {}
+        for (y, mo) in {(y, mo) for (_, y, mo, _) in refs}:
+            rb = _find_redblue_paper(paper.grade, y, mo)
+            if rb is not None:
+                rb_by_ym[(y, mo)] = rb
+        if not rb_by_ym:
+            return {}
+        q_by_paper = {
+            p.id: {q.number: q for q in p.questions.all()}
+            for p in rb_by_ym.values()
+        }
+        result = {}
+        for (new_num, y, mo, orig_num) in refs:
+            rb = rb_by_ym.get((y, mo))
+            if rb is None:
+                continue
+            q = q_by_paper.get(rb.id, {}).get(orig_num)
+            if q is not None:
+                result[new_num] = q
+        return result
+
+    return {}
 
 
 def available_mock_exams():
@@ -448,17 +480,18 @@ def result_view(request, session_id):
     # 모의고사 1차 오답 → 같은 회차 '빨파' 문제/정답을 번호로 붙인다.
     #  · 학생: 2차에 빨파 문제(지문) 표시. 정답이미지는 교사 공개(redblue_released) 후에만.
     #  · 교사: 항상 빨파 정답이미지 열람 + '공개' 버튼.
-    is_mock = session.paper.source == ExamPaper.SOURCE_MOCK
-    # 더블클릭 단어조회용 회차 컨텍스트(학년 int/년도/월) — 회차 단어DB 매칭 키
+    is_mock_like = session.paper.source in (ExamPaper.SOURCE_MOCK, ExamPaper.SOURCE_MOCK_TYPE)
+    # 더블클릭 단어조회용 회차 컨텍스트 — MOCK_TYPE 은 회차 섞임 → year/month=0
     mock_ctx = None
-    if is_mock:
+    if is_mock_like:
         gm = re.search(r'(\d+)', session.paper.grade or '')
+        is_single = session.paper.source == ExamPaper.SOURCE_MOCK
         mock_ctx = {
             'grade': int(gm.group(1)) if gm else 0,
-            'year': int(session.paper.year) if str(session.paper.year).isdigit() else 0,
-            'month': int(session.paper.month) if str(session.paper.month).isdigit() else 0,
+            'year': int(session.paper.year) if (is_single and str(session.paper.year).isdigit()) else 0,
+            'month': int(session.paper.month) if (is_single and str(session.paper.month).isdigit()) else 0,
         }
-    rb_map = redblue_qmap_for_mock(session.paper) if (is_mock and wrong) else {}
+    rb_map = redblue_qmap_for_mock(session.paper) if (is_mock_like and wrong) else {}
     released = session.redblue_released
     show_rb_answer = teacher or released        # 빨파 정답이미지 노출 여부
     has_redblue = False
