@@ -101,11 +101,9 @@ def _writing_cell(sessions):
 
 
 def _exam_cell(sessions):
-    # 빈 in_progress(학생이 열기만 한 세션) 제외 — 채점 노이즈 줄임
-    sessions = [s for s in sessions
-                if not (s.status == ExamSession.STATUS_IN_PROGRESS
-                        and getattr(s, '_ans', None) == 0)]
-    # 같은 시험지 여러 시도 → 최신 1개만 (재시작·재응시 통합)
+    # 미제출(in_progress) 전부 제외 — 채점 창구 의도. 1~2개만 답하고 나간 것도 보이지 않게.
+    sessions = [s for s in sessions if s.status != ExamSession.STATUS_IN_PROGRESS]
+    # 같은 시험지 여러 시도 → 최신 1개만 (재응시 통합)
     by_paper = {}
     for s in sessions:
         cur = by_paper.get(s.paper_id)
@@ -143,10 +141,8 @@ def _exam_cell(sessions):
 
 def _grammar_cell(sessions):
     """어법 — 제출 시 자동채점(submitted=검수대기, graded=검수완료). 차시별 칩(채점 링크용)."""
-    # 빈 in_progress(학생이 열기만 한 세션) 제외
-    sessions = [s for s in sessions
-                if not (s.status == GrammarSession.STATUS_IN_PROGRESS
-                        and getattr(s, '_ans', None) == 0)]
+    # 미제출(in_progress) 전부 제외 — 채점 창구 의도
+    sessions = [s for s in sessions if s.status != GrammarSession.STATUS_IN_PROGRESS]
     # 같은 범위(start_index, end_index) 여러 시도 → 최신 1개만
     by_range = {}
     for s in sessions:
@@ -227,10 +223,8 @@ def board(date):
     su = _bucket(SummarySession.objects.filter(started_at__date=date)
                  .select_related('unit').annotate(_ans=Count('blank_answers')))
     w = _bucket(WritingSession.objects.filter(started_at__date=date).select_related('unit'))
-    e = _bucket(ExamSession.objects.filter(started_at__date=date)
-                .select_related('paper').annotate(_ans=Count('answers')))
-    g = _bucket(GrammarSession.objects.filter(started_at__date=date)
-                .select_related('unit').annotate(_ans=Count('answers')))
+    e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
+    g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
 
     # 오늘 볼 단어 TEST(VocabRangeTest) — 학생관리자료 '내신단어TEST' 지정만(퀴즈렛 자동청크 제외).
     # vocab '오늘 단어 TEST' 페이지와 동일 기준. 접속 안 한 학생도 표시 위해 별도 집계.
