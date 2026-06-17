@@ -20,6 +20,11 @@
 .vocab-pop .vp-m{ line-height:1.45; white-space:pre-wrap; }
 .vocab-pop .vp-s{ margin-top:6px; font-size:.78rem; color:#86efac; }
 .vocab-pop .vp-s.dim{ color:#94a3b8; }
+.rb-jump{ color:#0f172a; border-bottom:1px dashed #94a3b8; }
+.rb-jump:hover{ color:#7c3aed; }
+.list-group-item{ scroll-margin-top: 12px; }
+.list-group-item:target{ animation: rbFlash 1.6s ease-out; }
+@keyframes rbFlash{ 0%{ background:#fde68a; } 100%{ background:transparent; } }
 </style>
 <div class="home-wrap" style="max-width:880px;">
     <a href="{% url 'exam:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>시험 목록</a>
@@ -50,19 +55,22 @@
         <div class="card-header bg-danger text-white"><i class="fas fa-times me-1"></i>1차 오답 {{ wrong|length }}개 — 번호: {{ wrong_numbers|join:", " }}</div>
     </div>
     {% endif %}
+    {% if wrong %}
     <div class="table-responsive mb-4">
+        <p class="small text-muted mb-1"><i class="fas fa-circle-info me-1"></i>틀린 문항만 표시. <b>번호 클릭</b> → 해당 문항 빨파 정답으로 이동.</p>
         <table class="table table-sm align-middle text-center">
-            <thead class="table-light"><tr><th>번호</th><th>유형</th><th>1차답</th><th>정오</th>{% if round2_done %}<th>2차답</th><th>2차</th>{% endif %}<th>정답</th></tr></thead>
+            <thead class="table-light"><tr><th>번호</th><th>유형</th><th>1차답</th>{% if round2_done %}<th>2차답</th><th>2차</th>{% endif %}<th>정답</th></tr></thead>
             <tbody>
-            {% for a in answers %}
-                <tr {% if a.flagged %}class="table-warning"{% elif not a.is_correct %}class="table-danger"{% endif %}>
-                    <td class="fw-semibold">{{ a.number }}</td>
+            {% for a in wrong %}
+                <tr class="table-danger">
+                    <td class="fw-semibold">
+                        <a href="#rb-{{ a.number }}" class="rb-jump text-decoration-none" data-number="{{ a.number }}">{{ a.number }}</a>
+                    </td>
                     <td class="small text-muted">{{ a.qtype }}</td>
-                    <td>{% if a.flagged %}<span class="badge bg-warning text-dark">오류</span>{% else %}{{ a.student_choice|default:"-" }}{% endif %}</td>
-                    <td>{% if a.flagged %}-{% elif a.is_correct %}<span class="text-success fw-bold">O</span>{% else %}<span class="text-danger fw-bold">X</span>{% endif %}</td>
+                    <td>{{ a.student_choice|default:"-" }}</td>
                     {% if round2_done %}
-                    <td>{% if not a.flagged and not a.is_correct %}{{ a.second_choice|default:"-" }}{% endif %}</td>
-                    <td>{% if not a.flagged and not a.is_correct %}{% if a.is_correct2 %}<span class="text-success fw-bold">O</span>{% else %}<span class="text-danger fw-bold">X</span>{% endif %}{% endif %}</td>
+                    <td>{{ a.second_choice|default:"-" }}</td>
+                    <td>{% if a.is_correct2 %}<span class="text-success fw-bold">O</span>{% else %}<span class="text-danger fw-bold">X</span>{% endif %}</td>
                     {% endif %}
                     <td class="text-success fw-bold">{{ a.correct_answer }}</td>
                 </tr>
@@ -70,6 +78,11 @@
             </tbody>
         </table>
     </div>
+    {% else %}
+    <div class="alert alert-success text-center mb-4">
+        <i class="fas fa-circle-check me-1"></i>1차 채점 결과 — 오답 없음 🎉
+    </div>
+    {% endif %}
 
     {% if has_redblue %}
     {# 교사: 학생 1차 오답의 빨파 정답(이미지) + 학생 공개 버튼 #}
@@ -85,12 +98,15 @@
         </div>
         <div class="list-group list-group-flush">
             {% for a in wrong %}
-            <div class="list-group-item">
+            <div class="list-group-item" id="rb-{{ a.number }}">
                 <div class="d-flex gap-2 align-items-center mb-1 flex-wrap">
                     <span class="badge bg-primary">{{ a.number }}번</span>
                     {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
                     <span class="ms-auto small">1차답 <b>{{ a.student_choice|default:"-" }}</b>{% if round2_done %} · 2차답 <b>{{ a.second_choice|default:"-" }}</b>{% endif %} · 정답 <b class="text-success">{{ a.correct_answer }}</b></span>
                 </div>
+                {% if a.rb_passage %}<div class="rb-passage small mb-2">{{ a.rb_passage }}</div>{% endif %}
+                {% if a.rb_red %}<div class="rb-red small">[빨] {{ a.rb_red }}</div>{% endif %}
+                {% if a.rb_blue %}<div class="rb-blue small mb-2">[파] {{ a.rb_blue }}</div>{% endif %}
                 {% if a.rb_img %}
                     <a href="{{ a.rb_img }}" target="_blank"><img src="{{ a.rb_img }}" class="rb-ans-img" alt="{{ a.number }}번 빨파정답"></a>
                 {% else %}
