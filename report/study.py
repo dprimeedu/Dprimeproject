@@ -82,13 +82,15 @@ def current_activity_map(now=None):
             m[sid] = (t, st)
     per_subject['vocab'] = m
 
-    # 요약문 — SummarySession.updated_at(모델 auto_now)
+    # 요약문 — SummaryBlankAnswer.updated_at(Max via session)
     rows = (SummarySession.objects
-            .filter(status=SummarySession.STATUS_IN_PROGRESS, updated_at__gte=cutoff)
-            .values('student_id', 'started_at', 'updated_at'))
+            .filter(status=SummarySession.STATUS_IN_PROGRESS)
+            .annotate(t=Max('blank_answers__updated_at'))
+            .filter(t__gte=cutoff)
+            .values('student_id', 'started_at', 't'))
     m = {}
     for r in rows:
-        sid, t, st = r['student_id'], r['updated_at'], r['started_at']
+        sid, t, st = r['student_id'], r['t'], r['started_at']
         cur = m.get(sid)
         if cur is None or t > cur[0]:
             m[sid] = (t, st)
