@@ -827,6 +827,9 @@ def import_naesin_api(request):
         # 선택: 학생 이름 리스트 — 보내면 생성된 시험지를 그 학생들에게 자동 배정(전원 적용).
         #   (writing import_api 의 assign_to_list 패턴과 동일. username=이름 매칭.)
         assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
+        # 선택: append=True 면 기존 문항을 지우지 않고 '뒤에 이어붙임'(번호는 기존 최대+1 부터 재지정).
+        #   기본(False)은 카테고리 전체 교체(replace-on-reimport).
+        append = bool(data.get('append'))
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -869,17 +872,35 @@ def import_naesin_api(request):
                 paper_fields.append('daily_goal')
             if paper_fields:
                 paper.save(update_fields=paper_fields)
-            ExamQuestion.objects.filter(paper=paper).delete()
-            rows = []
-            for it in items:
-                f = _parse_question_item(it)
-                if f is None:
-                    continue
-                rows.append(ExamQuestion(paper=paper, **f))
-            ExamQuestion.objects.bulk_create(rows)
+            if append:
+                # 기존 문항 유지 + 최대 번호 뒤로 이어붙임(번호 재지정). 복수정답 등 기존 문항 보존.
+                from django.db.models import Max
+                base_no = paper.questions.aggregate(m=Max('number'))['m'] or 0
+                rows = []
+                k = 0
+                for it in items:
+                    f = _parse_question_item(it)
+                    if f is None:
+                        continue
+                    k += 1
+                    f['number'] = base_no + k
+                    rows.append(ExamQuestion(paper=paper, **f))
+                ExamQuestion.objects.bulk_create(rows)
+                cur = paper.questions.count()
+            else:
+                ExamQuestion.objects.filter(paper=paper).delete()
+                rows = []
+                for it in items:
+                    f = _parse_question_item(it)
+                    if f is None:
+                        continue
+                    rows.append(ExamQuestion(paper=paper, **f))
+                ExamQuestion.objects.bulk_create(rows)
+                cur = len(rows)
             total += len(rows)
             created_papers.append(paper)
-            results.append({'paper_id': paper.id, 'category': cat, 'questions': len(rows)})
+            results.append({'paper_id': paper.id, 'category': cat,
+                            'added': len(rows), 'questions': cur})
 
     # 학생 자동 배정 — assign_to_list(이름)의 학생 전원에게 생성된 시험지를 배정.
     #   구글시트 '답지업뎃'이 학생 시트에 자동 기록되는 것의 웹(홈페이지) 대응.
