@@ -258,9 +258,15 @@ def student_home(request):
         ExamAssignment.objects.filter(student=request.user)
         .select_related('paper').order_by('-assigned_at')
     )
+    my_sessions = list(
+        ExamSession.objects.filter(student=request.user)
+        .exclude(status=ExamSession.STATUS_IN_PROGRESS)
+        .select_related('paper').order_by('-submitted_at')[:30]
+    )
     return render(request, 'exam/home.html', {
         'is_teacher': False,
         'assignments': assignments,
+        'my_sessions': my_sessions,
         'has_redblue': ExamPaper.objects.filter(category='빨파').exists(),
     })
 
