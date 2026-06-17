@@ -225,6 +225,12 @@
         border-radius: 4px;
         font-weight: 500;
     }
+    /* 이어풀기 — 이전에 맞춘 단어 (자동 채우기와 구분: 초록 톤) */
+    .word-input.is-resume {
+        color: #15803d;
+        border-bottom-color: #86efac;
+        background: rgba(134,239,172,.18);
+    }
 
     /* 보상 인라인 토스트 (학습 영역 가리지 않음) */
     .reward-rail {
@@ -524,6 +530,8 @@ const SESSION_ID = {{ session.id }};
 const UNIT_ID = {{ unit.id }};
 const TOTAL_PROBLEMS = {{ total_problems }};
 const PROBLEMS = {{ problems_json|safe }};
+const START_IDX = {{ start_idx|default:0 }};
+const IS_RESUME = {{ is_resume|yesno:"true,false" }};
 const CSRF_TOKEN = document.querySelector('[name=csrfmiddlewaretoken]').value;
 const SESSION_STARTED_AT = Date.now();
 // 대전 모드 코드 (?match=ABC42)
@@ -803,12 +811,13 @@ function loadProblem(idx) {
 
         if (meta.auto) {
             // 자동 채우기 단어 (관사 등): 미리 채우고 잠금 (라벨 표시 없음)
+            // resume=true 면 이전 세션에서 맞춘 단어 — 서버 재등록 X (재크레딧 방지)
             inp.value = meta.value || '';
             inp.disabled = true;
             inp.classList.add('is-auto');
+            if (meta.resume) inp.classList.add('is-resume');
             wordStates[i] = { done: true, attempt: 1, hintLevel: 0, auto: true };
-            // 백그라운드 서버 등록 (점수/통계 일관성 유지). 응답은 무시.
-            autoSubmitWord(i, meta.value || '');
+            if (!meta.resume) autoSubmitWord(i, meta.value || '');
         } else {
             inp.addEventListener('focus', () => {
                 if (!wordTimeStart[i]) wordTimeStart[i] = Date.now();
@@ -1294,7 +1303,10 @@ document.getElementById('bugReportBtn').addEventListener('click', async () => {
     }
 });
 
-loadProblem(0);
+if (IS_RESUME && START_IDX > 0) {
+    showReward('📌 이어풀기', '문제 ' + (START_IDX + 1) + '부터 시작');
+}
+loadProblem(START_IDX);
 
 // ── 대전 모드: 우측 사이드바 + 폴링 ──
 if (MATCH_CODE) {

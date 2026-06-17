@@ -460,6 +460,15 @@ def start_session(request, unit_id):
             messages.error(request, '해당 시험 범위가 없습니다.')
             return redirect('writing:home')
         start_i, end_i = seg[0], seg[-1]
+
+    # 이어풀기: 같은 (단원, 범위, 보기학습) 미완료 세션이 있으면 재개
+    existing = (WritingSession.objects
+                .filter(student=request.user, unit=unit, view_mode=view_mode,
+                        start_index=start_i, end_index=end_i, finished_at__isnull=True)
+                .order_by('-started_at').first())
+    if existing is not None:
+        return redirect('writing:session', session_id=existing.id)
+
     session = WritingSession.objects.create(
         student=request.user, unit=unit, view_mode=view_mode,
         start_index=start_i, end_index=end_i,
@@ -547,20 +556,36 @@ def session_view(request, session_id):
         unit_level = level_service.get_or_create_unit_level(session.student, session.unit).level
     unit_level_info = level_service.level_summary(unit_level)
 
+    # 이어풀기 — 이미 정답 처리된 (problem_id, word_index) 복원용
+    done_words = {}
+    for a in (WritingAttempt.objects.filter(session=session, is_correct=True)
+              .values('problem_id', 'word_index', 'correct_answer')):
+        done_words[(a['problem_id'], a['word_index'])] = a['correct_answer']
+
     # 클라이언트에 보낼 문제 데이터
     # 관사/고유명사/숫자/약자는 자동 채우기 — 정답값을 노출하지만 학습 가치 낮은 단어들
+    # 이전 세션에서 맞춘 단어는 resume=True 로 잠가서 보여준다(재크레딧 방지)
     problems_data = []
-    for p in problems:
+    start_idx = 0
+    first_unfinished_found = False
+    for prob_idx, p in enumerate(problems):
         words = p.english_words
         hints = p.word_hints or []
         word_meta = []
+        has_unanswered = False
         for i, w in enumerate(words):
             hint = hints[i] if i < len(hints) and isinstance(hints[i], dict) else {}
             is_proper = bool(hint.get('proper_noun'))
             if is_proper or _should_auto_fill(w, i):
                 word_meta.append({'auto': True, 'value': w})
+            elif (p.id, i) in done_words:
+                word_meta.append({'auto': True, 'value': done_words[(p.id, i)], 'resume': True})
             else:
                 word_meta.append({'auto': False})
+                has_unanswered = True
+        if has_unanswered and not first_unfinished_found:
+            start_idx = prob_idx
+            first_unfinished_found = True
         problems_data.append({
             'id': p.id,
             'index': p.index,
@@ -575,6 +600,8 @@ def session_view(request, session_id):
         'profile': profile,
         'problems_json': json.dumps(problems_data, ensure_ascii=False),
         'total_problems': len(problems),
+        'start_idx': start_idx,
+        'is_resume': len(done_words) > 0,
         'unit_level': unit_level,
         'unit_level_info': unit_level_info,
         'unit_level_json': json.dumps(unit_level_info, ensure_ascii=False),
