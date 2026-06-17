@@ -217,16 +217,15 @@ def _summary_today_tests(range_tests, sessions):
 def _vocab_today_tests(range_tests, day_test_sessions):
     """학생의 활성 단어 '오늘 볼 TEST'(VocabRangeTest) — 단어장·범위·합격여부.
     학생관리표의 '단어시험결과 / 단어장 / 오늘 범위' 칸에 대응."""
-    # 동일 (단어장, 범위) 중복 제거 — 같은 범위로 여러 행 등록되면 미응시가 여러 번 떠 보이는 문제 방지
-    seen = set()
-    deduped = []
+    # 같은 단어장(source_label)에 여러 범위가 있으면 가장 오래된(start_index 최소) 1개만
+    # 예: 401-500 + 301-400 + 1-100 → 1-100 만 노출 (학생이 먼저 끝낼 범위)
+    by_label = {}
     for rt in range_tests:
-        key = (rt.source_label or rt.unit.title, rt.start_index, rt.end_index)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(rt)
-    range_tests = deduped
+        label = rt.source_label or rt.unit.title
+        cur = by_label.get(label)
+        if cur is None or rt.start_index < cur.start_index:
+            by_label[label] = rt
+    range_tests = list(by_label.values())
     out = []
     for rt in range_tests:
         matched = [s for s in day_test_sessions if s.range_test_id == rt.id]
