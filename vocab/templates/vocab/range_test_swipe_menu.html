@@ -47,25 +47,16 @@
             <div class="label">전체 단어 TEST</div>
             <div class="count">{{ total_in_range }}단어</div>
         </div>
-        <div class="desc">범위({{ rt.start_index }}~{{ rt.end_index }}) 전체에서 출제 — 점수 저장</div>
+        <div class="desc">범위({{ rt.start_index }}~{{ rt.end_index }}) 전체에서 출제</div>
     </a>
 
     <a href="{% url 'vocab:range_test_swipe' rt.id %}?src=star" class="option-card {% if not star_count %}disabled{% endif %}">
         <div class="top">
             <div class="icon-circle" style="background:#f59e0b;"><i class="fas fa-star"></i></div>
-            <div class="label">별표만 TEST</div>
+            <div class="label">오늘 별표만 TEST</div>
             <div class="count">{{ star_count }}단어</div>
         </div>
-        <div class="desc">이 범위에서 학생이 별표(모르는 단어)로 표시한 것만 — 점수 저장</div>
-    </a>
-
-    <a href="{% url 'vocab:range_flashcard' rt.id %}" class="option-card">
-        <div class="top">
-            <div class="icon-circle" style="background:#0d9488;"><i class="fas fa-book"></i></div>
-            <div class="label">플래시카드 (연습)</div>
-            <div class="count">자유</div>
-        </div>
-        <div class="desc">시험이 아니라 그냥 외울 때 — 점수 저장 안 함</div>
+        <div class="desc">오늘 학생이 별표(모르는 단어)로 표시한 것만 — 단원 무관</div>
     </a>
 </div>
 {% endblock %}

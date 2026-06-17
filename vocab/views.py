@@ -324,15 +324,14 @@ def range_test_swipe_menu(request, range_test_id):
         messages.error(request, '본인 시험만 응시 가능합니다.')
         return redirect('vocab:home')
 
+    today = timezone.now().date()
     # 범위 내 단어수
     total_in_range = (rt.unit.words
                       .filter(index__gte=rt.start_index, index__lte=rt.end_index)
                       .count())
-    # 학생 별표(범위 내)
+    # 오늘 학생이 별표한 단어 — 단원 무관, 오늘 추가된 별표 전부
     star_count = StudentWordStar.objects.filter(
-        student=rt.student,
-        word__unit=rt.unit,
-        word__index__gte=rt.start_index, word__index__lte=rt.end_index,
+        student=rt.student, created_at__date=today,
     ).count()
     return render(request, 'vocab/range_test_swipe_menu.html', {
         'rt': rt,
@@ -359,16 +358,15 @@ def range_test_swipe_take(request, range_test_id):
 
     src = request.GET.get('src', 'all')
     if src == 'star':
-        # 범위 내 + 학생이 별표한 단어만
+        # 오늘 학생이 별표한 단어 — 단원 무관
+        today = timezone.now().date()
         star_ids = list(StudentWordStar.objects.filter(
-            student=rt.student,
-            word__unit=rt.unit,
-            word__index__gte=rt.start_index, word__index__lte=rt.end_index,
+            student=rt.student, created_at__date=today,
         ).values_list('word_id', flat=True))
         words = list(VocabWord.objects.filter(id__in=star_ids).order_by('index'))
         import random
         random.shuffle(words)
-        src_label = '별표만'
+        src_label = '오늘 별표'
     else:
         words = select_test_words(
             rt.student, rt.unit, rt.start_index, rt.end_index, count=rt.question_count,
