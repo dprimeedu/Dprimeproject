@@ -85,6 +85,8 @@
             <a href="{% url 'vocab:range_test_swipe' rt.id %}" class="btn btn-outline-secondary">다시 응시</a>
         </div>
     </div>
+
+    <form style="display:none;">{% csrf_token %}</form>
 </div>
 
 <script>
@@ -206,7 +208,6 @@ $('btnFinish').addEventListener('click', async () => {
     }
 });
 
-{% csrf_token %}
 renderCard();
 </script>
 {% endblock %}
