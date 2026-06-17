@@ -185,12 +185,32 @@ def report_list(request):
 # 종합 학습 현황 (4과목 세션 자동 집계, read-only)
 # ─────────────────────────────────────────────
 
+_WD = '월화수목금토일'
+
+
+def _parse_class_hour(daytime_str, target_day):
+    """엑셀 학생관리표 정렬 규칙 — '월수금444시' + 오늘 요일='수' → 4.
+    요일문자열에서 target_day 위치 idx → 숫자열의 idx 자리 정수. 매칭 실패 시 99."""
+    dstr = ''.join(c for c in daytime_str if c in _WD)
+    nums = ''.join(c for c in daytime_str if c.isdigit())
+    idx = dstr.find(target_day)
+    if idx < 0 or idx >= len(nums):
+        return 99
+    try:
+        return int(nums[idx])
+    except ValueError:
+        return 99
+
+
 @teacher_required
 def study_board(request):
-    """전체 학생 현황판 — 그날 단어/요약문/영작/시험을 한 표에."""
+    """전체 학생 현황판 — 그날 단어/요약문/영작/시험을 한 표에.
+    정렬: 오늘 수업 학생 먼저(요일+시간 순), 그 외는 학교학년+이름."""
     date = _parse_date(request.GET.get('date'))
     users, infos = _roster()
     data = study.board(date)
+
+    target_day = _WD[date.weekday()]
 
     rows = []
     active_count = 0
@@ -199,17 +219,22 @@ def study_board(request):
         si = infos.get(u.id)
         if cells and cells['active']:
             active_count += 1
+        wt = (si.weekday_time if si else '') or (si.attend_weekdays if si else '')
+        attends_today = target_day in ''.join(c for c in wt if c in _WD)
         rows.append({
             'student': u,
             'school_grade': si.school_grade if si else '',
             'cells': cells,                       # None 이면 그날 미접속
             'active': bool(cells and cells['active']),
+            'attends_today': attends_today,
+            'class_hour': _parse_class_hour(wt, target_day),
         })
-    # 활동한 학생 먼저, 그 안에서 푼 과목 많은 순
+    # 오늘 수업 학생 우선(시간 오름차순 → 이름), 나머지는 학교학년·이름 순
     rows.sort(key=lambda r: (
-        not r['active'],
-        -(r['cells']['subjects_done'] if r['cells'] else 0),
-        r['school_grade'], r['student'].username or '',
+        0 if r['attends_today'] else 1,
+        r['class_hour'] if r['attends_today'] else 99,
+        r['student'].username or '',
+        r['school_grade'],
     ))
 
     return render(request, 'report/study_board.html', {

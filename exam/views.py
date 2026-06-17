@@ -1005,9 +1005,16 @@ def import_student_schedule(request):
             skipped_dup += 1
             continue
         si, _ = StudentInfo.objects.get_or_create(student=qs.first())
+        fields = []
         if si.attend_weekdays != wd:
             si.attend_weekdays = wd
-            si.save(update_fields=['attend_weekdays'])
+            fields.append('attend_weekdays')
+        daytime = str(it.get('daytime') or '').strip()
+        if daytime and si.weekday_time != daytime:
+            si.weekday_time = daytime
+            fields.append('weekday_time')
+        if fields:
+            si.save(update_fields=fields)
         updated += 1
 
     return JsonResponse({'success': True, 'updated': updated,

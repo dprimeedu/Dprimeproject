@@ -45,6 +45,10 @@ class StudentInfo(models.Model):
     # 학생이 나오는 수업 요일 — '화목', '월수금' 등(쉼표/공백 무관). 시험까지 남은 수업 수 계산용.
     attend_weekdays = models.CharField('수업 요일', max_length=20, blank=True, default='',
                                        help_text='예: 화목 / 월수금')
+    # 요일+시간 원문 — 엑셀 '학생Data' D열 그대로(예: '월수금444시'). 학생관리표 정렬 키.
+    # 학생요일동기화.py 가 동기화. 비어 있으면 attend_weekdays 로 폴백.
+    weekday_time = models.CharField('수업 요일·시간', max_length=30, blank=True, default='',
+                                    help_text='예: 월수금444시 — 정렬용')
     # 학생이 직접 입력하는 내신 시험시작일 — 응시 화면에서 수정. 하루목표(남은 수업수) 계산용.
     naesin_exam_date = models.DateField('내신 시험시작일', null=True, blank=True)
 
