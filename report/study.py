@@ -112,9 +112,22 @@ def _exam_cell(sessions):
         parts.append(f'최고 {best}점')
     if pending:
         parts.append(f'채점대기 {len(pending)}')
+    detail = []
+    for s in sessions:
+        if s.status == ExamSession.STATUS_GRADED:
+            if s.round >= 2:
+                cls, status = 'r2', f'{s.percent}점·2차완료'
+            elif not s.teacher_checked:
+                cls, status = 'pending', f'{s.percent}점·미확인'
+            else:
+                cls, status = 'graded', f'{s.percent}점'
+        else:
+            cls, status = 'inprog', s.get_status_display()
+        detail.append({'sid': s.id, 'title': s.title, 'status': status, 'cls': cls})
     return {'did': True, 'n': len(sessions), 'done': len(graded),
             'best': best, 'pending': len(pending),
-            'label': ' · '.join(parts)}
+            'label': ' · '.join(parts),
+            'detail': detail}
 
 
 def _grammar_cell(sessions):

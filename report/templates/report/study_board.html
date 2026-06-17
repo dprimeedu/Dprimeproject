@@ -86,8 +86,16 @@
                                 {% endfor %}
                                 </div>
                             {% elif key == 'exam' and row.cells.exam.did %}
-                                <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">{{ row.cells.exam.label }}</span>
-                                {% if row.cells.exam.pending %}<span class="badge bg-warning text-dark">채점</span>{% endif %}
+                                <div class="d-flex flex-column gap-1" style="max-width:180px;margin:0 auto;">
+                                {% for s in row.cells.exam.detail %}
+                                    <a href="{% url 'exam:result' s.sid %}"
+                                       class="badge text-decoration-none text-start border
+                                       {% if s.cls == 'pending' %}bg-warning text-dark{% elif s.cls == 'r2' %}bg-success-subtle text-success-emphasis{% elif s.cls == 'graded' %}bg-info-subtle text-info-emphasis{% else %}bg-light text-muted{% endif %}"
+                                       title="{{ s.title }} — 클릭하면 채점/결과 페이지로 이동">
+                                        <span class="opacity-75">{{ s.title|truncatechars:20 }}</span> · {{ s.status }}
+                                    </a>
+                                {% endfor %}
+                                </div>
                             {% else %}
                                 <span class="text-muted">·</span>
                             {% endif %}
