@@ -313,6 +313,96 @@ def range_test_take(request, range_test_id):
 
 
 @login_required
+def range_test_swipe_take(request, range_test_id):
+    """스와이프 자기평가 시험 — 단어+뜻 보고 오른쪽=알아요/왼쪽=모름.
+    교사(다른 학생 클릭)는 프리뷰 모드 — 결과 저장 X."""
+    rt = get_object_or_404(
+        VocabRangeTest.objects.select_related('unit', 'student'),
+        pk=range_test_id, is_active=True,
+    )
+    is_preview = is_teacher(request.user) and rt.student_id != request.user.id
+    if not is_preview and rt.student_id != request.user.id:
+        messages.error(request, '본인 시험만 응시 가능합니다.')
+        return redirect('vocab:home')
+    words = select_test_words(
+        rt.student, rt.unit, rt.start_index, rt.end_index, count=rt.question_count,
+    )
+    if not words:
+        messages.error(request, '출제할 단어가 없습니다.')
+        return redirect('vocab:home')
+    words_data = [
+        {'id': w.id, 'index': w.index, 'word': w.word, 'meaning': w.meaning,
+         'sub_unit': w.sub_unit or ''}
+        for w in words
+    ]
+    return render(request, 'vocab/range_test_swipe.html', {
+        'rt': rt,
+        'words_json': json.dumps(words_data, ensure_ascii=False),
+        'is_preview': is_preview,
+    })
+
+
+@login_required
+@require_POST
+def range_test_swipe_submit_api(request):
+    """스와이프 시험 결과 일괄 저장 — body: {range_test_id, answers: [{word_id, knew_it}]}.
+    교사 프리뷰면 DB 저장 X, 점수만 계산."""
+    try:
+        data = json.loads(request.body or '{}')
+        rt_id = int(data['range_test_id'])
+        answers = data.get('answers') or []
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    rt = get_object_or_404(VocabRangeTest, pk=rt_id, is_active=True)
+    is_preview = is_teacher(request.user) and rt.student_id != request.user.id
+    if not is_preview and rt.student_id != request.user.id:
+        return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+    correct = sum(1 for a in answers if a.get('knew_it'))
+    total = len(answers)
+    percent = round(correct / total * 100) if total else 0
+
+    if is_preview:
+        return JsonResponse({
+            'success': True, 'preview': True,
+            'correct': correct, 'total': total, 'percent': percent,
+        })
+
+    word_ids = [int(a['word_id']) for a in answers if a.get('word_id')]
+    word_map = {w.id: w for w in VocabWord.objects.filter(id__in=word_ids, unit=rt.unit)}
+    session = VocabSession.objects.create(
+        student=rt.student, unit=rt.unit, mode=VocabSession.MODE_TEST,
+        range_test=rt, total_count=total,
+    )
+    for a in answers:
+        w = word_map.get(int(a.get('word_id') or 0))
+        if w is None:
+            continue
+        knew = bool(a.get('knew_it'))
+        VocabAttempt.objects.create(
+            session=session, word=w,
+            input_value=('알아요' if knew else '모름'),
+            is_correct=knew,
+            time_taken_seconds=0,
+            score_earned=10 if knew else 0,
+        )
+        if not knew:
+            StudentWordStar.objects.get_or_create(student=rt.student, word=w)
+    session.finished_at = timezone.now()
+    session.correct_count = correct
+    session.total_count = total
+    session.total_score = correct * 10
+    session.save(update_fields=[
+        'finished_at', 'correct_count', 'total_count', 'total_score',
+    ])
+    return JsonResponse({
+        'success': True, 'correct': correct, 'total': total, 'percent': percent,
+        'session_id': session.id,
+    })
+
+
+@login_required
 @require_POST
 def range_test_start_api(request):
     """정식 시험 세션 생성 + 출제 단어(뜻 제외) 반환.

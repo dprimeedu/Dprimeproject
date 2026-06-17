@@ -355,7 +355,7 @@ def _vocab_today_tests(range_tests, day_test_sessions):
             status, ok = f'미달 {best}', False
         rng = f'{rt.start_index}~{rt.end_index}' if rt.start_index and rt.end_index else ''
         out.append({'book': rt.source_label or rt.unit.title, 'range': rng,
-                    'status': status, 'ok': ok})
+                    'status': status, 'ok': ok, 'rt_id': rt.id})
     return out
 
 

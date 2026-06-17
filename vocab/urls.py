@@ -10,6 +10,8 @@ urlpatterns = [
 
     # 학생 — 개인별 시험범위(내신단어TEST)
     path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
+    path('range/<int:range_test_id>/swipe/', views.range_test_swipe_take, name='range_test_swipe'),
+    path('api/range/swipe/submit/', views.range_test_swipe_submit_api, name='range_test_swipe_submit'),
     path('range/<int:range_test_id>/flashcard/', views.range_flashcard_view, name='range_flashcard'),
 
     # 학생 — 별표 모음 (메뉴 → 전체 / 오늘)

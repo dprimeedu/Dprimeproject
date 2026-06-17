@@ -86,11 +86,12 @@
                         {% if row.cells %}
                             {% if key == 'vocab' %}
                                 {% for t in row.cells.vocab.tests %}
-                                <div class="badge d-block text-start border mb-1
-                                     {% if t.ok %}bg-success-subtle text-success-emphasis{% elif t.ok == False %}bg-danger-subtle text-danger-emphasis{% else %}bg-light text-muted{% endif %}"
-                                     title="오늘 볼 단어 TEST">
+                                <a href="{% url 'vocab:range_test_swipe' t.rt_id %}"
+                                   class="badge d-block text-start border mb-1 text-decoration-none
+                                   {% if t.ok %}bg-success-subtle text-success-emphasis{% elif t.ok == False %}bg-danger-subtle text-danger-emphasis{% else %}bg-light text-muted{% endif %}"
+                                   title="클릭 → 스와이프 TEST 응시">
                                     {{ t.book }} <span class="opacity-75">{{ t.range }}</span> · {{ t.status }}
-                                </div>
+                                </a>
                                 {% endfor %}
                                 {% if row.cells.vocab.did %}
                                     <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
