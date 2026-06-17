@@ -824,6 +824,9 @@ def import_naesin_api(request):
         school_grade = str(data.get('school_grade', '')).strip()
         season = str(data.get('season', '')).strip()
         categories = data.get('categories') or {}
+        # 선택: 학생 이름 리스트 — 보내면 생성된 시험지를 그 학생들에게 자동 배정(전원 적용).
+        #   (writing import_api 의 assign_to_list 패턴과 동일. username=이름 매칭.)
+        assign_to_list = [str(x).strip() for x in (data.get('assign_to_list') or []) if str(x).strip()]
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid JSON')
 
@@ -844,6 +847,7 @@ def import_naesin_api(request):
 
     results = []
     total = 0
+    created_papers = []   # 배정용 — 이번에 생성/갱신된 ExamPaper 객체
     with transaction.atomic():
         for category, items in categories.items():
             cat = str(category).strip()
@@ -874,11 +878,32 @@ def import_naesin_api(request):
                 rows.append(ExamQuestion(paper=paper, **f))
             ExamQuestion.objects.bulk_create(rows)
             total += len(rows)
+            created_papers.append(paper)
             results.append({'paper_id': paper.id, 'category': cat, 'questions': len(rows)})
+
+    # 학생 자동 배정 — assign_to_list(이름)의 학생 전원에게 생성된 시험지를 배정.
+    #   구글시트 '답지업뎃'이 학생 시트에 자동 기록되는 것의 웹(홈페이지) 대응.
+    #   username=이름 매칭, 동명이인/미존재는 스킵하고 결과에 보고.
+    assigned_many = None
+    if assign_to_list and created_papers:
+        User = get_user_model()
+        ok_names, fail = [], []
+        for nm in assign_to_list:
+            qs = User.objects.filter(username=nm)
+            if qs.count() != 1:
+                fail.append({'name': nm, 'reason': ('없음' if qs.count() == 0 else '동명이인')})
+                continue
+            student = qs.first()
+            for paper in created_papers:
+                ExamAssignment.objects.get_or_create(
+                    paper=paper, student=student, defaults={'assigned_by': None})
+            ok_names.append(student.username)
+        assigned_many = {'assigned': ok_names, 'failed': fail, 'papers': len(created_papers)}
 
     return JsonResponse({'success': True, 'school_grade': school_grade, 'season': season,
                          'exam_date': raw_date or None, 'daily_goal': daily_goal,
-                         'papers': results, 'total_questions': total},
+                         'papers': results, 'total_questions': total,
+                         'assigned_many': assigned_many},
                         json_dumps_params={'ensure_ascii': False})
 
 
