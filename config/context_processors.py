@@ -34,9 +34,13 @@ def pending_badges(request):
     except Exception:
         pass
     try:
+        from django.db.models import Q
         from exam.models import ExamSession
+        # 교사 할일 = 1차 미확인  +  2차 제출했는데 빨파 정답 미공개(공개대기)
         exam_pending = ExamSession.objects.filter(
-            status=ExamSession.STATUS_GRADED, teacher_checked=False).count()
+            status=ExamSession.STATUS_GRADED).filter(
+            Q(teacher_checked=False) | Q(round__gte=2, redblue_released=False)
+        ).count()
     except Exception:
         pass
 
