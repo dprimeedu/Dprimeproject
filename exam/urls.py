@@ -23,6 +23,9 @@ urlpatterns = [
     # 교사 — 빨파정답 학생 공개
     path('api/release-redblue/<int:session_id>/', views.release_redblue, name='release_redblue'),
 
+    # 빨파 정답 PDF (내신) — nginx X-Accel-Redirect 로 NAS 교재폴더에서 스트리밍
+    path('redblue/<int:question_id>.pdf', views.redblue_pdf, name='redblue_pdf'),
+
     # 선생님 / 관리자
     path('admin/results/', views.result_list, name='result_list'),
     path('admin/paper/<int:paper_id>/wrong/', views.wrong_summary, name='wrong_summary'),

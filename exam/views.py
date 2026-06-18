@@ -17,7 +17,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse, HttpResponseForbidden, Http404
+from urllib.parse import quote
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -503,6 +504,23 @@ def result_view(request, session_id):
         a.ref_number = m.get('ref_number') or ''
     has_ref = any(a.ref_number for a in wrong)
 
+    # 내신 빨파 정답 PDF 링크 — ExamQuestion 단위로 URL 생성. 폴더 매칭은 view 응답 시점에 lazy.
+    # 학생은 빨파 공개 완료(redblue_released) 후에만 접근 가능 — view 단에서 한 번 더 검사.
+    rb_visible = teacher or session.redblue_released
+    if session.paper.source == ExamPaper.SOURCE_NAESIN and wrong:
+        qid_by_num = dict(ExamQuestion.objects
+                          .filter(paper=session.paper, number__in=[a.number for a in wrong])
+                          .values_list('number', 'id'))
+        for a in wrong:
+            qid = qid_by_num.get(a.number)
+            if qid and a.ref_number and rb_visible:
+                a.rb_pdf_url = f'/training/exam/redblue/{qid}.pdf'
+            else:
+                a.rb_pdf_url = ''
+    else:
+        for a in wrong:
+            a.rb_pdf_url = ''
+
     # 교사에게는 지문/관련번호/해설도 붙여 보여준다(채점·리뷰용)
     has_detail = False
     if teacher:
@@ -782,6 +800,30 @@ def wrong_summary(request, paper_id):
         'most_wrong': most_wrong,
         'student_count': len(sessions),
     })
+
+
+@login_required
+def redblue_pdf(request, question_id):
+    """내신 빨파 정답 PDF 서빙 — nginx X-Accel-Redirect 로 NAS 교재폴더 파일 스트리밍.
+
+    접근 권한: 교사는 모두 / 학생은 같은 paper 응시 + redblue_released=True 일 때만.
+    파일이 NAS에 없으면 404. 컨테이너에 /redblue_root 마운트가 있어야 동작한다.
+    """
+    q = get_object_or_404(ExamQuestion.objects.select_related('paper'), pk=question_id)
+    teacher = is_teacher(request.user)
+    if not teacher:
+        ok = ExamSession.objects.filter(
+            paper_id=q.paper_id, student=request.user, redblue_released=True,
+        ).exists()
+        if not ok:
+            return HttpResponseForbidden('빨파 정답이 아직 공개되지 않았습니다.')
+    rel = q.paper.redblue_relpath(q.ref_number)
+    if not rel:
+        raise Http404('빨파 정답 PDF를 찾지 못했습니다.')
+    resp = HttpResponse(content_type='application/pdf')
+    # X-Accel-Redirect 헤더는 ASCII 필요 — 한글 경로는 percent-encoding.
+    resp['X-Accel-Redirect'] = '/redblue_internal/' + quote(rel)
+    return resp
 
 
 @teacher_required

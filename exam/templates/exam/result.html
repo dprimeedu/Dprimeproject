@@ -87,7 +87,11 @@
             {% for a in wrong %}
                 <tr class="table-danger{% if round2_done and a.is_correct2 %} r2-ok d-none{% endif %}">
                     <td class="fw-semibold">
+                        {% if a.rb_pdf_url %}
+                        <a href="{{ a.rb_pdf_url }}" target="_blank" rel="noopener" class="rb-jump text-decoration-none" title="빨파 정답 PDF 새 탭 열기">{{ a.number }}</a>
+                        {% else %}
                         <a href="#rb-{{ a.number }}" class="rb-jump text-decoration-none" data-number="{{ a.number }}">{{ a.number }}</a>
+                        {% endif %}
                     </td>
                     <td class="small text-muted">{{ a.qtype }}</td>
                     {% if has_ref %}<td class="small text-muted">{{ a.ref_number|default:"-" }}</td>{% endif %}

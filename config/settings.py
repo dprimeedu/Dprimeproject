@@ -158,6 +158,11 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# 빨파 정답 PDF 루트 — nginx 컨테이너에 read-only 마운트된 '교재폴더' 경로(컨테이너 내).
+# Django는 이 경로에서 파일 존재 여부만 확인하고, 실제 서빙은 X-Accel-Redirect 로
+# nginx의 internal location(/redblue_internal/) 이 담당.
+REDBLUE_ROOT = os.environ.get('REDBLUE_ROOT', '/redblue_root')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 

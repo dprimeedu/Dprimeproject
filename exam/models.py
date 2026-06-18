@@ -8,6 +8,9 @@
 
 채점은 객관식(1~5) 숫자 비교 자동채점(제출 즉시 graded). 구조·컨벤션은 summary 앱을 따른다.
 """
+import os
+import re
+
 from django.conf import settings
 from django.db import models
 
@@ -78,6 +81,61 @@ class ExamPaper(models.Model):
         if self.source == self.SOURCE_MOCK_TYPE:
             return f'{self.grade} {self.category} ({self.range_start}-{self.range_end})'.strip()
         return f'{self.school_grade} {self.season} {self.category}'.strip()
+
+    def redblue_relpath(self, ref_number):
+        """내신 빨파 정답 PDF의 REDBLUE_ROOT 기준 상대 경로(없으면 None).
+
+        NAS '교재폴더' 구조 — 부교재 출력 자동화의 폴더 규칙을 따른다:
+          내신 / 고등학교 N학년 / 개정판 / 2026년 / 2026년 1학기 기말고사 /
+          청덕고1 / 청덕고1 1학기 기말고사(part1) /
+          청덕고1 1학기 기말고사(part1) 정답 /
+          청덕고1 1학기 기말고사(part1) 빨파정답 /
+          청덕고1 1학기 기말고사(part1) {순번}. {ref_number} 빨파 정답.pdf
+
+        고1='개정판' / 고2='개정본' 등 학년별 차이가 있어 두 후보를 차례로 시도.
+        """
+        if self.source != self.SOURCE_NAESIN or not ref_number:
+            return None
+        sg = (self.school_grade or '').strip()
+        sm = re.match(r'^([가-힣]+)([고중])(\d+)$', sg)
+        if not sm:
+            return None
+        level, grade = sm.group(2), sm.group(3)
+        grade_folder = ('고등학교' if level == '고' else '중학교') + f' {grade}학년'
+
+        ym = re.match(r'^(\d{4})\s+(.+)$', (self.season or '').strip())
+        if not ym:
+            return None
+        year, term = ym.group(1), ym.group(2)
+        term_folder = f'{year}년 {term}'
+        if not term_folder.endswith('고사'):
+            term_folder += '고사'
+
+        pm = re.search(r'part\s*(\d+)', (self.category or '').lower())
+        if not pm:
+            return None
+        part_suffix = f'(part{pm.group(1)})'
+
+        school_paper = f'{sg} {term}{part_suffix}'
+        ans_folder = f'{school_paper} 정답'
+        rb_folder = f'{school_paper} 빨파정답'
+
+        root = settings.REDBLUE_ROOT
+        target = f' {ref_number} '
+        for edition in ('개정판', '개정본'):
+            folder = os.path.join(
+                root, '내신', grade_folder, edition, f'{year}년',
+                term_folder, sg, school_paper, ans_folder, rb_folder,
+            )
+            if not os.path.isdir(folder):
+                continue
+            try:
+                for fn in os.listdir(folder):
+                    if fn.endswith('.pdf') and target in fn:
+                        return os.path.relpath(os.path.join(folder, fn), root)
+            except OSError:
+                continue
+        return None
 
     def get_questions(self):
         """출제 문항을 정규화된 dict 리스트로 반환.
