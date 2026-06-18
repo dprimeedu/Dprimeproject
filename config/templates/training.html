@@ -40,14 +40,14 @@
         <a href="{% url 'grammar:home' %}" class="menu-card" style="position:relative;">
             {% if grammar_pending %}<span class="pending-badge">채점대기 {{ grammar_pending }}</span>{% endif %}
             <div class="menu-card-icon"><i class="fas fa-spell-check" style="color:#0369a1;"></i></div>
-            <h4>어법훈련</h4>
+            <h4>어법TEST</h4>
             <p>문장 어법 O/고쳐쓰기 TEST · 자동채점 · 선생님 검수</p>
         </a>
 
         <a href="{% url 'exam:home' %}" class="menu-card" style="position:relative;">
             {% if exam_pending %}<span class="pending-badge">미확인 {{ exam_pending }}</span>{% endif %}
             <div class="menu-card-icon"><i class="fas fa-file-alt" style="color:#dc2626;"></i></div>
-            <h4>모의고사 · 내신</h4>
+            <h4>정답입력(모의고사,내신)</h4>
             <p>배정받은 모의고사 응시 · 1~5 입력 · 즉시 자동 채점</p>
         </a>
     </div>
