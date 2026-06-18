@@ -65,7 +65,7 @@
     <div class="table-responsive mb-4">
         <p class="small text-muted mb-1"><i class="fas fa-circle-info me-1"></i>틀린 문항만 표시. <b>번호 클릭</b> → 해당 문항 빨파 정답으로 이동.</p>
         <table class="table table-sm align-middle text-center">
-            <thead class="table-light"><tr><th>번호</th><th>유형</th><th>1차답</th>{% if round2_done %}<th>2차답</th><th>2차</th>{% endif %}<th>정답</th></tr></thead>
+            <thead class="table-light"><tr><th>번호</th><th>유형</th>{% if has_ref %}<th>통합본</th>{% endif %}<th>1차답</th>{% if round2_done %}<th>2차답</th><th>2차</th>{% endif %}<th>정답</th></tr></thead>
             <tbody>
             {% for a in wrong %}
                 <tr class="table-danger">
@@ -73,6 +73,7 @@
                         <a href="#rb-{{ a.number }}" class="rb-jump text-decoration-none" data-number="{{ a.number }}">{{ a.number }}</a>
                     </td>
                     <td class="small text-muted">{{ a.qtype }}</td>
+                    {% if has_ref %}<td class="small text-muted">{{ a.ref_number|default:"-" }}</td>{% endif %}
                     <td>{{ a.student_choice|default:"-" }}</td>
                     {% if round2_done %}
                     <td>{{ a.second_choice|default:"-" }}</td>

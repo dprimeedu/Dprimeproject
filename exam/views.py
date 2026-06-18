@@ -495,10 +495,17 @@ def result_view(request, session_id):
              and not (is_naesin and not (a.student_choice or '').strip())]
     round2_done = session.round >= 2
 
+    # 통합본 번호(ref_number) — 오답 표에 '몇번 출처(예: 2026-03-24)인지' 함께 표기.
+    # 모의고사(SOURCE_MOCK)는 비어있음, 내신/유형별만 채워짐.
+    meta = {q['number']: q for q in session.paper.get_questions()}
+    for a in wrong:
+        m = meta.get(a.number) or {}
+        a.ref_number = m.get('ref_number') or ''
+    has_ref = any(a.ref_number for a in wrong)
+
     # 교사에게는 지문/관련번호/해설도 붙여 보여준다(채점·리뷰용)
     has_detail = False
     if teacher:
-        meta = {q['number']: q for q in session.paper.get_questions()}
         for a in answers:
             m = meta.get(a.number) or {}
             a.q_ref = m.get('ref_number') or ''
@@ -547,6 +554,7 @@ def result_view(request, session_id):
         'is_teacher': teacher,
         'round2_done': round2_done,
         'round2_total': len(wrong),
+        'has_ref': has_ref,
         'has_detail': has_detail,
         'has_redblue': has_redblue,
         'redblue_released': released,
@@ -614,6 +622,10 @@ def submit_session_api(request):
         except (ValueError, TypeError):
             continue
 
+    # 내신은 분할 응시(여러 차수에 걸쳐 일부 문항만 입력)가 정상 — 미입력은 채점 대상에서 제외.
+    # 점수 분모도 학생이 입력한 문항 수 기준(예: 40개 입력 → 33/40).
+    is_naesin = session.paper.source == ExamPaper.SOURCE_NAESIN
+
     questions = session.paper.get_questions()
     rows, correct, graded_total = [], 0, 0
     for q in questions:
@@ -621,8 +633,9 @@ def submit_session_api(request):
         is_flagged = num in flagged_set
         choice = '' if is_flagged else choice_by_number.get(num, '')
         ans = q['answer']
-        ok = (not is_flagged) and grade_answer(choice, ans)
-        if not is_flagged:
+        skip_blank = is_naesin and not is_flagged and not choice
+        ok = (not is_flagged) and (not skip_blank) and grade_answer(choice, ans)
+        if not is_flagged and not skip_blank:
             graded_total += 1
             if ok:
                 correct += 1
