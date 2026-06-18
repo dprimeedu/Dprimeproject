@@ -305,8 +305,11 @@ def student_home(request):
         my_sessions.append(s)
     my_sessions.sort(key=lambda s: s.submitted_at or s.started_at, reverse=True)
     my_sessions = my_sessions[:30]
-    # 이미 응시 결과가 있는 시험지는 위 '응시 시작' 카드에서 숨김
-    assignments = [a for a in assignments if a.paper_id not in done_paper_ids]
+    # 이미 응시 결과가 있는 시험지는 위 '응시 시작' 카드에서 숨김.
+    # 단 내신은 분할 응시(여러 차수에 걸쳐 일부 문항만 입력)가 정상 패턴 → 항상 노출.
+    assignments = [a for a in assignments
+                   if a.paper_id not in done_paper_ids
+                   or a.paper.source == ExamPaper.SOURCE_NAESIN]
     return render(request, 'exam/home.html', {
         'is_teacher': False,
         'assignments': assignments,
@@ -362,6 +365,7 @@ def _resume_or_start(request, paper):
     """이미 응시한 세션이 있으면 그 세션으로 보냄(정답 보존).
     - 진행 중 세션 → 이어풀기
     - 제출/채점된 세션 → 결과(틀린문제 빨파 복습) 페이지
+    - 내신은 채점완료된 세션이 있어도 분할 응시를 위해 새 세션 생성
     - 없으면 새 세션 생성
     """
     session = (ExamSession.objects
@@ -371,6 +375,10 @@ def _resume_or_start(request, paper):
         session = ExamSession.objects.create(paper=paper, student=request.user)
         return redirect('exam:session', session_id=session.id)
     if session.status == ExamSession.STATUS_IN_PROGRESS:
+        return redirect('exam:session', session_id=session.id)
+    # 내신은 분할 응시 — 채점완료 후에도 '응시 시작'을 누르면 새 세션을 만들어 추가 입력.
+    if paper.source == ExamPaper.SOURCE_NAESIN:
+        session = ExamSession.objects.create(paper=paper, student=request.user)
         return redirect('exam:session', session_id=session.id)
     return redirect('exam:result', session_id=session.id)
 
