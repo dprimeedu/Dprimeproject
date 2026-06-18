@@ -514,6 +514,8 @@ def range_flashcard_view(request, range_test_id):
     } for w in words]
 
     is_teacher_view = is_teacher(request.user) and rt.student_id != request.user.id
+    # swipe-menu '오늘 별표만 TEST' 버튼이 ?star_only=1 로 들어오면 별표만 기본 ON.
+    star_only_param = request.GET.get('star_only') == '1'
     return render(request, 'vocab/flashcard.html', {
         'unit': rt.unit,
         'range_title': f'{rt.source_label} {rt.start_index}~{rt.end_index}',
@@ -521,8 +523,8 @@ def range_flashcard_view(request, range_test_id):
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
         'star_count': len(starred_ids),
-        # 번호 세트 = 플래시카드 시험: 카드섞기 + 별표만(별표 있을 때) 기본
-        'default_star_only': len(starred_ids) > 0,
+        # 번호 세트 = 플래시카드 시험: 카드섞기 + 별표만(별표 있을 때 / 명시 요청 시) 기본
+        'default_star_only': star_only_param or len(starred_ids) > 0,
         'default_shuffle': True,
         'star_enabled': True,
     })

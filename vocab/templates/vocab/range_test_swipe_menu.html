@@ -41,7 +41,7 @@
 
     <p class="text-center text-muted small mt-3 mb-3">시험 방식을 골라주세요 — 카드를 좌우로 넘기며 자기 평가</p>
 
-    <a href="{% url 'vocab:range_test_swipe' rt.id %}?src=all" class="option-card {% if not total_in_range %}disabled{% endif %}">
+    <a href="{% url 'vocab:range_flashcard' rt.id %}" class="option-card {% if not total_in_range %}disabled{% endif %}">
         <div class="top">
             <div class="icon-circle" style="background:#7c3aed;"><i class="fas fa-layer-group"></i></div>
             <div class="label">전체 단어 TEST</div>
@@ -50,7 +50,7 @@
         <div class="desc">범위({{ rt.start_index }}~{{ rt.end_index }}) 전체에서 출제</div>
     </a>
 
-    <a href="{% url 'vocab:range_test_swipe' rt.id %}?src=star" class="option-card {% if not star_count %}disabled{% endif %}">
+    <a href="{% url 'vocab:range_flashcard' rt.id %}?star_only=1" class="option-card {% if not star_count %}disabled{% endif %}">
         <div class="top">
             <div class="icon-circle" style="background:#f59e0b;"><i class="fas fa-star"></i></div>
             <div class="label">오늘 별표만 TEST</div>
