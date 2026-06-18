@@ -1,5 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
 <style>
 .r2-input{ width:46px; height:42px; text-align:center; font-size:1.3rem; font-weight:700;
     border:2px solid #cbd5e1; border-radius:8px; -moz-appearance:textfield; }
@@ -7,9 +10,12 @@
 .r2-input.filled{ border-color:#16a34a; background:#f0fdf4; color:#15803d; }
 .rb-card{ border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:14px; background:#fff; }
 .rb-head{ font-weight:700; color:#334155; margin-bottom:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.rb-passage{ white-space:pre-wrap; line-height:1.65; font-size:.96rem; }
-.rb-red{ color:#dc2626; font-weight:600; margin-top:8px; white-space:pre-wrap; }
-.rb-blue{ color:#2563eb; font-weight:600; margin-top:4px; white-space:pre-wrap; }
+.rb-passage{ white-space:pre-wrap; line-height:1.75; font-size:1.15rem;
+    font-family:'Lora', Georgia, 'Times New Roman', serif; letter-spacing:.1px; color:#1f2937; }
+.rb-red{ color:#dc2626; font-weight:600; margin-top:8px; white-space:pre-wrap; font-size:1.1rem;
+    font-family:'Lora', Georgia, serif; }
+.rb-blue{ color:#2563eb; font-weight:600; margin-top:4px; white-space:pre-wrap; font-size:1.1rem;
+    font-family:'Lora', Georgia, serif; }
 .rb-input-row{ display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:12px; border-top:1px dashed #e2e8f0; }
 .rb-ans-img{ max-width:100%; border:1px solid #e2e8f0; border-radius:8px; margin-top:8px; }
 .vocab-text{ cursor:help; }
