@@ -1762,17 +1762,19 @@ def lookup_mock_word(grade, year, month, number, word):
     return '', ''
 
 
-# 낱말카드 한 세트 용량(wordcard_new 기본과 동일) — 다 차면 자동저장 후 다음 세트
+# 낱말카드 한 세트 용량(wordcard_new 기본과 동일)
 WORDCARD_CAP = 20
+# 지문에서 찾은 단어가 누적되는 '자동수집' 세트 식별 마커(설명 필드로 구분)
+AUTO_SET_DESC = '지문에서 찾은 단어가 자동 저장됩니다.'
 
 
 def _save_found_word(student, word, meaning):
-    """지문에서 찾은 단어를 학생이 작업 중인 낱말카드(미저장 draft)에 채운다.
+    """지문에서 찾은 단어를 학생의 '자동수집' 낱말카드 한 세트에 계속 누적한다.
 
-    - 안 찬 draft 세트가 있으면 거기에 추가, 없으면 새 세트(번호 이어서) 생성.
-    - 세트가 꽉 차면(WORDCARD_CAP) 자동저장(published) → 다음 단어는 새 세트로.
+    - 학생당 자동수집 세트 1개에만 쌓는다(새 세트 안 만듦, 용량 제한 없음).
+    - 자동수집 세트가 아직 없을 때만 새로 1개 생성.
     - 이미 학생 낱말카드 어딘가에 있는 단어면 추가 안 함.
-    반환: {saved, dup, set_title, count, cap, set_full, new_set}
+    반환: {saved, dup, set_title, count, cap, new_set}
     """
     word = (word or '').strip()[:200]
     meaning = (meaning or '').strip()
@@ -1782,34 +1784,30 @@ def _save_found_word(student, word, meaning):
     if WordCard.objects.filter(card_set__student=student, word__iexact=word).exists():
         return {'saved': False, 'dup': True}
 
-    # 안 찬 draft 세트(작업 중인 단어장) 우선
+    # 자동수집 세트(지문에서 찾은 단어 누적용) — 항상 기존 세트에 누적
     s = (WordCardSet.objects
-         .filter(student=student, status=WordCardSet.STATUS_DRAFT)
-         .annotate(n=Count('cards')).filter(n__lt=WORDCARD_CAP)
+         .filter(student=student, description=AUTO_SET_DESC)
          .order_by('-updated_at').first())
     new_set = False
     if s is None:
         last = WordCardSet.objects.filter(student=student).order_by('-end_index').first()
         start = (last.end_index + 1) if last else 1
         s = WordCardSet.objects.create(
-            student=student, title=f'{start}-{start + WORDCARD_CAP - 1}',
-            start_index=start, end_index=start + WORDCARD_CAP - 1,
-            status=WordCardSet.STATUS_DRAFT,
-            description='지문에서 찾은 단어가 자동 저장됩니다.')
+            student=student, title='지문에서 찾은 단어',
+            start_index=start, end_index=start,
+            status=WordCardSet.STATUS_PUBLISHED,   # 교사/플래시카드에서 바로 보이도록
+            description=AUTO_SET_DESC)
         new_set = True
 
     nxt = (s.cards.aggregate(m=Max('index'))['m'] or 0) + 1
     WordCard.objects.create(card_set=s, index=nxt, word=word, meaning=meaning)
     count = s.cards.count()
-    full = count >= WORDCARD_CAP
-    # 번호 범위 20칸으로 정규화 + 다 차면 자동저장
-    if (s.end_index or 0) < s.start_index + WORDCARD_CAP - 1:
-        s.end_index = s.start_index + WORDCARD_CAP - 1
-    if full:
-        s.status = WordCardSet.STATUS_PUBLISHED
-    s.save()   # updated_at 갱신(최근 작업 세트 추적)
+    # 누적 세트라 용량 제한 없음 — 번호 범위만 실제 개수에 맞춰 갱신, 항상 published 유지
+    s.end_index = s.start_index + count - 1
+    s.status = WordCardSet.STATUS_PUBLISHED
+    s.save()   # updated_at 갱신
     return {'saved': True, 'set_title': s.title, 'count': count,
-            'cap': WORDCARD_CAP, 'set_full': full, 'new_set': new_set}
+            'cap': WORDCARD_CAP, 'set_full': False, 'new_set': new_set}
 
 
 @login_required
