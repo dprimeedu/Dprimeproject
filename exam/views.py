@@ -487,7 +487,12 @@ def result_view(request, session_id):
     answers = list(session.answers.all().order_by('number'))
     flagged = [a for a in answers if a.flagged]
     graded = [a for a in answers if not a.flagged]
-    wrong = [a for a in graded if not a.is_correct]          # 1차 오답(빈칸 포함)
+    # 내신은 분할 응시(여러 차수에 걸쳐 일부 문항만 입력)가 정상 패턴 →
+    # 학생이 입력하지 않은 문항은 오답 표시에서 제외(입력한 것 중 틀린 것만).
+    is_naesin = session.paper.source == ExamPaper.SOURCE_NAESIN
+    wrong = [a for a in graded
+             if not a.is_correct
+             and not (is_naesin and not (a.student_choice or '').strip())]
     round2_done = session.round >= 2
 
     # 교사에게는 지문/관련번호/해설도 붙여 보여준다(채점·리뷰용)
@@ -726,14 +731,18 @@ def wrong_summary(request, paper_id):
         .select_related('student').order_by('student__username')
     )
     sess_ids = [s.id for s in sessions]
+    # 내신은 분할 응시 — 미입력은 오답 집계에서 제외(입력한 것 중 틀린 것만).
+    is_naesin = paper.source == ExamPaper.SOURCE_NAESIN
     # 세션별 틀린/오류 번호 (1쿼리)
     wrong_map, flag_map = {}, {}
     for a in (ExamAnswer.objects.filter(session_id__in=sess_ids)
-              .values('session_id', 'number', 'is_correct', 'flagged')
+              .values('session_id', 'number', 'is_correct', 'flagged', 'student_choice')
               .order_by('number')):
         if a['flagged']:
             flag_map.setdefault(a['session_id'], []).append(a['number'])
         elif not a['is_correct']:
+            if is_naesin and not (a['student_choice'] or '').strip():
+                continue
             wrong_map.setdefault(a['session_id'], []).append(a['number'])
 
     freq = Counter()
