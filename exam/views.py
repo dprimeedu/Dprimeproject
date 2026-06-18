@@ -570,6 +570,29 @@ def result_view(request, session_id):
         a.rb_passage, a.rb_red, a.rb_blue = _split_redblue(q.text or '')
         a.rb_img = (q.explanation_image.url if (show_rb_answer and q.explanation_image) else '')
 
+    # 내신 — 1차 오답의 지문(ExamQuestion.text)을 wrong에 붙여 result 화면 2차 입력 시
+    # 학생이 지문을 보며 다시 풀 수 있게(모르는 단어 클릭→뜻 팝업·개인 단어장 자동 저장).
+    # mock_ctx는 학생 학년만 채워 단어 lookup 컨텍스트로 사용.
+    if session.paper.source == ExamPaper.SOURCE_NAESIN:
+        for a in wrong:
+            m = meta.get(a.number) or {}
+            txt = m.get('text') or ''
+            a.rb_passage = txt
+            a.rb_red = a.rb_blue = ''
+            a.rb_img = ''
+            a.rb_has = bool(txt)
+        if any(a.rb_has for a in wrong):
+            has_redblue = True
+        if mock_ctx is None:
+            sg_grade = 0
+            try:
+                gm = re.search(r'고(\d)', getattr(request.user.report_info, 'school_grade', '') or '')
+                if gm:
+                    sg_grade = int(gm.group(1))
+            except Exception:
+                pass
+            mock_ctx = {'grade': sg_grade, 'year': 0, 'month': 0}
+
     return render(request, 'exam/result.html', {
         'session': session,
         'answers': answers,
