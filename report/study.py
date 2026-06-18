@@ -185,11 +185,11 @@ def _summary_cell(sessions):
     chashi = []
     for s in sorted(sessions, key=lambda x: ((x.start_index or 0), x.started_at)):
         if s.status == SummarySession.STATUS_GRADED:
-            st, cls = f'{s.percent}점', 'graded'
+            st, cls = f'채점완료·{s.percent}점', 'graded'
         elif s.status == SummarySession.STATUS_SUBMITTED:
-            st, cls = '채점대기', 'pending'
+            st, cls = '제출·채점대기', 'pending'
         else:
-            st, cls = '진행중', 'progress'
+            st, cls = '시험중', 'progress'
         chashi.append({'no': s.chunk_no, 'range': s.range_label,
                        'status': st, 'cls': cls, 'sid': s.id})
     parts = [f'{len(sessions)}회']
@@ -257,35 +257,41 @@ def _exam_cell(sessions):
 
 
 def _grammar_cell(sessions):
-    """어법 — 제출 시 자동채점(submitted=검수대기, graded=검수완료). 차시별 칩(채점 링크용)."""
-    # 미제출(in_progress) 전부 제외 — 채점 창구 의도
-    sessions = [s for s in sessions if s.status != GrammarSession.STATUS_IN_PROGRESS]
-    # 같은 범위(start_index, end_index) 여러 시도 → 최신 1개만
-    by_range = {}
-    for s in sessions:
-        key = (s.unit_id, s.start_index, s.end_index)
-        cur = by_range.get(key)
-        if cur is None or s.started_at > cur.started_at:
-            by_range[key] = s
-    sessions = list(by_range.values())
+    """어법 — 모의고사식 다차시 흐름(1차→2차…, set_no로 이어짐).
+
+    세트(set_no)별 '현재 차시'의 상태를 칩으로:
+      시험중(in_progress) / 제출·채점대기(submitted) / 채점완료(graded).
+    """
     if not sessions:
         return {'did': False}
+    # 세트별로 가장 최근 차시 1개만 — 현재 진행 상태 표시(1차 채점→2차 시험중 등)
+    by_set = {}
+    for s in sessions:
+        key = (s.unit_id, s.set_no)
+        cur = by_set.get(key)
+        if cur is None or (s.round_no or 1, s.started_at) > (cur.round_no or 1, cur.started_at):
+            by_set[key] = s
+    sessions = list(by_set.values())
     graded = [s for s in sessions if s.status == GrammarSession.STATUS_GRADED]
     pending = [s for s in sessions if s.status == GrammarSession.STATUS_SUBMITTED]
-    pcts = [s.percent for s in sessions if s.total_count]
+    pcts = [s.percent for s in graded if s.total_count]
     best = max(pcts) if pcts else None
     detail = []
-    for s in sorted(sessions, key=lambda x: ((x.start_index or 0), x.started_at)):
+    for s in sorted(sessions, key=lambda x: ((x.set_no or 0), (x.round_no or 1))):
+        rd = s.round_no or 1
         if s.status == GrammarSession.STATUS_GRADED:
-            st, cls = f'{s.percent}점', 'graded'
+            st, cls, link = f'{rd}차 채점완료·{s.percent}점', 'graded', True
+        elif s.status == GrammarSession.STATUS_SUBMITTED:
+            st, cls, link = f'{rd}차 제출·채점대기', 'pending', True
         else:
-            st, cls = f'{s.percent}점·검수대기', 'pending'
-        detail.append({'range': s.range_label, 'status': st, 'cls': cls, 'sid': s.id})
-    parts = [f'{len(sessions)}회']
+            st, cls, link = f'{rd}차 시험중', 'progress', False
+        detail.append({'range': s.range_label, 'status': st, 'cls': cls,
+                       'sid': s.id, 'link': link})
+    parts = [f'{len(sessions)}세트']
     if best is not None:
         parts.append(f'최고 {best}점')
     if pending:
-        parts.append(f'검수대기 {len(pending)}')
+        parts.append(f'채점대기 {len(pending)}')
     return {'did': True, 'n': len(sessions), 'done': len(graded),
             'best': best, 'pending': len(pending), 'detail': detail,
             'label': ' · '.join(parts)}

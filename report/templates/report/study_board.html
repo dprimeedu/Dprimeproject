@@ -133,12 +133,18 @@
                             {% elif key == 'grammar' and row.cells.grammar.did %}
                                 <div class="d-flex flex-column gap-1" style="max-width:170px;margin:0 auto;">
                                 {% for c in row.cells.grammar.detail %}
+                                    {% if c.link %}
                                     <a href="{% url 'grammar:grade_detail' c.sid %}"
                                        class="badge text-decoration-none text-start border
                                        {% if c.cls == 'pending' %}bg-warning text-dark{% else %}bg-success-subtle text-success-emphasis{% endif %}"
                                        title="어법 검수">
                                         <span class="opacity-75">{{ c.range }}</span> · {{ c.status }}
                                     </a>
+                                    {% else %}
+                                    <span class="badge text-start border bg-light text-muted" title="응시 중">
+                                        <span class="opacity-75">{{ c.range }}</span> · {{ c.status }}
+                                    </span>
+                                    {% endif %}
                                 {% endfor %}
                                 </div>
                             {% elif key == 'exam' and row.cells.exam.did %}
