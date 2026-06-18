@@ -239,15 +239,10 @@ def _exam_cell(sessions):
     if pending:
         parts.append(f'채점대기 {len(pending)}')
     detail = []
-    need_release = 0   # 2차 제출했는데 빨파 정답 미공개 → 교사 공개 대기
     for s in sessions:
         if s.status == ExamSession.STATUS_GRADED:
             if s.round >= 2:
-                if not s.redblue_released:
-                    cls, status = 'pending', f'{s.percent}점·2차제출(공개대기)'
-                    need_release += 1
-                else:
-                    cls, status = 'r2', f'{s.percent}점·2차완료·공개'
+                cls, status = 'r2', f'{s.percent}점·2차완료'
             elif not s.teacher_checked:
                 cls, status = 'pending', f'{s.percent}점·1차제출'
             else:
@@ -255,12 +250,8 @@ def _exam_cell(sessions):
         else:
             cls, status = 'inprog', s.get_status_display()
         detail.append({'sid': s.id, 'title': s.title, 'status': status, 'cls': cls})
-    # 1차 미확인 + 2차 공개대기 = 교사가 손봐야 할 항목 수
-    todo = sum(1 for s in sessions
-               if s.status == ExamSession.STATUS_GRADED
-               and s.round < 2 and not s.teacher_checked) + need_release
     return {'did': True, 'n': len(sessions), 'done': len(graded),
-            'best': best, 'pending': len(pending) + todo,
+            'best': best, 'pending': len(pending),
             'label': ' · '.join(parts),
             'detail': detail}
 
