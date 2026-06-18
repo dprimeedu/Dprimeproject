@@ -61,8 +61,16 @@ class ExamPaper(models.Model):
     def __str__(self):
         return self.resolved_title
 
+    @staticmethod
+    def format_mock_title(year, grade, month):
+        """모의고사 표시 이름: '2014년 고3 9월 모의고사' 형식."""
+        return f'{year}년 {grade} {month}월 모의고사'.strip()
+
     @property
     def resolved_title(self):
+        # 모의고사는 제목이 자동생성이라 항상 새 형식으로 계산(기존 paper도 일괄 반영)
+        if self.source == self.SOURCE_MOCK and self.year and self.month:
+            return self.format_mock_title(self.year, self.grade, self.month)
         if self.title:
             return self.title
         if self.source == self.SOURCE_MOCK:

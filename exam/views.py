@@ -218,14 +218,14 @@ def available_mock_exams():
             .annotate(c=Count('색인'))
             .order_by('학년', '-연도', '강'))
     return [{'grade': r['학년'], 'year': r['연도'], 'month': r['강'], 'count': r['c'],
-             'title': f"{r['연도']} {r['학년']} {r['강']}".strip()} for r in rows]
+             'title': ExamPaper.format_mock_title(r['연도'], r['학년'], r['강'])} for r in rows]
 
 
 def get_or_create_mock_paper(grade, year, month):
     paper, _ = ExamPaper.objects.get_or_create(
         source=ExamPaper.SOURCE_MOCK, grade=grade, year=year, month=month,
         school_grade='', season='', category='',
-        defaults={'title': f'{year} {grade} {month}'.strip()},
+        defaults={'title': ExamPaper.format_mock_title(year, grade, month)},
     )
     return paper
 
@@ -290,11 +290,22 @@ def student_home(request):
         ExamAssignment.objects.filter(student=request.user)
         .select_related('paper').order_by('-assigned_at')
     )
-    my_sessions = list(
+    # 시험지당 가장 진행된(round↓·최근) 세션 1개만 — 과거 중복 세션 숨김
+    sessions_all = (
         ExamSession.objects.filter(student=request.user)
         .exclude(status=ExamSession.STATUS_IN_PROGRESS)
-        .select_related('paper').order_by('-submitted_at')[:30]
+        .select_related('paper').order_by('-round', '-submitted_at')
     )
+    my_sessions, done_paper_ids = [], set()
+    for s in sessions_all:
+        if s.paper_id in done_paper_ids:
+            continue
+        done_paper_ids.add(s.paper_id)
+        my_sessions.append(s)
+    my_sessions.sort(key=lambda s: s.submitted_at or s.started_at, reverse=True)
+    my_sessions = my_sessions[:30]
+    # 이미 응시 결과가 있는 시험지는 위 '응시 시작' 카드에서 숨김
+    assignments = [a for a in assignments if a.paper_id not in done_paper_ids]
     return render(request, 'exam/home.html', {
         'is_teacher': False,
         'assignments': assignments,
