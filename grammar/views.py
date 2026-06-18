@@ -23,19 +23,22 @@ from .models import (
 from .services import grade_from_school, auto_grade
 from member.auto_assign import auto_assign_unit
 
-# 한 세트 문항 수 (어법은 40개씩)
+# 한 세트 문항 수 (어법은 40개씩) + 시험범위가 넓어도 최대 노출 세트 수
 SET_SIZE = 40
+MAX_SETS = 2   # 보통 학생이 1~2세트만 보므로 범위가 넓어도 2세트만 출제
 
 
-def _student_sets(student_id, unit_id, idxs, size=SET_SIZE):
+def _student_sets(student_id, unit_id, idxs, size=SET_SIZE, max_sets=MAX_SETS):
     """시험범위 idxs를 학생별로 '고정 셔플' 후 size씩 분할(비겹침·골고루 랜덤).
-    같은 학생·단원·범위면 항상 같은 세트 → '세트1'은 늘 같은 40문항."""
+    같은 학생·단원·범위면 항상 같은 세트 → '세트1'은 늘 같은 40문항.
+    범위가 넓어 세트가 많아져도 최대 max_sets개만 노출(과다 세트 방지)."""
     if not idxs:
         return []
     shuffled = list(idxs)
     seed = f'{student_id}-{unit_id}-{idxs[0]}-{idxs[-1]}-{len(idxs)}'
     random.Random(seed).shuffle(shuffled)
-    return [shuffled[i:i + size] for i in range(0, len(shuffled), size)]
+    chunks = [shuffled[i:i + size] for i in range(0, len(shuffled), size)]
+    return chunks[:max_sets] if max_sets else chunks
 
 
 def _range_indices(all_idx, rt):
