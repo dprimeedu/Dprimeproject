@@ -58,17 +58,32 @@
     </div>
     {% if wrong %}
     <div class="card mb-2">
-        <div class="card-header bg-danger text-white"><i class="fas fa-times me-1"></i>1차 오답 {{ wrong|length }}개 — 번호: {{ wrong_numbers|join:", " }}</div>
+        {% if round2_done %}
+            {# 기본은 '진짜 오답'(2차에도 못 맞춘 것)만 — 토글로 1차 전체 보기 #}
+            <div class="card-header bg-danger text-white" data-r2-only>
+                <i class="fas fa-times me-1"></i>2차 오답 {{ wrong_second_count }}개 — 번호: {{ wrong_second_numbers|join:", " }}
+            </div>
+            <div class="card-header bg-danger text-white d-none" data-r1-all>
+                <i class="fas fa-times me-1"></i>1차 오답 {{ wrong|length }}개 — 번호: {{ wrong_numbers|join:", " }}
+            </div>
+        {% else %}
+            <div class="card-header bg-danger text-white"><i class="fas fa-times me-1"></i>1차 오답 {{ wrong|length }}개 — 번호: {{ wrong_numbers|join:", " }}</div>
+        {% endif %}
     </div>
     {% endif %}
     {% if wrong %}
+    {% if round2_done %}
+    <button id="toggleAllWrong" type="button" class="btn btn-sm btn-outline-secondary mb-2">
+        <i class="fas fa-eye me-1"></i>1차 오답 전체 보기
+    </button>
+    {% endif %}
     <div class="table-responsive mb-4">
         <p class="small text-muted mb-1"><i class="fas fa-circle-info me-1"></i>틀린 문항만 표시. <b>번호 클릭</b> → 해당 문항 빨파 정답으로 이동.</p>
         <table class="table table-sm align-middle text-center">
             <thead class="table-light"><tr><th>번호</th><th>유형</th>{% if has_ref %}<th>통합본</th>{% endif %}<th>1차답</th>{% if round2_done %}<th>2차답</th><th>2차</th>{% endif %}<th>정답</th></tr></thead>
             <tbody>
             {% for a in wrong %}
-                <tr class="table-danger">
+                <tr class="table-danger{% if round2_done and a.is_correct2 %} r2-ok d-none{% endif %}">
                     <td class="fw-semibold">
                         <a href="#rb-{{ a.number }}" class="rb-jump text-decoration-none" data-number="{{ a.number }}">{{ a.number }}</a>
                     </td>
@@ -95,7 +110,14 @@
     {# 교사: 학생 1차 오답의 빨파 정답(이미지) + 학생 공개 버튼 #}
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span class="fw-semibold"><i class="fas fa-highlighter me-1 text-danger"></i>빨파 정답 — 1차 오답 {{ wrong|length }}문제</span>
+            <span class="fw-semibold"><i class="fas fa-highlighter me-1 text-danger"></i>
+                {% if round2_done %}
+                    <span data-r2-only>빨파 정답 — 2차 오답 {{ wrong_second_count }}문제</span>
+                    <span data-r1-all class="d-none">빨파 정답 — 1차 오답 {{ wrong|length }}문제</span>
+                {% else %}
+                    빨파 정답 — 1차 오답 {{ wrong|length }}문제
+                {% endif %}
+            </span>
             {% if redblue_released %}
                 <span class="badge bg-info text-dark"><i class="fas fa-eye me-1"></i>학생 공개됨</span>
             {% else %}
@@ -105,7 +127,7 @@
         </div>
         <div class="list-group list-group-flush">
             {% for a in wrong %}
-            <div class="list-group-item" id="rb-{{ a.number }}">
+            <div class="list-group-item{% if round2_done and a.is_correct2 %} r2-ok d-none{% endif %}" id="rb-{{ a.number }}">
                 <div class="d-flex gap-2 align-items-center mb-1 flex-wrap">
                     <span class="badge bg-primary">{{ a.number }}번</span>
                     {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
@@ -268,6 +290,31 @@
         .then(d => { if (d.success && d.redirect_url) location.href = d.redirect_url;
                      else { alert('제출 실패'); btn.disabled = false; btn.innerHTML = '2차 제출'; } })
         .catch(() => { alert('네트워크 오류'); btn.disabled = false; btn.innerHTML = '2차 제출'; });
+    });
+})();
+</script>
+{% endif %}
+
+{% if is_teacher and round2_done and wrong %}
+<script>
+(function(){
+    var btn = document.getElementById('toggleAllWrong');
+    if (!btn) return;
+    var allMode = false;
+    btn.addEventListener('click', function(){
+        allMode = !allMode;
+        document.querySelectorAll('.r2-ok').forEach(function(el){
+            el.classList.toggle('d-none', !allMode);
+        });
+        document.querySelectorAll('[data-r2-only]').forEach(function(el){
+            el.classList.toggle('d-none', allMode);
+        });
+        document.querySelectorAll('[data-r1-all]').forEach(function(el){
+            el.classList.toggle('d-none', !allMode);
+        });
+        btn.innerHTML = allMode
+            ? '<i class="fas fa-eye-slash me-1"></i>2차 오답만 보기'
+            : '<i class="fas fa-eye me-1"></i>1차 오답 전체 보기';
     });
 })();
 </script>

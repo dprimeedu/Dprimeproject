@@ -551,6 +551,8 @@ def result_view(request, session_id):
         'wrong': wrong,
         'flagged': flagged,
         'wrong_numbers': [a.number for a in wrong],
+        'wrong_second_numbers': [a.number for a in wrong if not a.is_correct2],
+        'wrong_second_count': sum(1 for a in wrong if not a.is_correct2),
         'is_teacher': teacher,
         'round2_done': round2_done,
         'round2_total': len(wrong),
