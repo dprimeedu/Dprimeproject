@@ -33,7 +33,11 @@
 @keyframes rbFlash{ 0%{ background:#fde68a; } 100%{ background:transparent; } }
 </style>
 <div class="home-wrap" style="max-width:880px;">
+    {% if is_teacher %}
+    <a href="{% url 'report:study_board' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>학습 현황판</a>
+    {% else %}
     <a href="{% url 'exam:home' %}" class="back-link"><i class="fas fa-arrow-left me-1"></i>시험 목록</a>
+    {% endif %}
 
     <div class="section-header text-center">
         <h3><i class="fas fa-clipboard-check me-2"></i>{{ session.title }}</h3>
