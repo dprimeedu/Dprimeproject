@@ -362,7 +362,13 @@ def start_mock(request):
     if not paper.get_questions():
         messages.error(request, '이 회차에 문항이 없습니다.')
         return redirect('exam:home')
-    session = ExamSession.objects.create(paper=paper, student=request.user)
+    # 진행 중인 세션이 있으면 새로 만들지 말고 이어풀기(입력한 정답 보존)
+    session = (ExamSession.objects
+               .filter(paper=paper, student=request.user,
+                       status=ExamSession.STATUS_IN_PROGRESS)
+               .order_by('-id').first())
+    if session is None:
+        session = ExamSession.objects.create(paper=paper, student=request.user)
     return redirect('exam:session', session_id=session.id)
 
 
@@ -376,7 +382,13 @@ def start_paper(request, paper_id):
     if not paper.get_questions():
         messages.error(request, '이 시험에 문항이 없습니다.')
         return redirect('exam:home')
-    session = ExamSession.objects.create(paper=paper, student=request.user)
+    # 진행 중인 세션이 있으면 새로 만들지 말고 이어풀기(입력한 정답 보존)
+    session = (ExamSession.objects
+               .filter(paper=paper, student=request.user,
+                       status=ExamSession.STATUS_IN_PROGRESS)
+               .order_by('-id').first())
+    if session is None:
+        session = ExamSession.objects.create(paper=paper, student=request.user)
     return redirect('exam:session', session_id=session.id)
 
 
