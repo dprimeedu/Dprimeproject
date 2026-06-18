@@ -1769,12 +1769,13 @@ AUTO_SET_DESC = '지문에서 찾은 단어가 자동 저장됩니다.'
 
 
 def _save_found_word(student, word, meaning):
-    """지문에서 찾은 단어를 학생의 '자동수집' 낱말카드 한 세트에 계속 누적한다.
+    """지문에서 찾은 단어를 학생의 자동수집 낱말카드에 채운다(20개 단위 1-20·21-40…).
 
-    - 학생당 자동수집 세트 1개에만 쌓는다(새 세트 안 만듦, 용량 제한 없음).
-    - 자동수집 세트가 아직 없을 때만 새로 1개 생성.
+    - 자동수집 세트 중 마지막(번호 가장 큰) 세트가 안 찼으면 거기에 누적.
+    - 꽉 차면(WORDCARD_CAP) 다음 20칸 세트(21-40, 41-60…)를 이어서 생성.
+    - 번호는 '자동수집 세트'들만 기준으로 매겨 1-20, 21-40 으로 깔끔하게 이어짐.
     - 이미 학생 낱말카드 어딘가에 있는 단어면 추가 안 함.
-    반환: {saved, dup, set_title, count, cap, new_set}
+    반환: {saved, dup, set_title, count, cap, set_full, new_set}
     """
     word = (word or '').strip()[:200]
     meaning = (meaning or '').strip()
@@ -1784,17 +1785,17 @@ def _save_found_word(student, word, meaning):
     if WordCard.objects.filter(card_set__student=student, word__iexact=word).exists():
         return {'saved': False, 'dup': True}
 
-    # 자동수집 세트(지문에서 찾은 단어 누적용) — 항상 기존 세트에 누적
+    # 자동수집 세트 중 마지막(번호 가장 큰) — 안 찼으면 거기에, 찼으면 다음 20칸 세트로
     s = (WordCardSet.objects
          .filter(student=student, description=AUTO_SET_DESC)
-         .order_by('-updated_at').first())
+         .annotate(n=Count('cards'))
+         .order_by('-start_index').first())
     new_set = False
-    if s is None:
-        last = WordCardSet.objects.filter(student=student).order_by('-end_index').first()
-        start = (last.end_index + 1) if last else 1
+    if s is None or s.n >= WORDCARD_CAP:
+        start = (s.end_index + 1) if s else 1
         s = WordCardSet.objects.create(
-            student=student, title='지문에서 찾은 단어',
-            start_index=start, end_index=start,
+            student=student, title=f'{start}-{start + WORDCARD_CAP - 1}',
+            start_index=start, end_index=start + WORDCARD_CAP - 1,
             status=WordCardSet.STATUS_PUBLISHED,   # 교사/플래시카드에서 바로 보이도록
             description=AUTO_SET_DESC)
         new_set = True
@@ -1802,12 +1803,12 @@ def _save_found_word(student, word, meaning):
     nxt = (s.cards.aggregate(m=Max('index'))['m'] or 0) + 1
     WordCard.objects.create(card_set=s, index=nxt, word=word, meaning=meaning)
     count = s.cards.count()
-    # 누적 세트라 용량 제한 없음 — 번호 범위만 실제 개수에 맞춰 갱신, 항상 published 유지
-    s.end_index = s.start_index + count - 1
-    s.status = WordCardSet.STATUS_PUBLISHED
+    full = count >= WORDCARD_CAP
+    if s.status != WordCardSet.STATUS_PUBLISHED:
+        s.status = WordCardSet.STATUS_PUBLISHED
     s.save()   # updated_at 갱신
     return {'saved': True, 'set_title': s.title, 'count': count,
-            'cap': WORDCARD_CAP, 'set_full': False, 'new_set': new_set}
+            'cap': WORDCARD_CAP, 'set_full': full, 'new_set': new_set}
 
 
 @login_required

@@ -355,7 +355,8 @@
                     let tag = '';
                     if (d.dup) tag = '<div class="vp-s dim">이미 내 단어장에 있어요</div>';
                     else if (d.saved) {
-                        tag = '<div class="vp-s"><i class="fas fa-bookmark me-1"></i>내 단어장 ' + esc(d.set_title||'') + '에 저장 (총 ' + d.count + '개)</div>';
+                        tag = '<div class="vp-s"><i class="fas fa-bookmark me-1"></i>내 단어장 ' + esc(d.set_title||'') + '에 저장 (' + d.count + '/' + d.cap + ')</div>';
+                        if (d.set_full) tag += '<div class="vp-s">단어장이 꽉 차 다음 단어장으로 이어집니다</div>';
                     }
                     show(px, py, '<div class="vp-w">' + esc(d.word || word) + '</div><div class="vp-m">' + esc(d.meaning) + '</div>' + tag);
                 } else {
