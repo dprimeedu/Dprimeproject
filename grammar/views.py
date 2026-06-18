@@ -276,9 +276,16 @@ def range_import_api(request):
         if not student:
             skipped.append(f'{name or login_id}: 학생 없음')
             continue
-        unit = GrammarUnit.objects.filter(school=school, is_active=True).order_by('-created_at').first()
+        # source(=unit명, exam) 가 오면 그 단원에 정확히 매칭. 학교에 단원이 여러 개
+        # (내신어법/2단계/3단계)일 때 엉뚱한 최신 단원에 붙는 것 방지.
+        unit = None
+        if source and source != '어법TEST':
+            unit = (GrammarUnit.objects.filter(school=school, exam=source, is_active=True)
+                    .order_by('-created_at').first())
         if not unit:
-            skipped.append(f'{name}: 어법 단원 없음(학교={school})')
+            unit = GrammarUnit.objects.filter(school=school, is_active=True).order_by('-created_at').first()
+        if not unit:
+            skipped.append(f'{name}: 어법 단원 없음(학교={school}, source={source})')
             continue
         GrammarAssignment.objects.get_or_create(student=student, unit=unit)
         GrammarRangeTest.objects.filter(student=student, source_label=source, is_active=True).update(is_active=False)
