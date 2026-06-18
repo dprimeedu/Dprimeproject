@@ -277,6 +277,7 @@ def _grammar_cell(sessions):
     pcts = [s.percent for s in graded if s.total_count]
     best = max(pcts) if pcts else None
     detail = []
+    seen = set()
     for s in sorted(sessions, key=lambda x: ((x.set_no or 0), (x.round_no or 1))):
         rd = s.round_no or 1
         if s.status == GrammarSession.STATUS_GRADED:
@@ -285,6 +286,12 @@ def _grammar_cell(sessions):
             st, cls, link = f'{rd}차 제출·채점대기', 'pending', True
         else:
             st, cls, link = f'{rd}차 시험중', 'progress', False
+        # 화면 라벨이 동일한 칩은 1개만 — 서로 다른 단원이라도 (세트번호·차시·상태)가
+        # 같으면 사용자에겐 같은 칩으로 보이므로 중복 노출 방지.
+        key = (s.range_label, st)
+        if key in seen:
+            continue
+        seen.add(key)
         detail.append({'range': s.range_label, 'status': st, 'cls': cls,
                        'sid': s.id, 'link': link})
     parts = [f'{len(sessions)}세트']
