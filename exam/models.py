@@ -107,9 +107,10 @@ class ExamPaper(models.Model):
         if not ym:
             return None
         year, term = ym.group(1), ym.group(2)
+        # '기말'/'중간' 만 들어오면 '기말고사'/'중간고사'로 정규화 — 폴더/파일명이 '고사' 포함.
+        if not term.endswith('고사'):
+            term += '고사'
         term_folder = f'{year}년 {term}'
-        if not term_folder.endswith('고사'):
-            term_folder += '고사'
 
         pm = re.search(r'part\s*(\d+)', (self.category or '').lower())
         if not pm:
