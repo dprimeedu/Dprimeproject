@@ -346,6 +346,23 @@ def mock_redblue(request):
 # 응시
 # ─────────────────────────────────────────────
 
+def _resume_or_start(request, paper):
+    """이미 응시한 세션이 있으면 그 세션으로 보냄(정답 보존).
+    - 진행 중 세션 → 이어풀기
+    - 제출/채점된 세션 → 결과(틀린문제 빨파 복습) 페이지
+    - 없으면 새 세션 생성
+    """
+    session = (ExamSession.objects
+               .filter(paper=paper, student=request.user)
+               .order_by('-id').first())
+    if session is None:
+        session = ExamSession.objects.create(paper=paper, student=request.user)
+        return redirect('exam:session', session_id=session.id)
+    if session.status == ExamSession.STATUS_IN_PROGRESS:
+        return redirect('exam:session', session_id=session.id)
+    return redirect('exam:result', session_id=session.id)
+
+
 @login_required
 def start_mock(request):
     """모의고사 응시 시작 — GET: grade, year, month."""
@@ -362,14 +379,7 @@ def start_mock(request):
     if not paper.get_questions():
         messages.error(request, '이 회차에 문항이 없습니다.')
         return redirect('exam:home')
-    # 진행 중인 세션이 있으면 새로 만들지 말고 이어풀기(입력한 정답 보존)
-    session = (ExamSession.objects
-               .filter(paper=paper, student=request.user,
-                       status=ExamSession.STATUS_IN_PROGRESS)
-               .order_by('-id').first())
-    if session is None:
-        session = ExamSession.objects.create(paper=paper, student=request.user)
-    return redirect('exam:session', session_id=session.id)
+    return _resume_or_start(request, paper)
 
 
 @login_required
@@ -382,14 +392,7 @@ def start_paper(request, paper_id):
     if not paper.get_questions():
         messages.error(request, '이 시험에 문항이 없습니다.')
         return redirect('exam:home')
-    # 진행 중인 세션이 있으면 새로 만들지 말고 이어풀기(입력한 정답 보존)
-    session = (ExamSession.objects
-               .filter(paper=paper, student=request.user,
-                       status=ExamSession.STATUS_IN_PROGRESS)
-               .order_by('-id').first())
-    if session is None:
-        session = ExamSession.objects.create(paper=paper, student=request.user)
-    return redirect('exam:session', session_id=session.id)
+    return _resume_or_start(request, paper)
 
 
 @login_required
