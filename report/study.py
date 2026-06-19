@@ -240,16 +240,26 @@ def _exam_cell(sessions):
         parts.append(f'채점대기 {len(pending)}')
     detail = []
     for s in sessions:
+        src = s.paper.source
+        is_mocklike = src in ('mock', 'mock_type')
         if s.status == ExamSession.STATUS_GRADED:
-            if s.round >= 2:
-                cls, status = 'r2', f'{s.percent}점·2차완료'
+            if s.round >= 2 and (s.redblue_released or not is_mocklike):
+                cls, status = 'r2', f'{s.percent}점·완료'
+            elif is_mocklike and not s.redblue_released:
+                # 모의/유형: 빨파 미공개 → 선생님 [공개] 대기
+                cls, status = 'release', f'{s.percent}점·공개대기'
             elif not s.teacher_checked:
-                cls, status = 'pending', f'{s.percent}점·1차제출'
+                cls, status = 'pending', f'{s.percent}점·미확인'
             else:
                 cls, status = 'graded', f'{s.percent}점'
         else:
             cls, status = 'inprog', s.get_status_display()
-        detail.append({'sid': s.id, 'title': s.title, 'status': status, 'cls': cls})
+        detail.append({
+            'sid': s.id, 'title': s.title, 'status': status, 'cls': cls,
+            'source': src,
+            'can_release': is_mocklike and not s.redblue_released
+                           and s.status == ExamSession.STATUS_GRADED,
+        })
     return {'did': True, 'n': len(sessions), 'done': len(graded),
             'best': best, 'pending': len(pending),
             'label': ' · '.join(parts),
@@ -376,13 +386,25 @@ def board(date):
     """{student_id: {'vocab':cell, 'summary':cell, 'writing':cell, 'exam':cell, 'active':bool}}
 
     그날 1과목이라도 푼 학생만 키로 들어감. 나머지는 뷰에서 '미접속' 처리.
+    단, 시험은 '선생님 처리 대기'(모의/유형 빨파 미공개 · 내신 미확인)는 날짜 무관 표시.
     """
+    from django.db.models import Q
     v = _bucket(VocabSession.objects.filter(started_at__date=date).select_related('unit', 'range_test'))
     su = _bucket(SummarySession.objects.filter(started_at__date=date)
                  .select_related('unit').annotate(_ans=Count('blank_answers')))
     w = _bucket(WritingSession.objects.filter(started_at__date=date).select_related('unit'))
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
     g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
+
+    # 시험 '선생님 처리 대기' — 날짜 무관, 학생별 모음. 시험란에 같이 표시(별도 박스 안 만든다).
+    #   모의/유형: 채점완료 + 빨파 미공개  /  내신: 채점완료 + 미확인
+    e_pending = defaultdict(list)
+    for s in (ExamSession.objects
+              .filter(status=ExamSession.STATUS_GRADED)
+              .filter(Q(paper__source__in=['mock', 'mock_type'], redblue_released=False)
+                      | Q(paper__source='naesin', teacher_checked=False))
+              .select_related('paper')):
+        e_pending[s.student_id].append(s)
 
     # 오늘 볼 단어 TEST(VocabRangeTest) — 학생관리자료 '내신단어TEST' 지정만(퀴즈렛 자동청크 제외).
     # vocab '오늘 단어 TEST' 페이지와 동일 기준. 접속 안 한 학생도 표시 위해 별도 집계.
@@ -396,14 +418,18 @@ def board(date):
         srt[rt.student_id].append(rt)
 
     out = {}
-    for sid in set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt) | set(srt):
+    for sid in set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt) | set(srt) | set(e_pending):
         vs = v.get(sid, [])
+        # 시험: 그날 세션 + 처리 대기 세션(중복 session.id 제거) 합쳐 표시
+        e_today = e.get(sid, [])
+        seen_eids = {s.id for s in e_today}
+        e_combined = e_today + [s for s in e_pending.get(sid, []) if s.id not in seen_eids]
         cells = {
             'vocab': _vocab_cell(vs),
             'summary': _summary_cell(su.get(sid, [])),
             'writing': _writing_cell(w.get(sid, [])),
             'grammar': _grammar_cell(g.get(sid, [])),
-            'exam': _exam_cell(e.get(sid, [])),
+            'exam': _exam_cell(e_combined),
         }
         # 단어 '오늘 볼 TEST' 범위/합격 — 정식시험(MODE_TEST) 완료 세션 기준
         cells['vocab']['tests'] = _vocab_today_tests(

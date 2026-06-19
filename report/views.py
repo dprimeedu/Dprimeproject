@@ -206,25 +206,9 @@ def _parse_class_hour(daytime_str, target_day):
 def study_board(request):
     """전체 학생 현황판 — 그날 단어/요약문/영작/시험을 한 표에.
     정렬: 오늘 수업 학생 먼저(요일+시간 순), 그 외는 학교학년+이름."""
-    from exam.models import ExamSession
     date = _parse_date(request.GET.get('date'))
     users, infos = _roster()
     data = study.board(date)
-
-    # 선생님 처리 대기 — 1차 채점 끝났지만 아직 '빨파 공개' 안 된 세션(날짜 무관).
-    # 여기서 바로 [공개] 누르면 학생 홈에 다음 회차 자동 노출(release_redblue 부수효과).
-    pending_release_qs = (
-        ExamSession.objects
-        .filter(status=ExamSession.STATUS_GRADED, redblue_released=False)
-        .select_related('student', 'paper').order_by('-submitted_at')[:30]
-    )
-    pending_release = [{
-        'sid': s.id, 'student': s.student.username, 'student_id': s.student_id,
-        'title': s.title, 'percent': s.percent,
-        'score': f'{s.correct_count}/{s.total_questions}',
-        'round2': s.round >= 2, 'submitted_at': s.submitted_at,
-        'is_mock': s.paper.source == 'mock',
-    } for s in pending_release_qs]
 
     target_day = _WD[date.weekday()]
     activity_now = study.current_activity_map()
@@ -275,7 +259,6 @@ def study_board(request):
         'subjects': study.SUBJECT_META,
         'active_count': active_count,
         'total_count': len(users),
-        'pending_release': pending_release,
     })
 
 

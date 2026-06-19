@@ -55,48 +55,7 @@
     </div>
     {% endif %}
 
-    {% if pending_release %}
-    <div class="card border-warning mb-3" id="redblue-pending-box">
-        <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center">
-            <span><i class="fas fa-unlock me-1 text-warning-emphasis"></i>
-                <strong>빨파 공개 대기</strong>
-                <span class="badge bg-warning text-dark ms-1">{{ pending_release|length }}</span>
-                <span class="small text-muted ms-2">— 1차 채점 끝났지만 학생이 빨파정답을 아직 못 보는 시험. [공개]를 누르면 학생 홈에 다음 회차 자동 노출됨.</span>
-            </span>
-        </div>
-        <div class="card-body p-2">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr><th>학생</th><th>시험</th><th>1차 점수</th><th>제출</th><th class="text-end">공개</th></tr>
-                    </thead>
-                    <tbody>
-                    {% for p in pending_release %}
-                        <tr data-pending-row="{{ p.sid }}">
-                            <td><strong>{{ p.student }}</strong></td>
-                            <td>
-                                <a href="{% url 'exam:result' p.sid %}" class="text-decoration-none">
-                                    {{ p.title }}
-                                </a>
-                                {% if p.round2 %}<span class="badge bg-success ms-1">2차완료</span>{% endif %}
-                                {% if p.is_mock %}<span class="badge bg-info-subtle text-info-emphasis ms-1" title="공개 시 같은 학년 다음 회차 자동 배정">다음 회차 자동</span>{% endif %}
-                            </td>
-                            <td>{{ p.score }} · {{ p.percent }}점</td>
-                            <td class="small text-muted">{{ p.submitted_at|date:"m-d H:i" }}</td>
-                            <td class="text-end">
-                                <button type="button" class="btn btn-sm btn-warning text-dark"
-                                        data-release-btn="{{ p.sid }}">
-                                    <i class="fas fa-unlock me-1"></i>공개
-                                </button>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    {% endif %}
+    <form id="csrf-form" style="display:none">{% csrf_token %}</form>
 
     <div class="table-responsive">
         <table class="table table-sm align-middle table-hover">
@@ -191,14 +150,23 @@
                                 {% endfor %}
                                 </div>
                             {% elif key == 'exam' and row.cells.exam.did %}
-                                <div class="d-flex flex-column gap-1" style="max-width:180px;margin:0 auto;">
+                                <div class="d-flex flex-column gap-1" style="max-width:200px;margin:0 auto;">
                                 {% for s in row.cells.exam.detail %}
+                                    <div class="d-flex gap-1 align-items-stretch">
                                     <a href="{% url 'exam:result' s.sid %}"
-                                       class="badge text-decoration-none text-start border
-                                       {% if s.cls == 'pending' %}bg-warning text-dark{% elif s.cls == 'r2' %}bg-success-subtle text-success-emphasis{% elif s.cls == 'graded' %}bg-info-subtle text-info-emphasis{% else %}bg-light text-muted{% endif %}"
+                                       class="badge text-decoration-none text-start border flex-grow-1
+                                       {% if s.cls == 'release' %}bg-warning text-dark{% elif s.cls == 'pending' %}bg-warning-subtle text-warning-emphasis{% elif s.cls == 'r2' %}bg-success-subtle text-success-emphasis{% elif s.cls == 'graded' %}bg-info-subtle text-info-emphasis{% else %}bg-light text-muted{% endif %}"
                                        title="{{ s.title }} — 클릭하면 채점/결과 페이지로 이동">
-                                        <span class="opacity-75">{{ s.title|truncatechars:20 }}</span> · {{ s.status }}
+                                        <span class="opacity-75">{{ s.title|truncatechars:18 }}</span> · {{ s.status }}
                                     </a>
+                                    {% if s.can_release %}
+                                    <button type="button" class="btn btn-sm btn-warning text-dark py-0 px-2"
+                                            data-release-btn="{{ s.sid }}"
+                                            title="빨파 공개 + 같은 학년 다음 회차 자동 배정">
+                                        <i class="fas fa-unlock"></i>
+                                    </button>
+                                    {% endif %}
+                                    </div>
                                 {% endfor %}
                                 </div>
                             {% else %}
@@ -249,47 +217,57 @@
 
 (function(){
     function csrf(){
+        var el = document.querySelector('#csrf-form input[name=csrfmiddlewaretoken]');
+        if (el) return el.value;
         var m = document.cookie.match(/csrftoken=([^;]+)/);
         return m ? m[1] : '';
     }
-    document.querySelectorAll('[data-release-btn]').forEach(function(btn){
-        btn.addEventListener('click', function(){
-            var sid = btn.getAttribute('data-release-btn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-            fetch('/training/exam/api/release-redblue/' + sid + '/', {
-                method:'POST', credentials:'same-origin',
-                headers:{'X-CSRFToken': csrf(), 'X-Requested-With':'XMLHttpRequest'},
-            }).then(function(r){ return r.json(); }).then(function(j){
-                if (!j || !j.success){ throw new Error('공개 실패'); }
-                var row = document.querySelector('[data-pending-row="' + sid + '"]');
-                if (row){
-                    row.style.transition = 'opacity .35s';
-                    row.style.opacity = '0';
-                    setTimeout(function(){
-                        row.remove();
-                        var rest = document.querySelectorAll('[data-pending-row]').length;
-                        if (rest === 0){
-                            var box = document.getElementById('redblue-pending-box');
-                            if (box) box.remove();
-                        }
-                    }, 350);
-                }
-                if (j.next_title){
-                    var t = document.createElement('div');
-                    t.className = 'toast align-items-center text-bg-success border-0 show position-fixed bottom-0 end-0 m-3';
-                    t.style.zIndex = '1080';
-                    t.innerHTML = '<div class="d-flex"><div class="toast-body">'
-                        + '<i class="fas fa-check me-1"></i>공개 완료 · 다음 회차 자동 배정: <strong>'
-                        + j.next_title + '</strong></div></div>';
-                    document.body.appendChild(t);
-                    setTimeout(function(){ t.remove(); }, 4000);
-                }
-            }).catch(function(e){
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-unlock me-1"></i>공개';
-                alert('공개 실패: ' + e.message);
-            });
+    function toast(msg, kind){
+        var t = document.createElement('div');
+        t.className = 'toast align-items-center text-bg-' + (kind || 'success')
+            + ' border-0 show position-fixed bottom-0 end-0 m-3';
+        t.style.zIndex = '1080';
+        t.innerHTML = '<div class="d-flex"><div class="toast-body">' + msg + '</div></div>';
+        document.body.appendChild(t);
+        setTimeout(function(){ t.remove(); }, 4000);
+    }
+    document.addEventListener('click', function(ev){
+        var btn = ev.target.closest('[data-release-btn]');
+        if (!btn) return;
+        ev.preventDefault();
+        var sid = btn.getAttribute('data-release-btn');
+        btn.disabled = true;
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        fetch('/training/exam/api/release-redblue/' + sid + '/', {
+            method:'POST', credentials:'same-origin',
+            headers:{'X-CSRFToken': csrf(), 'X-Requested-With':'XMLHttpRequest'},
+        }).then(function(r){
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            var ct = r.headers.get('content-type') || '';
+            if (ct.indexOf('json') < 0) throw new Error('비JSON 응답(' + r.status + ')');
+            return r.json();
+        }).then(function(j){
+            if (!j || !j.success){ throw new Error(j && j.error || '실패'); }
+            // 시험 cell 안의 해당 badge 색상/상태/버튼 갱신
+            var wrap = btn.closest('.d-flex.gap-1');
+            var badge = wrap && wrap.querySelector('a.badge');
+            if (badge){
+                badge.classList.remove('bg-warning', 'text-dark');
+                badge.classList.add('bg-info-subtle', 'text-info-emphasis');
+                var sp = badge.querySelector('span.opacity-75');
+                badge.innerHTML = '';
+                if (sp) badge.appendChild(sp);
+                badge.appendChild(document.createTextNode(' · 공개완료'));
+            }
+            btn.remove();
+            toast('<i class="fas fa-check me-1"></i>공개 완료'
+                + (j.next_title ? ' · 다음 회차 자동 배정: <strong>' + j.next_title + '</strong>' : ''),
+                'success');
+        }).catch(function(e){
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            toast('공개 실패: ' + e.message, 'danger');
         });
     });
 })();
