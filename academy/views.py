@@ -94,15 +94,17 @@ def academy_list(request):
     years = sorted(KeyTable.objects.values_list('year', flat=True).distinct(), key=_int, reverse=True)
     months = sorted(KeyTable.objects.values_list('month', flat=True).distinct(), key=_int)
 
-    # 변형 유형 — QuestionData.유형 distinct(대괄호 제거). 로컬 부교재 출력의 순서를 따른다.
-    raw_types = set(
-        (t or '').strip().strip('[]')
-        for t in QuestionData.objects.values_list('유형', flat=True).distinct()
-    )
-    raw_types.discard('')
-    # 로컬 프로그램 순서 우선 정렬, 나머지는 뒤로
-    PREFERRED = ['순서', '도표', '그림', '문장넣기', '무관한문장', '연결어', '연결사',
-                 '일치불일치', '심경분위기', '지칭대상', '지칭추론', '주제', '주장',
+    # 변형 유형 — QuestionData.유형 distinct(대괄호 제거).
+    # 연결사 → 연결어, 지칭추론 → 지칭대상 동의어 통일.
+    TYPE_ALIAS = {'연결사': '연결어', '지칭추론': '지칭대상'}
+    raw_types = set()
+    for t in QuestionData.objects.values_list('유형', flat=True).distinct():
+        n = (t or '').strip().strip('[]')
+        if not n:
+            continue
+        raw_types.add(TYPE_ALIAS.get(n, n))
+    PREFERRED = ['순서', '도표', '그림', '문장넣기', '무관한문장', '연결어',
+                 '일치불일치', '심경분위기', '지칭대상', '주제', '주장',
                  '제목', '요지', '목적', '밑줄의미', '어휘', '요약문완성', '빈칸', '어법',
                  '장문2', '장문3']
     variant_types = [t for t in PREFERRED if t in raw_types]
@@ -498,22 +500,32 @@ def download_pdf(request):
 
     qs = ModifiedQuestions_Data.objects.filter(pk_number__in=pk_ids)
     if selected_types:
-        qs = qs.filter(qtype__in=[f'[{t.strip().strip("[]")}]' for t in selected_types])
+        qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
     rows = list(qs.values('index', 'question', 'sentence', 'option', 'answer',
                           'qtype', 'pk_number').order_by('pk_number', 'index'))
 
     # 폰트 등록 (한글)
-    font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'fonts', 'NanumSquareRoundR.ttf')
+    from reportlab.lib import colors
+    font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                             'static', 'fonts', 'NanumSquareRoundR.ttf')
     try:
         pdfmetrics.registerFont(TTFont('NanumSquareRound', font_path))
+        FONT = 'NanumSquareRound'
     except Exception:
-        pass
+        FONT = 'Helvetica'   # 등록 실패 시 fallback (한글 깨질 수 있음)
 
-    base_style = {'fontName': 'NanumSquareRound', 'fontSize': 11, 'leading': 16, 'alignment': TA_LEFT}
-    style_title = ParagraphStyle('title', **base_style, textColor='#1f2937', fontSize=15, leading=22, spaceAfter=10)
-    style_head  = ParagraphStyle('head',  **base_style, textColor='#6d28d9', fontSize=12, leading=18, spaceBefore=6, spaceAfter=4)
-    style_body  = ParagraphStyle('body',  **base_style, textColor='#1f2937', spaceAfter=4)
-    style_ans   = ParagraphStyle('ans',   **base_style, textColor='#16a34a', fontSize=11, leading=14, spaceBefore=4)
+    style_title = ParagraphStyle('title', fontName=FONT, fontSize=15, leading=22,
+                                  alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                  spaceAfter=10)
+    style_head  = ParagraphStyle('head',  fontName=FONT, fontSize=12, leading=18,
+                                  alignment=TA_LEFT, textColor=colors.HexColor('#6d28d9'),
+                                  spaceBefore=6, spaceAfter=4)
+    style_body  = ParagraphStyle('body',  fontName=FONT, fontSize=11, leading=16,
+                                  alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                  spaceAfter=4)
+    style_ans   = ParagraphStyle('ans',   fontName=FONT, fontSize=11, leading=14,
+                                  alignment=TA_LEFT, textColor=colors.HexColor('#16a34a'),
+                                  spaceBefore=4)
 
     def _esc(s):
         # Paragraph 가 마크업으로 해석하는 < > & 이스케이프, uFFF0 마커 제거, 줄바꿈 → <br/>
@@ -561,6 +573,27 @@ def download_pdf(request):
         f"attachment; filename=\"exam.pdf\"; filename*=UTF-8''{encoded}"
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# 변형 유형 동의어 — 사용자 화면(연결어/지칭대상) 입력을 DB 의 두 가지 형태로 모두 매핑.
+# DB 에 `[연결사]` `[지칭추론]` 같은 옛 표기가 남아있을 수 있어 둘 다 필터에 포함.
+_TYPE_SYNONYMS = {
+    '연결어': ['연결어', '연결사'],
+    '지칭대상': ['지칭대상', '지칭추론'],
+}
+
+
+def _expand_type_filter(selected_types):
+    """'순서,연결어' 같은 입력 → ['[순서]', '[연결어]', '[연결사]'] 처럼 대괄호 포함 동의어 확장."""
+    out = set()
+    for t in selected_types:
+        n = (t or '').strip().strip('[]')
+        if not n:
+            continue
+        for v in _TYPE_SYNONYMS.get(n, [n]):
+            out.add(f'[{v}]')
+    return list(out)
 
 
 # ---------------------------------------------------------------------------
@@ -619,7 +652,7 @@ def download_modified_hwpx(request):
     qs = (ModifiedQuestions_Data.objects
           .filter(pk_number__in=pk_numbers))
     if selected_types:
-        qs = qs.filter(qtype__in=[f'[{t.strip().strip("[]")}]' for t in selected_types])
+        qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
     rows = qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number').order_by('pk_number', 'index')
 
     questions = []
@@ -637,6 +670,16 @@ def download_modified_hwpx(request):
     grade_str = ', '.join(selected_grade)
     month_str = ', '.join(selected_month)
     header_text = f"{year_str}년도 {grade_str} {month_str}월 {selected_category}"
+
+    # 빈 결과면 안내 한 문항만 — HWPX 가 완전 비어 보이지 않게.
+    if not questions:
+        questions = [{
+            "date": "",
+            "prompt": "선택한 회차/번호에 변형문제 데이터가 없습니다.",
+            "passage": "다른 회차를 선택하거나 관리자에게 문의해 주세요.",
+            "choices": [],
+            "answer": "",
+        }]
 
     data = build_hwpx_bytes(TEMPLATE_PATH, header_text, questions)
 
