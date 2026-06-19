@@ -406,6 +406,16 @@ def board(date):
               .select_related('paper')):
         e_pending[s.student_id].append(s)
 
+    # 응시 시작 전 배정(=자동 배정된 다음 회차/세트 포함) — 정답입력 cell에 '미응시' 배지.
+    # 학생 (paper 단위)별로 한 번이라도 세션이 있었으면 제외.
+    sessioned_papers = defaultdict(set)
+    for r in ExamSession.objects.values_list('student_id', 'paper_id'):
+        sessioned_papers[r[0]].add(r[1])
+    assigned_only = defaultdict(list)
+    for a in ExamAssignment.objects.select_related('paper'):
+        if a.paper_id not in sessioned_papers.get(a.student_id, set()):
+            assigned_only[a.student_id].append(a)
+
     # 오늘 볼 단어 TEST(VocabRangeTest) — 학생관리자료 '내신단어TEST' 지정만(퀴즈렛 자동청크 제외).
     # vocab '오늘 단어 TEST' 페이지와 동일 기준. 접속 안 한 학생도 표시 위해 별도 집계.
     vrt = defaultdict(list)
@@ -418,7 +428,8 @@ def board(date):
         srt[rt.student_id].append(rt)
 
     out = {}
-    for sid in set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt) | set(srt) | set(e_pending):
+    for sid in (set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt) | set(srt)
+                | set(e_pending) | set(assigned_only)):
         vs = v.get(sid, [])
         # 시험: 그날 세션 + 처리 대기 세션(중복 session.id 제거) 합쳐 표시
         e_today = e.get(sid, [])
@@ -431,6 +442,13 @@ def board(date):
             'grammar': _grammar_cell(g.get(sid, [])),
             'exam': _exam_cell(e_combined),
         }
+        # 응시 시작 전 배정 — 정답입력 cell에 표시(클릭 → 응시 시작 페이지).
+        cells['exam']['assigned_only'] = [
+            {'paper_id': a.paper_id, 'title': a.paper.resolved_title}
+            for a in assigned_only.get(sid, [])
+        ]
+        if cells['exam']['assigned_only']:
+            cells['exam']['did'] = True
         # 단어 '오늘 볼 TEST' 범위/합격 — 정식시험(MODE_TEST) 완료 세션 기준
         cells['vocab']['tests'] = _vocab_today_tests(
             vrt.get(sid, []),

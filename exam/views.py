@@ -790,6 +790,42 @@ def find_next_mock_paper(paper):
     return get_or_create_mock_paper(paper.grade, str(nxt[0]), str(nxt[1]))
 
 
+def find_next_mock_type_paper(paper):
+    """유형별 가상 시험지의 '다음 세트' paper(없으면 None).
+
+    동일 (grade, category, type_tags) 에서 range를 (end+1) ~ (end + size) 로 잡아
+    QuestionData 총 가용 문항을 넘으면 자른다. 이미 끝이면 None.
+    """
+    if paper.source != ExamPaper.SOURCE_MOCK_TYPE:
+        return None
+    start, end = paper.range_start, paper.range_end
+    if not start or not end or end < start:
+        return None
+    tags = [t for t in (paper.type_tags or '').split(',') if t]
+    if not tags:
+        return None
+    total = QuestionData.objects.filter(학년=paper.grade, 유형__in=tags).count()
+    size = end - start + 1
+    next_start = end + 1
+    next_end = end + size
+    if next_start > total:
+        return None      # 단어장(모집단) 끝까지 다 풀었음
+    if next_end > total:
+        next_end = total  # 마지막 세트는 잘림
+    return get_or_create_mock_type_paper(paper.grade, paper.category,
+                                         tags, next_start, next_end)
+
+
+def find_next_paper(paper):
+    """다음 회차/세트 paper 디스패처. SOURCE에 따라 회차(mock) 또는 세트(mock_type) 분기.
+    내신(naesin)은 분할 응시 패턴이라 '다음' 개념 없음 → None."""
+    if paper.source == ExamPaper.SOURCE_MOCK:
+        return find_next_mock_paper(paper)
+    if paper.source == ExamPaper.SOURCE_MOCK_TYPE:
+        return find_next_mock_type_paper(paper)
+    return None
+
+
 @require_POST
 def release_redblue(request, session_id):
     """교사가 '빨파정답 공개' → 학생이 자기 1차 오답의 빨파 정답이미지를 볼 수 있게 한다.
@@ -807,7 +843,7 @@ def release_redblue(request, session_id):
         session.redblue_released_at = timezone.now()
         session.teacher_checked = True
         session.save(update_fields=['redblue_released', 'redblue_released_at', 'teacher_checked'])
-        nxt = find_next_mock_paper(session.paper)
+        nxt = find_next_paper(session.paper)
         if nxt is not None:
             ExamAssignment.objects.get_or_create(
                 paper=nxt, student=session.student,
