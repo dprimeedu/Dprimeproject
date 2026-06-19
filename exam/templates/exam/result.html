@@ -11,6 +11,11 @@
     border:2px solid #cbd5e1; border-radius:8px; -moz-appearance:textfield; }
 .r2-input:focus{ outline:none; border-color:#6d28d9; box-shadow:0 0 0 3px rgba(109,40,217,.18); }
 .r2-input.filled{ border-color:#16a34a; background:#f0fdf4; color:#15803d; }
+.r2-mark-btn{ border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:999px; padding:.25rem .7rem; font-size:.82rem; line-height:1; cursor:pointer; transition:all .15s; }
+.r2-mark-btn:hover{ border-color:#f59e0b; color:#b45309; }
+.r2-mark-btn.is-marked{ background:#f59e0b; border-color:#f59e0b; color:#fff; box-shadow:0 0 0 3px rgba(245,158,11,.18); }
+.r2-mark-btn.is-marked .r2-mark-label::before{ content:'✓ '; }
+.r2-cell.is-marked{ border-color:#f59e0b !important; background:#fffbeb; }
 .rb-card{ border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:14px; background:#fff; }
 .rb-head{ font-weight:700; color:#334155; margin-bottom:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .rb-passage{ white-space:pre-wrap; line-height:1.75; font-size:1.15rem;
@@ -89,13 +94,14 @@
             <thead class="table-light"><tr><th>번호</th><th>유형</th>{% if has_ref %}<th>통합본</th>{% endif %}<th>1차답</th>{% if round2_done %}<th>2차답</th><th>2차</th>{% endif %}<th>정답</th></tr></thead>
             <tbody>
             {% for a in wrong %}
-                <tr class="table-danger{% if round2_done and a.is_correct2 %} r2-ok d-none{% endif %}">
+                <tr class="table-danger{% if round2_done and a.is_correct2 and not a.review_marked %} r2-ok d-none{% endif %}">
                     <td class="fw-semibold">
                         {% if a.rb_pdf_url %}
                         <a href="{{ a.rb_pdf_url }}" target="_blank" rel="noopener" class="rb-jump text-decoration-none" title="빨파 정답 PDF 새 탭 열기">{{ a.number }}</a>
                         {% else %}
                         <a href="#rb-{{ a.number }}" class="rb-jump text-decoration-none" data-number="{{ a.number }}">{{ a.number }}</a>
                         {% endif %}
+                        {% if a.review_marked %}<span class="badge bg-warning text-dark ms-1" title="학생이 '모르는 문제'로 표시">★</span>{% endif %}
                     </td>
                     <td class="small text-muted">{{ a.qtype }}</td>
                     {% if has_ref %}<td class="small text-muted">{{ a.ref_number|default:"-" }}</td>{% endif %}
@@ -144,10 +150,11 @@
         </div>
         <div class="list-group list-group-flush">
             {% for a in wrong %}
-            <div class="list-group-item{% if round2_done and a.is_correct2 %} r2-ok d-none{% endif %}" id="rb-{{ a.number }}">
+            <div class="list-group-item{% if round2_done and a.is_correct2 and not a.review_marked %} r2-ok d-none{% endif %}" id="rb-{{ a.number }}">
                 <div class="d-flex gap-2 align-items-center mb-1 flex-wrap">
                     <span class="badge bg-primary">{{ a.number }}번</span>
                     {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
+                    {% if a.review_marked %}<span class="badge bg-warning text-dark" title="학생이 '모르는 문제'로 표시">★ 모르는 문제</span>{% endif %}
                     <span class="ms-auto small">1차답 <b>{{ a.student_choice|default:"-" }}</b>{% if round2_done %} · 2차답 <b>{{ a.second_choice|default:"-" }}</b>{% endif %} · 정답 <b class="text-success">{{ a.correct_answer }}</b></span>
                 </div>
                 {% if a.rb_passage %}<div class="rb-passage small mb-2">{{ a.rb_passage }}</div>{% endif %}
@@ -208,6 +215,11 @@
                         <div class="rb-head">
                             <span class="badge bg-primary">{{ a.number }}번</span>
                             {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
+                            <button type="button" class="r2-mark-btn ms-auto" data-number="{{ a.number }}"
+                                    aria-pressed="false"
+                                    title="답이 맞아도 다시 보고 싶으면 표시하세요. 오답처럼 빨파 답 화면에 같이 나타나요.">
+                                <i class="far fa-circle-question me-1"></i><span class="r2-mark-label">모르는 문제</span>
+                            </button>
                         </div>
                         {% if a.rb_has %}
                             {% if a.rb_passage %}<div class="rb-passage vocab-text" data-number="{{ a.number }}">{{ a.rb_passage }}</div>{% endif %}
@@ -247,6 +259,7 @@
             <div class="rb-head">
                 <span class="badge bg-primary">{{ a.number }}번</span>
                 {% if a.qtype %}<span class="badge bg-light text-dark">{{ a.qtype }}</span>{% endif %}
+                {% if a.review_marked %}<span class="badge bg-warning text-dark" title="내가 '모르는 문제'로 표시">★ 모르는 문제</span>{% endif %}
                 <span class="ms-auto small">내 1차답 <b>{{ a.student_choice|default:"-" }}</b>{% if round2_done %} · 2차답 <b>{{ a.second_choice|default:"-" }}</b>{% endif %} · 정답 <b class="text-success">{{ a.correct_answer }}</b></span>
             </div>
             {% if a.rb_passage %}<div class="rb-passage vocab-text mb-2" data-number="{{ a.number }}">{{ a.rb_passage }}</div>{% endif %}
@@ -283,6 +296,24 @@
     const cells = Array.from(document.querySelectorAll('.r2-cell'));
     const inputs = cells.map(c => c.querySelector('.r2-input'));
     const answers = {};
+    const marked = new Set();   // 학생이 '모르는 문제'로 표시한 번호들 — 답이 맞아도 오답처럼 표시
+
+    // 모르는 문제 토글 — 답안 입력과 독립적으로 작동
+    document.querySelectorAll('.r2-mark-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            const num = parseInt(btn.dataset.number, 10);
+            const cell = btn.closest('.r2-cell');
+            if (marked.has(num)) {
+                marked.delete(num); btn.classList.remove('is-marked');
+                btn.setAttribute('aria-pressed', 'false');
+                cell.classList.remove('is-marked');
+            } else {
+                marked.add(num); btn.classList.add('is-marked');
+                btn.setAttribute('aria-pressed', 'true');
+                cell.classList.add('is-marked');
+            }
+        });
+    });
 
     function focusFrom(i, dir) {
         for (let j = i + dir; j >= 0 && j < inputs.length; j += dir) {
@@ -309,12 +340,15 @@
     const btn = document.getElementById('submit2Btn');
     btn.addEventListener('click', function () {
         const done = Object.keys(answers).length, total = inputs.length;
-        let msg = '틀린 ' + total + '문제 중 ' + done + '개 입력. 2차 제출할까요?';
+        let msg = '틀린 ' + total + '문제 중 ' + done + '개 입력';
+        if (marked.size) msg += ', ' + marked.size + '개 모르는 문제 표시';
+        msg += '. 2차 제출할까요?';
         if (!confirm(msg)) return;
         btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>제출 중...';
         fetch(SUBMIT2_URL, {
             method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
-            body: JSON.stringify({session_id: SESSION_ID, answers: answers})
+            body: JSON.stringify({session_id: SESSION_ID, answers: answers,
+                                  marked: Array.from(marked)})
         })
         .then(r => r.json())
         .then(d => { if (d.success && d.redirect_url) location.href = d.redirect_url;

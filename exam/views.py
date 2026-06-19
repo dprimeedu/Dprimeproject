@@ -603,8 +603,11 @@ def result_view(request, session_id):
         'wrong': wrong,
         'flagged': flagged,
         'wrong_numbers': [a.number for a in wrong],
-        'wrong_second_numbers': [a.number for a in wrong if not a.is_correct2],
-        'wrong_second_count': sum(1 for a in wrong if not a.is_correct2),
+        # 2차 오답 + 학생이 직접 '모르는 문제'로 표시한 것 — 답이 맞아도 오답처럼 표시.
+        'wrong_second_numbers': [a.number for a in wrong
+                                 if not a.is_correct2 or a.review_marked],
+        'wrong_second_count': sum(1 for a in wrong
+                                  if not a.is_correct2 or a.review_marked),
         'is_teacher': teacher,
         'round2_done': round2_done,
         'round2_total': len(wrong),
@@ -726,6 +729,7 @@ def submit_round2_api(request):
         data = json.loads(request.body or '{}')
         session_id = int(data['session_id'])
         raw_answers = data.get('answers') or {}
+        marked_raw = data.get('marked') or []
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return HttpResponseBadRequest('Invalid')
 
@@ -739,18 +743,27 @@ def submit_round2_api(request):
             by_num[int(k)] = ('' if v is None else str(v)).strip()
         except (ValueError, TypeError):
             continue
+    # 학생이 '모르는 문제'로 표시한 번호들 — 답이 맞아도 오답처럼 화면에 표시.
+    marked_set = set()
+    for k in marked_raw:
+        try:
+            marked_set.add(int(k))
+        except (ValueError, TypeError):
+            continue
 
     targets = list(session.answers.filter(flagged=False, is_correct=False))
     correct2 = 0
     for a in targets:
         a.second_choice = by_num.get(a.number, '')
         a.is_correct2 = grade_answer(a.second_choice, a.correct_answer)
+        a.review_marked = a.number in marked_set
         if a.is_correct2:
             correct2 += 1
 
     with transaction.atomic():
         if targets:
-            ExamAnswer.objects.bulk_update(targets, ['second_choice', 'is_correct2'])
+            ExamAnswer.objects.bulk_update(
+                targets, ['second_choice', 'is_correct2', 'review_marked'])
         session.round = 2
         session.round2_at = timezone.now()
         session.correct_count2 = correct2

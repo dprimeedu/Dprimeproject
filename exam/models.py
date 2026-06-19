@@ -330,6 +330,8 @@ class ExamAnswer(models.Model):
     # 2차(틀린문제 재시험) 응답
     second_choice = models.CharField('2차 학생 답', max_length=50, blank=True, default='')
     is_correct2 = models.BooleanField('2차 정답 여부', default=False)
+    # 2차 응시 시 학생이 직접 '모르는 문제'로 표시 — 답이 맞았어도 오답 목록·빨파 정답 표시에 포함.
+    review_marked = models.BooleanField('학생 모르는 문제 표시', default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
