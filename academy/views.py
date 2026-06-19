@@ -473,7 +473,8 @@ def download_pdf(request):
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame,
-                                     Paragraph, Spacer, PageBreak, NextPageTemplate)
+                                     Paragraph, Spacer, PageBreak, NextPageTemplate,
+                                     Table, TableStyle, KeepTogether)
     from reportlab.lib.enums import TA_LEFT
     import re as _re
     import urllib.parse
@@ -515,28 +516,44 @@ def download_pdf(request):
     except Exception:
         FONT = 'Helvetica'   # 등록 실패 시 fallback (한글 깨질 수 있음)
 
-    # HWPX 양식 매칭 — 머리말 / 문제 라벨 / 본문 / 보기 / 정답
-    style_header = ParagraphStyle('hdr', fontName=FONT, fontSize=10, leading=14,
+    # HWPX(한/글 변형문제) 인쇄물 표준에 맞춘 크기/간격 — 9pt 본문, 좁은 행간, 지문 박스.
+    style_header = ParagraphStyle('hdr', fontName=FONT, fontSize=9, leading=12,
                                    alignment=TA_LEFT, textColor=colors.HexColor('#6b7280'),
-                                   spaceAfter=12)
-    style_qno    = ParagraphStyle('qno', fontName=FONT, fontSize=11, leading=16,
-                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                   spaceBefore=14, spaceAfter=4)
-    style_prompt = ParagraphStyle('prompt', fontName=FONT, fontSize=11, leading=17,
-                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                   spaceAfter=4)
-    style_passage = ParagraphStyle('passage', fontName=FONT, fontSize=10.5, leading=16,
-                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                   leftIndent=8, spaceAfter=6)
-    style_choice = ParagraphStyle('choice', fontName=FONT, fontSize=10.5, leading=15,
-                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                   leftIndent=14, spaceAfter=1)
-    style_ans_head = ParagraphStyle('anshd', fontName=FONT, fontSize=14, leading=20,
-                                     alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                     spaceAfter=10)
-    style_ans_row = ParagraphStyle('ansrow', fontName=FONT, fontSize=11, leading=16,
-                                    alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                    spaceAfter=2)
+                                   spaceAfter=8)
+    style_qno    = ParagraphStyle('qno', fontName=FONT, fontSize=9.5, leading=12,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#0f172a'),
+                                   spaceBefore=8, spaceAfter=2)
+    style_prompt = ParagraphStyle('prompt', fontName=FONT, fontSize=9.5, leading=12,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#0f172a'),
+                                   spaceAfter=3)
+    style_passage = ParagraphStyle('passage', fontName=FONT, fontSize=8.5, leading=12,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#0f172a'),
+                                   spaceAfter=0)
+    style_choice = ParagraphStyle('choice', fontName=FONT, fontSize=8.5, leading=11,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#0f172a'),
+                                   leftIndent=4, spaceAfter=0)
+    style_ans_head = ParagraphStyle('anshd', fontName=FONT, fontSize=12, leading=16,
+                                     alignment=TA_LEFT, textColor=colors.HexColor('#0f172a'),
+                                     spaceAfter=8)
+    style_ans_row = ParagraphStyle('ansrow', fontName=FONT, fontSize=9, leading=13,
+                                    alignment=TA_LEFT, textColor=colors.HexColor('#0f172a'),
+                                    spaceAfter=1)
+
+    # 지문을 둘러쌀 회색 박스(Table 1-cell, 1pt 회색 테두리)용 스타일
+    box_style = TableStyle([
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ])
+
+    def _passage_box(text):
+        p = Paragraph(_esc(text), style_passage)
+        t = Table([[p]], colWidths=[col_w - 8])
+        t.setStyle(box_style)
+        return t
 
     def _esc(s):
         # Paragraph 가 마크업으로 해석하는 < > & 이스케이프, uFFF0 마커 제거.
@@ -591,7 +608,7 @@ def download_pdf(request):
         if r.get('question'):
             story.append(Paragraph(_esc(r['question']), style_prompt))
         if r.get('sentence'):
-            story.append(Paragraph(_esc(r['sentence']), style_passage))
+            story.append(_passage_box(r['sentence']))
         for ch in _split_choices(r.get('option', '')):
             story.append(Paragraph(_esc(ch), style_choice))
         ans = (r.get('answer') or '').replace('\t', ' ').strip()
