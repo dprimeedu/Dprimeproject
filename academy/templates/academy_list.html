@@ -203,6 +203,8 @@
   const variants = new Set();
   // 선택된 번호 — '학년|년도|월' → Set<번호>. 회차를 바꿔도 다른 회차 선택은 유지.
   const pickedByRound = new Map();
+  // 회차별 '기본 선택 자동채움' 한 번만 실행하기 위한 추적 — 사용자가 직접 해제한 의도를 덮어쓰지 않게.
+  const pickedInited = new Set();
 
   const promptEl = document.getElementById('mxPrompt');
   const vtSection = document.getElementById('vtSection');
@@ -247,9 +249,15 @@
     numSection.style.display = '';
     pickedSection.style.display = '';
 
-    // 번호 그리드 — 18~50 고정 범위 (해당 회차에 실제 있는 번호는 강조)
+    // 번호 그리드 — 18~50 고정 범위
+    // 가능한 번호(회차에 실제 있는)는 기본 선택(보라) 상태로 시작 — 한 번 자동 채움.
+    // 사용자가 직접 해제한 적이 있는 회차는 그 선택을 보존.
     const inRound = new Set(ROUND_NUMBERS[key] || []);
     const picked = currentPickedSet();
+    if (!pickedInited.has(key)) {
+      inRound.forEach(n => picked.add(n));
+      pickedInited.add(key);
+    }
     numHeadRound.textContent = '— ' + active.grade + ' ' + active.year + '년 ' + active.month + '월';
     numGrid.innerHTML = '';
     const nums = [];
