@@ -776,21 +776,45 @@ def _expand_type_filter(selected_types):
 # HWPX 공통 전처리 유틸
 # ---------------------------------------------------------------------------
 def _hwpx_clean(text):
-    """DB 저장 텍스트를 HWPX용으로 변환: \\r\\n → 줄바꿈, uFFF0 밑줄 마커 제거.
-        \t -> 한/글에서 제어 문자로 사용되나 이게 직접적으로 들어가면 렌더링 오류. 제거
+    """DB 저장 텍스트를 HWPX용으로 변환.
+
+    - Excel OOXML 토큰 `_x000D_` (CR) / `_x000A_` (LF) → 진짜 줄바꿈
+    - literal `\\r\\n` (4글자) / 실제 컨트롤 문자 → 줄바꿈
+    - `\\t` 는 한/글 렌더링 오류 유발 → 공백으로
+    - uFFF0 강조 마커는 그대로 둠 (HWPX 빌더가 별도 처리)
     """
+    import re as _re
     if not text:
         return ""
-    text = str(text).replace('\\r\\n', '\n').replace('\t', ' ')
-    #text = re.sub(r'￰(.*?)￰', r'\1', text)
+    text = str(text)
+    text = text.replace('_x000D_', '\n').replace('_x000A_', '\n')
+    text = text.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
+    text = _re.sub(r'\r\n?', '\n', text)
+    text = text.replace('\t', ' ')
+    # 연속 빈줄 3+ → 2개로
+    text = _re.sub(r'\n{3,}', '\n\n', text)
     return text
 
 
 def _hwpx_choices(option_str):
-    """선택지 문자열(\\r\\n 구분)을 리스트로 분리."""
+    """선택지 문자열을 리스트로 분리. ①②③ 마커가 한 줄에 같이 있는 경우도 분리."""
+    import re as _re
     if not option_str:
         return []
-    return [c for c in _hwpx_clean(option_str).split('\n') if c.strip()]
+    cleaned = _hwpx_clean(option_str)
+    parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    if any(any(m in p[1:] for m in MARKERS) for p in parts):
+        new_parts = []
+        SPLIT_RE = _re.compile(r'(?=[' + MARKERS + r'])')
+        for p in parts:
+            if any(m in p[1:] for m in MARKERS):
+                chunks = [c.strip() for c in SPLIT_RE.split(p) if c.strip()]
+                new_parts.extend(chunks)
+            else:
+                new_parts.append(p)
+        parts = new_parts
+    return parts
 
 
 # ---------------------------------------------------------------------------
