@@ -82,11 +82,14 @@
 .picked-chip .x{ width:16px; height:16px; line-height:14px; text-align:center; border-radius:50%;
                  background:#fff; color:#6366f1; cursor:pointer; font-weight:800; }
 .picked-chip .x:hover{ background:#6366f1; color:#fff; }
-.output-row{ position:sticky; bottom:14px; margin-top:8px; }
-.output-btn{ width:100%; background:var(--pe-primary); color:#fff; border:none; padding:14px 18px;
+.output-row{ position:sticky; bottom:14px; margin-top:8px; display:flex; gap:10px; }
+.output-btn{ flex:1; color:#fff; border:none; padding:14px 18px;
              border-radius:14px; font-size:1rem; font-weight:800; cursor:pointer;
-             box-shadow:0 8px 24px rgba(109,40,217,.3); transition:opacity .15s; }
+             transition:opacity .15s, filter .15s; }
 .output-btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+.output-btn:not(:disabled):hover{ filter:brightness(1.06); }
+.output-pdf{ background:#dc2626; box-shadow:0 8px 24px rgba(220,38,38,.3); }
+.output-hwpx{ background:#0ea5e9; box-shadow:0 8px 24px rgba(14,165,233,.3); }
 .help{ font-size:.82rem; color:#9ca3af; margin:6px 0 0; }
 .add-row{ display:flex; gap:8px; align-items:center; }
 .add-text{ flex:1; font-size:.95rem; padding:9px 14px; border:1px solid var(--pe-line); border-radius:10px; outline:none; transition:border-color .15s, box-shadow .15s; }
@@ -182,8 +185,11 @@
   </div>
 
   <div class="output-row">
-    <button type="button" class="output-btn" id="outputBtn" disabled>
-      <i class="fas fa-arrow-right me-1"></i>선택한 번호로 결과 보기
+    <button type="button" class="output-btn output-pdf" id="pdfBtn" disabled>
+      <i class="fas fa-file-pdf me-1"></i>PDF 출력
+    </button>
+    <button type="button" class="output-btn output-hwpx" id="hwpxBtn" disabled>
+      <i class="fas fa-file-lines me-1"></i>HWPX 출력
     </button>
   </div>
 </div>
@@ -211,7 +217,8 @@
   const numHeadRound = document.getElementById('numHeadRound');
   const pickedChips = document.getElementById('pickedChips');
   const pickedCount = document.getElementById('pickedCount');
-  const outputBtn = document.getElementById('outputBtn');
+  const pdfBtn = document.getElementById('pdfBtn');
+  const hwpxBtn = document.getElementById('hwpxBtn');
   const search = document.getElementById('mxSearch');
   const addInput = document.getElementById('addInput');
   const addBtn = document.getElementById('addBtn');
@@ -239,7 +246,7 @@
       numSection.style.display = 'none';
       pickedSection.style.display = 'none';
       addInputSection.style.display = 'none';
-      outputBtn.disabled = true;
+      pdfBtn.disabled = true; hwpxBtn.disabled = true;
       return;
     }
     promptEl.style.display = 'none';
@@ -270,7 +277,8 @@
   function renderPicked(){
     const picked = currentPickedSet();
     pickedCount.textContent = (picked ? picked.size : 0) + '개';
-    outputBtn.disabled = !picked || picked.size === 0;
+    const disabled = !picked || picked.size === 0;
+    pdfBtn.disabled = disabled; hwpxBtn.disabled = disabled;
     if (!picked || picked.size === 0){
       pickedChips.innerHTML = '<div class="picked-empty">아직 선택된 번호가 없어요.</div>';
       return;
@@ -365,17 +373,35 @@
     renderPicked();
   });
 
-  // 출력 — 결과 페이지로 이동 (?year=&grade=&month=&number=&type=)
-  outputBtn.addEventListener('click', () => {
-    const picked = currentPickedSet(); if (!picked || picked.size === 0) return;
-    const nums = Array.from(picked).sort((a,b)=>a-b).join(',');
+  // 다운로드 URL 빌더 — total_number 'YYYY-MM-NN' 포맷으로 number 파라미터 구성
+  const PDF_URL = '{% url "academy:download_pdf" %}';
+  const HWPX_URL = '{% url "academy:download_modified_hwpx" %}';
+  function buildDownloadUrl(base){
+    const picked = currentPickedSet(); if (!picked || picked.size === 0) return null;
+    const y = active.year, g = active.grade, m = active.month;
+    const mm = m.length < 2 ? '0' + m : m;
+    const nums = Array.from(picked).sort((a,b)=>a-b)
+                  .map(n => y + '-' + mm + '-' + (n < 10 ? '0' + n : '' + n)).join(',');
     const params = new URLSearchParams();
-    params.set('year', active.year);
-    params.set('grade', active.grade);
-    params.set('month', active.month);
+    params.set('year', y);
+    params.set('grade', g);
+    params.set('month', m);
     params.set('number', nums);
+    params.set('category', '변형문제');
     if (variants.size) params.set('type', Array.from(variants).join(','));
-    window.location.href = RESULT_URL + '?' + params.toString();
+    return base + '?' + params.toString();
+  }
+  pdfBtn.addEventListener('click', () => {
+    const url = buildDownloadUrl(PDF_URL); if (url) window.location.href = url;
+  });
+  hwpxBtn.addEventListener('click', () => {
+    const url = buildDownloadUrl(HWPX_URL); if (url) window.location.href = url;
+  });
+
+  // 변형 유형 기본 전체 선택 — 화면 진입 시 모든 칩 활성화
+  document.querySelectorAll('.vt-chip').forEach(c => {
+    variants.add(c.dataset.v);
+    c.classList.add('on');
   });
 
   // 검색 — '고2 2026 3' 토큰 자동 매핑 → 드롭다운 값으로 반영

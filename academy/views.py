@@ -462,61 +462,104 @@ def save_translation_log(request):
 
 @require_download
 def download_pdf(request):
+    """변형문제 PDF 다운로드 — URL 파라미터로 동기 동작 (HWPX 다운로드와 동일 패턴).
+
+    GET: year, grade, month, number, category, type? — type 필터(쉼표 구분 [순서],[빈칸]…)
+    ModifiedQuestions_Data 를 필터해 한글 폰트로 readable PDF 생성. Platypus 자동 줄바꿈.
     """
-    이것도 카테고리에 따라 출력 양식을 지정하거나 해야 함
-    -> 굳이 필요한가? 기존 출력 양식을 그대로 뽑으면?
-    어떻게? POST요청?
-    """
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = 'attachment; filename="exam_list.pdf"'
+    from io import BytesIO
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.lib.enums import TA_LEFT
+    import re as _re
+    import urllib.parse
 
-    # 한글 폰트 등록 (예: 나눔고딕)
-    pdfmetrics.registerFont(TTFont('NanumGothic', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'fonts', 'NanumSquareRoundR.ttf')))
+    selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
+    selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
+    selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
+    selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
+    cat_list = [n for val in request.GET.getlist('category', []) for n in val.split(',') if n]
+    selected_category = cat_list[0] if cat_list else '변형문제'
+    selected_types = [t for val in request.GET.getlist('type', []) for t in val.split(',') if t.strip()]
 
-    pdf = canvas.Canvas(response, pagesize=A4)
-    pdf.setTitle("시험 문제 리스트")
-    
-    y_position = 750
+    pknum = KeyTable.objects.all()
+    if selected_year:
+        pknum = pknum.filter(year__in=selected_year)
+    if selected_grade:
+        pknum = pknum.filter(grade__in=selected_grade)
+    if selected_month and "전체" not in selected_month:
+        pknum = pknum.filter(month__in=selected_month)
+    if selected_numbers:
+        pknum = pknum.filter(total_number__in=selected_numbers)
 
-    pdf.setFont("NanumGothic", 14)
-    pdf.drawString(100, y_position, "시험 문제 리스트")
-    y_position -= 30
+    pk_ids = list(pknum.values_list('pk_number', flat=True))
+    total_map = dict(pknum.values_list('pk_number', 'total_number'))
 
-    pdf.setFont("NanumGothic", 12)
+    qs = ModifiedQuestions_Data.objects.filter(pk_number__in=pk_ids)
+    if selected_types:
+        qs = qs.filter(qtype__in=[f'[{t.strip().strip("[]")}]' for t in selected_types])
+    rows = list(qs.values('index', 'question', 'sentence', 'option', 'answer',
+                          'qtype', 'pk_number').order_by('pk_number', 'index'))
 
-    selected_questions = request.session.get('selected_questions', [])
-    selected_questions_answer = request.session.get('selected_questions_answer', [])
+    # 폰트 등록 (한글)
+    font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'fonts', 'NanumSquareRoundR.ttf')
+    try:
+        pdfmetrics.registerFont(TTFont('NanumSquareRound', font_path))
+    except Exception:
+        pass
 
-    for idx, question in enumerate(selected_questions, 1):
-        # 영어/한글 칼럼명을 모두 지원하도록 하고, 줄바꿈으로 인해 글자가 겹치는 것을 방지합니다.
-        q_text = str(question.get('문제', question.get('question', question.get('origin_text', question.get('word', ''))))).replace('\n', ' ').replace('\r', '')
-        pdf.drawString(100, y_position, f"문제 {idx}: {q_text}")
-        y_position -= 20
+    base_style = {'fontName': 'NanumSquareRound', 'fontSize': 11, 'leading': 16, 'alignment': TA_LEFT}
+    style_title = ParagraphStyle('title', **base_style, textColor='#1f2937', fontSize=15, leading=22, spaceAfter=10)
+    style_head  = ParagraphStyle('head',  **base_style, textColor='#6d28d9', fontSize=12, leading=18, spaceBefore=6, spaceAfter=4)
+    style_body  = ParagraphStyle('body',  **base_style, textColor='#1f2937', spaceAfter=4)
+    style_ans   = ParagraphStyle('ans',   **base_style, textColor='#16a34a', fontSize=11, leading=14, spaceBefore=4)
 
-        passage_text = str(question.get('지문', question.get('sentence', question.get('korean_definition', '')))).replace('\n', ' ').replace('\r', '')
-        pdf.drawString(120, y_position, f"지문: {passage_text}")
-        y_position -= 20
+    def _esc(s):
+        # Paragraph 가 마크업으로 해석하는 < > & 이스케이프, uFFF0 마커 제거, 줄바꿈 → <br/>
+        s = (s or '').replace('￰', '')
+        s = s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        s = _re.sub(r'\r\n?', '\n', s)
+        s = s.replace('\n', '<br/>')
+        return s
 
-        option_text = str(question.get('보기', question.get('option', question.get('summary', '')))).replace('\n', ' ').replace('\r', '')
-        pdf.drawString(120, y_position, f"보기: {option_text}")
-        y_position -= 20
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
+                            topMargin=18*mm, bottomMargin=18*mm)
 
-        q_index = question.get('색인', question.get('index', ''))
-        for answer in selected_questions_answer:
-            a_index = answer.get('색인', answer.get('index', ''))
-            if a_index == q_index:
-                ans_text = str(answer.get('정답', answer.get('answer', ''))).replace('\n', ' ').replace('\r', '')
-                pdf.drawString(120, y_position, f"정답: {ans_text}")
-                break
-        y_position -= 30
+    year_str = ', '.join(selected_year)
+    grade_str = ', '.join(selected_grade)
+    month_str = ', '.join(selected_month)
+    header_text = f'{year_str}년 {grade_str} {month_str}월 — {selected_category}'
 
-        if y_position < 100:  # 페이지 넘김
-            pdf.showPage()
-            y_position = 750
+    story = [Paragraph(_esc(header_text), style_title)]
+    for i, r in enumerate(rows, 1):
+        total_no = total_map.get(r['pk_number'], '')
+        qtype = r.get('qtype', '') or ''
+        story.append(Paragraph(_esc(f'[{i}] {total_no} {qtype}'), style_head))
+        if r.get('question'):
+            story.append(Paragraph(_esc(r['question']), style_body))
+        if r.get('sentence'):
+            story.append(Paragraph(_esc(r['sentence']), style_body))
+        if r.get('option'):
+            story.append(Paragraph(_esc(r['option']), style_body))
+        if r.get('answer'):
+            story.append(Paragraph(_esc(f'정답: {r["answer"]}'), style_ans))
+        story.append(Spacer(1, 6))
 
-    pdf.showPage()
-    pdf.save()
+    if not rows:
+        story.append(Paragraph('선택한 조건에 맞는 변형문제가 없습니다.', style_body))
 
+    doc.build(story)
+    data = buf.getvalue()
+    buf.close()
+
+    filename = f'[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_{selected_category}.pdf'
+    encoded = urllib.parse.quote(filename, safe='')
+    response = HttpResponse(data, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f"attachment; filename=\"exam.pdf\"; filename*=UTF-8''{encoded}"
+    )
     return response
 
 
@@ -554,6 +597,8 @@ def download_modified_hwpx(request):
     selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
     selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
     selected_category = [n for val in request.GET.getlist('category', []) for n in val.split(',') if n][0]
+    # 변형 유형 필터 — '순서,빈칸,어법' 같이 와도, '[순서]' 형태 DB 값에 맞춰 대괄호 추가.
+    selected_types = [t for val in request.GET.getlist('type', []) for t in val.split(',') if t.strip()]
 
     pknum = KeyTable.objects.all()
     if selected_year or selected_grade or selected_month:
@@ -571,10 +616,11 @@ def download_modified_hwpx(request):
     pk_numbers = list(pknum.values_list('pk_number', flat=True))
     keytable_map = dict(pknum.values_list('pk_number', 'total_number'))
 
-    rows = (ModifiedQuestions_Data.objects
-            .filter(pk_number__in=pk_numbers)
-            .values('index', 'question', 'sentence', 'option', 'answer', 'pk_number')
-            .order_by('pk_number', 'index'))
+    qs = (ModifiedQuestions_Data.objects
+          .filter(pk_number__in=pk_numbers))
+    if selected_types:
+        qs = qs.filter(qtype__in=[f'[{t.strip().strip("[]")}]' for t in selected_types])
+    rows = qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number').order_by('pk_number', 'index')
 
     questions = []
     for r in rows:
