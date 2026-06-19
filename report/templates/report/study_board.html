@@ -155,7 +155,7 @@
                                     <div class="d-flex gap-1 align-items-stretch">
                                     <a href="{% url 'exam:result' s.sid %}"
                                        class="badge text-decoration-none text-start border flex-grow-1
-                                       {% if s.cls == 'release' %}bg-warning text-dark{% elif s.cls == 'pending' %}bg-warning-subtle text-warning-emphasis{% elif s.cls == 'r2' %}bg-success-subtle text-success-emphasis{% elif s.cls == 'graded' %}bg-info-subtle text-info-emphasis{% else %}bg-light text-muted{% endif %}"
+                                       {% if s.cls == 'release' %}bg-warning text-dark{% elif s.cls == 'wait_student' %}bg-light text-muted{% elif s.cls == 'finalize' %}bg-primary text-white{% elif s.cls == 'pending' %}bg-warning-subtle text-warning-emphasis{% elif s.cls == 'r2' %}bg-success-subtle text-success-emphasis{% elif s.cls == 'graded' %}bg-info-subtle text-info-emphasis{% else %}bg-light text-muted{% endif %}"
                                        title="{{ s.title }} — 클릭하면 채점/결과 페이지로 이동">
                                         <span class="opacity-75">{{ s.title|truncatechars:18 }}</span> · {{ s.status }}
                                     </a>
@@ -164,6 +164,12 @@
                                             data-release-btn="{{ s.sid }}"
                                             title="빨파 공개 + 같은 학년 다음 회차 자동 배정">
                                         <i class="fas fa-unlock"></i>
+                                    </button>
+                                    {% elif s.can_finalize %}
+                                    <button type="button" class="btn btn-sm btn-primary py-0 px-2"
+                                            data-finalize-btn="{{ s.sid }}"
+                                            title="학생 빨파채점 확인 후 최종 확인 — 학생 홈에서 이 시험이 사라짐">
+                                        <i class="fas fa-check-double"></i>
                                     </button>
                                     {% endif %}
                                     </div>
@@ -238,44 +244,65 @@
         document.body.appendChild(t);
         setTimeout(function(){ t.remove(); }, 4000);
     }
-    document.addEventListener('click', function(ev){
-        var btn = ev.target.closest('[data-release-btn]');
-        if (!btn) return;
-        ev.preventDefault();
-        var sid = btn.getAttribute('data-release-btn');
-        btn.disabled = true;
+    function doAjax(btn, url, onOk){
         var orig = btn.innerHTML;
+        btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-        fetch('/training/exam/api/release-redblue/' + sid + '/', {
-            method:'POST', credentials:'same-origin',
-            headers:{'X-CSRFToken': csrf(), 'X-Requested-With':'XMLHttpRequest'},
-        }).then(function(r){
+        fetch(url, {method:'POST', credentials:'same-origin',
+                    headers:{'X-CSRFToken': csrf(), 'X-Requested-With':'XMLHttpRequest'}})
+        .then(function(r){
             if (!r.ok) throw new Error('HTTP ' + r.status);
             var ct = r.headers.get('content-type') || '';
             if (ct.indexOf('json') < 0) throw new Error('비JSON 응답(' + r.status + ')');
             return r.json();
-        }).then(function(j){
-            if (!j || !j.success){ throw new Error(j && j.error || '실패'); }
-            // 시험 cell 안의 해당 badge 색상/상태/버튼 갱신
-            var wrap = btn.closest('.d-flex.gap-1');
-            var badge = wrap && wrap.querySelector('a.badge');
-            if (badge){
-                badge.classList.remove('bg-warning', 'text-dark');
-                badge.classList.add('bg-info-subtle', 'text-info-emphasis');
-                var sp = badge.querySelector('span.opacity-75');
-                badge.innerHTML = '';
-                if (sp) badge.appendChild(sp);
-                badge.appendChild(document.createTextNode(' · 공개완료'));
-            }
-            btn.remove();
-            toast('<i class="fas fa-check me-1"></i>공개 완료'
-                + (j.next_title ? ' · 다음 회차 자동 배정: <strong>' + j.next_title + '</strong>' : ''),
-                'success');
-        }).catch(function(e){
+        })
+        .then(function(j){
+            if (!j || !j.success) throw new Error(j && j.error || '실패');
+            onOk(j);
+        })
+        .catch(function(e){
             btn.disabled = false;
             btn.innerHTML = orig;
-            toast('공개 실패: ' + e.message, 'danger');
+            toast('실패: ' + e.message, 'danger');
         });
+    }
+    document.addEventListener('click', function(ev){
+        var rBtn = ev.target.closest('[data-release-btn]');
+        if (rBtn){
+            ev.preventDefault();
+            var sid = rBtn.getAttribute('data-release-btn');
+            doAjax(rBtn, '/training/exam/api/release-redblue/' + sid + '/', function(j){
+                var wrap = rBtn.closest('.d-flex.gap-1');
+                var badge = wrap && wrap.querySelector('a.badge');
+                if (badge){
+                    badge.classList.remove('bg-warning', 'text-dark');
+                    badge.classList.add('bg-light', 'text-muted');
+                    var sp = badge.querySelector('span.opacity-75');
+                    badge.innerHTML = '';
+                    if (sp) badge.appendChild(sp);
+                    badge.appendChild(document.createTextNode(' · 학생 빨파채점 중'));
+                }
+                rBtn.remove();
+                toast('<i class="fas fa-check me-1"></i>공개 완료'
+                    + (j.next_title ? ' · 다음 회차 자동 배정: <strong>' + j.next_title + '</strong>' : ''),
+                    'success');
+            });
+            return;
+        }
+        var fBtn = ev.target.closest('[data-finalize-btn]');
+        if (fBtn){
+            ev.preventDefault();
+            var sid = fBtn.getAttribute('data-finalize-btn');
+            doAjax(fBtn, '/training/exam/api/final-confirm/' + sid + '/', function(){
+                var wrap = fBtn.closest('.d-flex.gap-1');
+                if (wrap){
+                    wrap.style.transition = 'opacity .35s';
+                    wrap.style.opacity = '0';
+                    setTimeout(function(){ wrap.remove(); }, 350);
+                }
+                toast('<i class="fas fa-check me-1"></i>최종 확인 완료 — 학생 홈에서 이 시험 사라짐', 'success');
+            });
+        }
     });
 })();
 </script>

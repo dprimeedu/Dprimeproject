@@ -242,16 +242,24 @@ def _exam_cell(sessions):
     for s in sessions:
         src = s.paper.source
         is_mocklike = src in ('mock', 'mock_type')
+        cls = status = ''
         if s.status == ExamSession.STATUS_GRADED:
-            if s.round >= 2 and (s.redblue_released or not is_mocklike):
-                cls, status = 'r2', f'{s.percent}점·완료'
-            elif is_mocklike and not s.redblue_released:
-                # 모의/유형: 빨파 미공개 → 선생님 [공개] 대기
-                cls, status = 'release', f'{s.percent}점·공개대기'
-            elif not s.teacher_checked:
-                cls, status = 'pending', f'{s.percent}점·미확인'
+            if is_mocklike:
+                # 모의/유형 빨파 워크플로 4단계: 공개대기 → 빨파채점대기 → 최종확인대기 → 최종완료
+                if not s.redblue_released:
+                    cls, status = 'release', f'{s.percent}점·공개대기'
+                elif not s.student_redblue_done:
+                    cls, status = 'wait_student', f'{s.percent}점·학생 빨파채점 중'
+                elif not s.teacher_final_confirmed:
+                    cls, status = 'finalize', f'{s.percent}점·최종확인 대기'
+                else:
+                    cls, status = 'r2', f'{s.percent}점·완료'
             else:
-                cls, status = 'graded', f'{s.percent}점'
+                # 내신: 자동채점 후 선생님 확인 여부만
+                if not s.teacher_checked:
+                    cls, status = 'pending', f'{s.percent}점·미확인'
+                else:
+                    cls, status = 'graded', f'{s.percent}점'
         else:
             cls, status = 'inprog', s.get_status_display()
         detail.append({
@@ -259,6 +267,8 @@ def _exam_cell(sessions):
             'source': src,
             'can_release': is_mocklike and not s.redblue_released
                            and s.status == ExamSession.STATUS_GRADED,
+            'can_finalize': is_mocklike and s.redblue_released
+                            and s.student_redblue_done and not s.teacher_final_confirmed,
         })
     return {'did': True, 'n': len(sessions), 'done': len(graded),
             'best': best, 'pending': len(pending),
@@ -396,12 +406,12 @@ def board(date):
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
     g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
 
-    # 시험 — 날짜 무관 시험란 노출. 모의/유형은 '빨파 미공개' 처리 대기만,
-    # 내신은 한 세트 부분입력 패턴이라 채점완료 세션을 항상 표시(처리 끝 개념 없음).
+    # 시험 — 날짜 무관 시험란 노출. 모의/유형은 '선생님 최종확인 전' 모두(공개대기/빨파채점대기/
+    # 최종확인 대기 단계), 내신은 한 세트 부분입력 패턴이라 채점완료 세션을 항상 표시.
     e_pending = defaultdict(list)
     for s in (ExamSession.objects
               .filter(status=ExamSession.STATUS_GRADED)
-              .filter(Q(paper__source__in=['mock', 'mock_type'], redblue_released=False)
+              .filter(Q(paper__source__in=['mock', 'mock_type'], teacher_final_confirmed=False)
                       | Q(paper__source='naesin'))
               .select_related('paper')):
         e_pending[s.student_id].append(s)

@@ -288,6 +288,12 @@ class ExamSession(models.Model):
     # 빨파 정답(이미지) 학생 공개 여부 — 교사가 2차 확인 후 '공개' 눌러야 학생이 빨파정답을 본다
     redblue_released = models.BooleanField('빨파정답 공개', default=False)
     redblue_released_at = models.DateTimeField('빨파정답 공개 시각', null=True, blank=True)
+    # 빨파채점 — 학생이 빨파 정답을 보고 자기채점 완료했는지
+    student_redblue_done = models.BooleanField('학생 빨파채점 완료', default=False, db_index=True)
+    student_redblue_done_at = models.DateTimeField('학생 빨파채점 시각', null=True, blank=True)
+    # 선생님 최종 확인 — 이걸 누르면 학생 홈에서 이전 시험이 사라지고 다음 시험만 남음
+    teacher_final_confirmed = models.BooleanField('선생님 최종 확인', default=False, db_index=True)
+    teacher_final_confirmed_at = models.DateTimeField('최종 확인 시각', null=True, blank=True)
 
     class Meta:
         db_table = 'exam_session'

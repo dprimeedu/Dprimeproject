@@ -305,9 +305,9 @@ def student_home(request):
         my_sessions.append(s)
     my_sessions.sort(key=lambda s: s.submitted_at or s.started_at, reverse=True)
     my_sessions = my_sessions[:30]
-    # 선생님이 '빨파 정답 공개'까지 마친(=최종 확인) 결과 카드는 학생 시야에서 자동으로 숨김 →
-    # 다음 시험(다음 배정/미확인 결과)으로 자연스럽게 이동한다.
-    my_sessions = [s for s in my_sessions if not s.redblue_released]
+    # 선생님이 '최종 확인' 누른 결과 카드만 학생 시야에서 숨김.
+    # 빨파공개만 된 상태에서는 '빨파채점' 액션을 위해 카드가 남아 있어야 한다.
+    my_sessions = [s for s in my_sessions if not s.teacher_final_confirmed]
     # 이미 응시 결과가 있는 시험지는 위 '응시 시작' 카드에서 숨김.
     # 단 내신은 분할 응시(여러 차수에 걸쳐 일부 문항만 입력)가 정상 패턴 → 항상 노출.
     assignments = [a for a in assignments
@@ -826,12 +826,49 @@ def find_next_paper(paper):
     return None
 
 
+@login_required
+@require_POST
+def mark_redblue_done(request, session_id):
+    """학생이 빨파 정답 보고 자기채점(빨파채점) 완료 표시.
+
+    선생님이 빨파공개한 후에만 가능. 이후 선생님이 [최종 확인]을 눌러야 학생 홈에서
+    이 시험이 사라진다(그 전까지는 새 시험과 함께 같이 보임).
+    """
+    session = get_object_or_404(ExamSession, pk=session_id, student=request.user)
+    if not session.redblue_released:
+        return JsonResponse({'success': False,
+                             'error': '빨파 정답이 아직 공개되지 않았습니다'}, status=400)
+    if not session.student_redblue_done:
+        session.student_redblue_done = True
+        session.student_redblue_done_at = timezone.now()
+        session.save(update_fields=['student_redblue_done', 'student_redblue_done_at'])
+    return JsonResponse({'success': True})
+
+
+@require_POST
+def final_confirm(request, session_id):
+    """선생님 최종 확인 — 학생 빨파채점을 검토한 후 누른다.
+
+    이걸 누르면 학생 홈에서 이전 시험 카드가 사라지고 다음 시험만 남는다.
+    """
+    if not is_teacher(request.user):
+        return HttpResponseBadRequest('권한 없음')
+    session = get_object_or_404(ExamSession, pk=session_id)
+    if not session.teacher_final_confirmed:
+        session.teacher_final_confirmed = True
+        session.teacher_final_confirmed_at = timezone.now()
+        session.teacher_checked = True
+        session.save(update_fields=['teacher_final_confirmed',
+                                    'teacher_final_confirmed_at', 'teacher_checked'])
+    return JsonResponse({'success': True})
+
+
 @require_POST
 def release_redblue(request, session_id):
     """교사가 '빨파정답 공개' → 학생이 자기 1차 오답의 빨파 정답이미지를 볼 수 있게 한다.
 
-    부수효과: 모의고사 세션이면 같은 학년 '다음 회차' 시험지를 학생에게 자동 배정 →
-    학생 홈에 다음 회차가 자동 노출.
+    부수효과: 모의/유형이면 다음 회차/세트를 학생에게 자동 배정 → 학생 홈에 다음 시험이
+    이전 시험과 함께 표시. 이전 시험은 학생 빨파채점 + 선생님 최종확인 후에 사라진다.
     """
     if not is_teacher(request.user):
         return HttpResponseBadRequest('권한 없음')

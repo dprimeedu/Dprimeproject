@@ -128,11 +128,18 @@
                     빨파 정답 — 1차 오답 {{ wrong|length }}문제
                 {% endif %}
             </span>
-            {% if redblue_released %}
-                <span class="badge bg-info text-dark"><i class="fas fa-eye me-1"></i>학생 공개됨</span>
-            {% else %}
-                {% csrf_token %}
+            {% csrf_token %}
+            {% if not redblue_released %}
                 <button id="releaseBtn" class="btn btn-sm btn-success"><i class="fas fa-unlock me-1"></i>2차 확인 완료 — 학생에게 빨파정답 공개</button>
+            {% elif not session.student_redblue_done %}
+                <span class="badge bg-info text-dark"><i class="fas fa-eye me-1"></i>학생 공개됨 — 빨파채점 대기</span>
+            {% elif not session.teacher_final_confirmed %}
+                <button id="finalConfirmBtn" class="btn btn-sm btn-primary"
+                        data-sid="{{ session.id }}">
+                    <i class="fas fa-check-double me-1"></i>학생 빨파채점 확인 — 최종 확인
+                </button>
+            {% else %}
+                <span class="badge bg-success"><i class="fas fa-circle-check me-1"></i>최종 확인 완료</span>
             {% endif %}
         </div>
         <div class="list-group list-group-flush">
@@ -230,9 +237,9 @@
         </div>
 
     {% else %}
-        {# 교사 공개 완료 → 학생이 자기 1차 오답의 빨파 정답 확인 #}
+        {# 교사 공개 완료 → 학생이 자기 1차 오답의 빨파 정답 확인 → 빨파채점 완료 버튼 #}
         <div class="alert alert-success text-center mb-3">
-            <i class="fas fa-unlock me-1"></i>선생님이 빨파 정답을 공개했어요. 아래에서 확인하세요.
+            <i class="fas fa-unlock me-1"></i>선생님이 빨파 정답을 공개했어요. 아래 답을 보며 <b>내 답이 맞았는지 직접 채점</b>해 주세요.
             <div class="small mt-1"><i class="fas fa-hand-pointer me-1"></i>지문의 영어 단어를 클릭하면 뜻이 뜨고 내 단어장에 저장돼요.</div>
         </div>
         {% for a in wrong %}
@@ -250,6 +257,19 @@
             {% endif %}
         </div>
         {% endfor %}
+        <div class="d-grid mt-3 mb-2">
+            {% if not session.student_redblue_done %}
+            <button id="markDoneBtn" class="btn btn-success btn-lg"
+                    data-sid="{{ session.id }}">
+                <i class="fas fa-check me-1"></i>빨파채점 완료 — 다 봤어요
+            </button>
+            <p class="small text-muted text-center mt-2 mb-0">완료 후 선생님이 최종 확인하면 이 시험이 목록에서 사라져요.</p>
+            {% else %}
+            <div class="alert alert-info text-center mb-0">
+                <i class="fas fa-check-circle me-1"></i>빨파채점 완료! 선생님의 최종 확인을 기다리는 중이에요.
+            </div>
+            {% endif %}
+        </div>
     {% endif %}
     {% endif %}
 </div>
@@ -349,6 +369,45 @@
 })();
 </script>
 {% endif %}
+
+<script>
+(function(){
+    // 학생: 빨파채점 완료 / 교사: 최종 확인 — 둘 다 같은 패턴(fetch + reload)
+    function csrf(){
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+    function bind(id, url, confirmMsg, working){
+        var btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', function(){
+            if (confirmMsg && !confirm(confirmMsg)) return;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>' + working;
+            fetch(url, {method:'POST', headers:{'X-CSRFToken': csrf(), 'X-Requested-With':'XMLHttpRequest'},
+                        credentials:'same-origin'})
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d && d.success) location.reload();
+                else { alert((d && d.error) || '실패'); btn.disabled = false; }
+            })
+            .catch(function(){ alert('네트워크 오류'); btn.disabled = false; });
+        });
+    }
+    {% if not is_teacher %}
+    bind('markDoneBtn',
+         '/training/exam/api/mark-redblue-done/{{ session.id }}/',
+         '빨파답을 다 보고 채점했나요? 완료 표시할게요.',
+         '저장 중...');
+    {% endif %}
+    {% if is_teacher %}
+    bind('finalConfirmBtn',
+         '/training/exam/api/final-confirm/{{ session.id }}/',
+         '학생의 빨파채점을 확인했나요? 최종 확인하면 학생 홈에서 이 시험이 사라집니다.',
+         '확인 중...');
+    {% endif %}
+})();
+</script>
 
 {% if not is_teacher and wrong %}
 {# 지문 단어 한 번 클릭 → 뜻 팝업 + 작업 중인 낱말카드에 자동저장 #}

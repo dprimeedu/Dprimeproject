@@ -22,6 +22,10 @@ urlpatterns = [
 
     # 교사 — 빨파정답 학생 공개
     path('api/release-redblue/<int:session_id>/', views.release_redblue, name='release_redblue'),
+    # 학생 — 빨파채점 완료 표시(공개된 빨파답으로 자기채점 끝)
+    path('api/mark-redblue-done/<int:session_id>/', views.mark_redblue_done, name='mark_redblue_done'),
+    # 교사 — 학생 빨파채점 검토 후 최종 확인(이전 시험을 학생 홈에서 숨김)
+    path('api/final-confirm/<int:session_id>/', views.final_confirm, name='final_confirm'),
 
     # 빨파 정답 PDF (내신) — nginx X-Accel-Redirect 로 NAS 교재폴더에서 스트리밍
     path('redblue/<int:question_id>.pdf', views.redblue_pdf, name='redblue_pdf'),
