@@ -464,7 +464,7 @@ def save_translation_log(request):
 
 @require_download
 def download_pdf(request):
-    """변형문제 PDF 다운로드 — URL 파라미터로 동기 동작 (HWPX 다운로드와 동일 패턴).
+    """변형문제 PDF 다운로드 — HWPX 출력과 동일한 양식(머리말 + 문제 블록 + 끝 페이지의 정답 모음).
 
     GET: year, grade, month, number, category, type? — type 필터(쉼표 구분 [순서],[빈칸]…)
     ModifiedQuestions_Data 를 필터해 한글 폰트로 readable PDF 생성. Platypus 자동 줄바꿈.
@@ -514,18 +514,28 @@ def download_pdf(request):
     except Exception:
         FONT = 'Helvetica'   # 등록 실패 시 fallback (한글 깨질 수 있음)
 
-    style_title = ParagraphStyle('title', fontName=FONT, fontSize=15, leading=22,
-                                  alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                  spaceAfter=10)
-    style_head  = ParagraphStyle('head',  fontName=FONT, fontSize=12, leading=18,
-                                  alignment=TA_LEFT, textColor=colors.HexColor('#6d28d9'),
-                                  spaceBefore=6, spaceAfter=4)
-    style_body  = ParagraphStyle('body',  fontName=FONT, fontSize=11, leading=16,
-                                  alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
-                                  spaceAfter=4)
-    style_ans   = ParagraphStyle('ans',   fontName=FONT, fontSize=11, leading=14,
-                                  alignment=TA_LEFT, textColor=colors.HexColor('#16a34a'),
-                                  spaceBefore=4)
+    # HWPX 양식 매칭 — 머리말 / 문제 라벨 / 본문 / 보기 / 정답
+    style_header = ParagraphStyle('hdr', fontName=FONT, fontSize=10, leading=14,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#6b7280'),
+                                   spaceAfter=12)
+    style_qno    = ParagraphStyle('qno', fontName=FONT, fontSize=11, leading=16,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                   spaceBefore=14, spaceAfter=4)
+    style_prompt = ParagraphStyle('prompt', fontName=FONT, fontSize=11, leading=17,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                   spaceAfter=4)
+    style_passage = ParagraphStyle('passage', fontName=FONT, fontSize=10.5, leading=16,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                   leftIndent=8, spaceAfter=6)
+    style_choice = ParagraphStyle('choice', fontName=FONT, fontSize=10.5, leading=15,
+                                   alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                   leftIndent=14, spaceAfter=1)
+    style_ans_head = ParagraphStyle('anshd', fontName=FONT, fontSize=14, leading=20,
+                                     alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                     spaceAfter=10)
+    style_ans_row = ParagraphStyle('ansrow', fontName=FONT, fontSize=11, leading=16,
+                                    alignment=TA_LEFT, textColor=colors.HexColor('#1f2937'),
+                                    spaceAfter=2)
 
     def _esc(s):
         # Paragraph 가 마크업으로 해석하는 < > & 이스케이프, uFFF0 마커 제거, 줄바꿈 → <br/>
@@ -542,25 +552,39 @@ def download_pdf(request):
     year_str = ', '.join(selected_year)
     grade_str = ', '.join(selected_grade)
     month_str = ', '.join(selected_month)
-    header_text = f'{year_str}년 {grade_str} {month_str}월 — {selected_category}'
+    header_text = f'{year_str}년 {grade_str} {month_str}월 {selected_category}'
 
-    story = [Paragraph(_esc(header_text), style_title)]
+    def _split_choices(option_str):
+        cleaned = (option_str or '').replace('￰', '')
+        cleaned = _re.sub(r'\r\n?', '\n', cleaned)
+        return [c.strip() for c in cleaned.split('\n') if c.strip()]
+
+    story = [Paragraph(_esc(header_text), style_header)]
+    if not rows:
+        story.append(Paragraph('선택한 조건에 맞는 변형문제가 없습니다.', style_prompt))
+
+    # ① 본문 — HWPX 와 동일한 블록 순서: [회차] 라벨 → 문제 → 지문 → 보기 한 줄씩 → (정답은 끝 페이지)
+    answers_index = []   # 끝 페이지 정답 모음용 (회차, 정답) 쌍
     for i, r in enumerate(rows, 1):
         total_no = total_map.get(r['pk_number'], '')
-        qtype = r.get('qtype', '') or ''
-        story.append(Paragraph(_esc(f'[{i}] {total_no} {qtype}'), style_head))
+        if total_no:
+            story.append(Paragraph(_esc(f'[{total_no}]'), style_qno))
         if r.get('question'):
-            story.append(Paragraph(_esc(r['question']), style_body))
+            story.append(Paragraph(_esc(r['question']), style_prompt))
         if r.get('sentence'):
-            story.append(Paragraph(_esc(r['sentence']), style_body))
-        if r.get('option'):
-            story.append(Paragraph(_esc(r['option']), style_body))
-        if r.get('answer'):
-            story.append(Paragraph(_esc(f'정답: {r["answer"]}'), style_ans))
-        story.append(Spacer(1, 6))
+            story.append(Paragraph(_esc(r['sentence']), style_passage))
+        for ch in _split_choices(r.get('option', '')):
+            story.append(Paragraph(_esc(ch), style_choice))
+        ans = (r.get('answer') or '').replace('\t', ' ').strip()
+        if ans:
+            answers_index.append((total_no, ans))
 
-    if not rows:
-        story.append(Paragraph('선택한 조건에 맞는 변형문제가 없습니다.', style_body))
+    # ② 정답은 새 페이지에서 시작 (HWPX 의 endnote-on-new-page 와 동일 의도)
+    if answers_index:
+        story.append(PageBreak())
+        story.append(Paragraph('■ 정답', style_ans_head))
+        for total_no, ans in answers_index:
+            story.append(Paragraph(_esc(f'[{total_no}]  {ans}'), style_ans_row))
 
     doc.build(story)
     data = buf.getvalue()
