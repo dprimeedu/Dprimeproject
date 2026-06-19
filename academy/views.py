@@ -472,7 +472,8 @@ def download_pdf(request):
     from io import BytesIO
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame,
+                                     Paragraph, Spacer, PageBreak, NextPageTemplate)
     from reportlab.lib.enums import TA_LEFT
     import re as _re
     import urllib.parse
@@ -538,16 +539,34 @@ def download_pdf(request):
                                     spaceAfter=2)
 
     def _esc(s):
-        # Paragraph 가 마크업으로 해석하는 < > & 이스케이프, uFFF0 마커 제거, 줄바꿈 → <br/>
+        # Paragraph 가 마크업으로 해석하는 < > & 이스케이프, uFFF0 마커 제거.
+        # 데이터에 컨트롤 \r\n 외에 literal '\r\n' 4글자(\\r\\n) 가 들어있는 경우가 많음 — 둘 다 처리.
         s = (s or '').replace('￰', '')
         s = s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        s = _re.sub(r'\r\n?', '\n', s)
+        # literal escape 시퀀스 → 진짜 줄바꿈
+        s = s.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
+        s = _re.sub(r'\r\n?', '\n', s)   # 실제 컨트롤 문자
         s = s.replace('\n', '<br/>')
         return s
 
+    # 2단 레이아웃 — 본문 페이지는 좌/우 두 단, 정답 페이지는 단단(BaseDocTemplate + PageTemplate).
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
-                            topMargin=18*mm, bottomMargin=18*mm)
+    PAGE_W, PAGE_H = A4
+    L_MARG = 18*mm; R_MARG = 18*mm; T_MARG = 16*mm; B_MARG = 16*mm
+    GUTTER = 8*mm
+    col_w = (PAGE_W - L_MARG - R_MARG - GUTTER) / 2
+    col_h = PAGE_H - T_MARG - B_MARG
+    frame_left = Frame(L_MARG, B_MARG, col_w, col_h, leftPadding=4, rightPadding=4,
+                       topPadding=2, bottomPadding=2, id='col1')
+    frame_right = Frame(L_MARG + col_w + GUTTER, B_MARG, col_w, col_h,
+                        leftPadding=4, rightPadding=4, topPadding=2, bottomPadding=2, id='col2')
+    frame_single = Frame(L_MARG, B_MARG, PAGE_W - L_MARG - R_MARG, col_h,
+                          leftPadding=4, rightPadding=4, topPadding=2, bottomPadding=2, id='full')
+    doc = BaseDocTemplate(buf, pagesize=A4)
+    doc.addPageTemplates([
+        PageTemplate(id='2col',  frames=[frame_left, frame_right]),
+        PageTemplate(id='1col',  frames=[frame_single]),
+    ])
 
     year_str = ', '.join(selected_year)
     grade_str = ', '.join(selected_grade)
@@ -579,8 +598,9 @@ def download_pdf(request):
         if ans:
             answers_index.append((total_no, ans))
 
-    # ② 정답은 새 페이지에서 시작 (HWPX 의 endnote-on-new-page 와 동일 의도)
+    # ② 정답은 새 페이지에서 단단 레이아웃 (HWPX 의 endnote-on-new-page 와 동일 의도)
     if answers_index:
+        story.append(NextPageTemplate('1col'))
         story.append(PageBreak())
         story.append(Paragraph('■ 정답', style_ans_head))
         for total_no, ans in answers_index:
