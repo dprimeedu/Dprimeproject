@@ -76,6 +76,9 @@
            transition:all .12s; user-select:none; }
 .chip-num:hover{ border-color:var(--pe-primary); color:var(--pe-primary); }
 .chip-num.on{ background:var(--pe-primary); border-color:var(--pe-primary); color:#fff; }
+.chip-num.dim{ color:#cbd5e1; border-style:dashed; }
+.chip-num.dim:hover{ border-color:#94a3b8; color:#94a3b8; }
+.chip-num.dim.on{ background:#94a3b8; border-color:#94a3b8; color:#fff; border-style:solid; }
 .picked-empty{ color:#9ca3af; font-size:.85rem; padding:6px 0; }
 .picked-chip{ background:#eef2ff; border:1px solid #c7d2fe; border-radius:8px; padding:5px 8px 5px 12px;
               font-size:.84rem; font-weight:600; color:#3730a3; display:inline-flex; align-items:center; gap:6px; }
@@ -135,22 +138,27 @@
     <p>위에서 <b>학년·년도·월</b>을 모두 선택하면 번호를 고를 수 있어요.</p>
   </div>
 
-  {# 번호 추가 입력 — 그리드에 없는 번호를 직접 입력 #}
-  <div class="sec" id="addInputSection" style="display:none;">
+  {# 번호 — 학년·년도·월 좁혀졌을 때 표시. 18~50 고정 범위 + 직접 입력 통합 #}
+  <div class="sec" id="numSection" style="display:none;">
     <div class="sec-head">
-      <h3><i class="fas fa-keyboard me-1" style="color:#6b7280"></i>직접 입력 <small class="text-muted" style="font-weight:500;font-size:.8rem;margin-left:6px;">번호를 직접 입력해 추가</small></h3>
+      <h3><i class="fas fa-list-ol me-1" style="color:#6d28d9"></i>번호 <small class="text-muted" id="numHeadRound" style="font-weight:500;font-size:.85rem;margin-left:6px;"></small></h3>
+      <div>
+        <button type="button" class="tool-btn" id="numAll">전체 선택</button>
+        <button type="button" class="tool-btn" id="numNone">전체 해제</button>
+      </div>
     </div>
-    <div class="add-row">
-      <input type="text" id="addInput" class="add-text" placeholder="예) 23  또는  23,25,27  또는  23-27" autocomplete="off">
+    <div class="chip-row" id="numGrid"></div>
+    <div class="add-row" style="margin-top:12px;">
+      <input type="text" id="addInput" class="add-text" placeholder="직접 입력 — 예) 23  또는  23,25,27  또는  23-27" autocomplete="off">
       <button type="button" id="addBtn" class="tool-btn primary">번호 추가</button>
     </div>
-    <div class="help" id="addHelp">현재 선택된 회차에 추가됩니다. 쉼표로 구분하거나 23-27 처럼 범위 가능.</div>
+    <div class="help" id="addHelp">그리드에 없거나 한꺼번에 여러 개를 추가할 때 사용. 쉼표 또는 23-27 같은 범위.</div>
   </div>
 
-  {# 변형문제 유형 — 번호 그리드 위쪽에 항상 표시(기본은 '전체') #}
+  {# 변형문제 유형 — 번호 아래(기본은 '전체 선택') #}
   <div class="sec" id="vtSection" style="display:none;">
     <div class="sec-head">
-      <h3><i class="fas fa-shapes me-1" style="color:#f97316"></i>변형문제 유형 <small class="text-muted" style="font-weight:500;font-size:.8rem;margin-left:6px;">(여러 개 선택 가능 · 미선택은 전체)</small></h3>
+      <h3><i class="fas fa-shapes me-1" style="color:#f97316"></i>변형문제 유형 <small class="text-muted" style="font-weight:500;font-size:.8rem;margin-left:6px;">(여러 개 선택 가능 · 기본 전체)</small></h3>
       <div>
         <button type="button" class="tool-btn" id="vtAll">전체 선택</button>
         <button type="button" class="tool-btn" id="vtNone">전체 해제</button>
@@ -161,18 +169,6 @@
       <span class="chip-num vt-chip" data-v="{{ t }}">{{ t }}</span>
       {% endfor %}
     </div>
-  </div>
-
-  {# 번호 그리드 — 학년·년도·월 1개씩 좁혀졌을 때만 표시 #}
-  <div class="sec" id="numSection" style="display:none;">
-    <div class="sec-head">
-      <h3><i class="fas fa-list-ol me-1" style="color:#6d28d9"></i>번호 <small class="text-muted" id="numHeadRound" style="font-weight:500;font-size:.85rem;margin-left:6px;"></small></h3>
-      <div>
-        <button type="button" class="tool-btn" id="numAll">전체 선택</button>
-        <button type="button" class="tool-btn" id="numNone">전체 해제</button>
-      </div>
-    </div>
-    <div class="chip-row" id="numGrid"></div>
   </div>
 
   {# 선택된 번호 누적 (현재 활성 회차) #}
@@ -212,7 +208,6 @@
   const vtSection = document.getElementById('vtSection');
   const numSection = document.getElementById('numSection');
   const pickedSection = document.getElementById('pickedSection');
-  const addInputSection = document.getElementById('addInputSection');
   const numGrid = document.getElementById('numGrid');
   const numHeadRound = document.getElementById('numHeadRound');
   const pickedChips = document.getElementById('pickedChips');
@@ -245,25 +240,26 @@
       promptEl.style.display = '';
       numSection.style.display = 'none';
       pickedSection.style.display = 'none';
-      addInputSection.style.display = 'none';
       pdfBtn.disabled = true; hwpxBtn.disabled = true;
       return;
     }
     promptEl.style.display = 'none';
     numSection.style.display = '';
     pickedSection.style.display = '';
-    addInputSection.style.display = '';
 
-    // 번호 그리드
-    const nums = ROUND_NUMBERS[key] || [];
+    // 번호 그리드 — 18~50 고정 범위 (해당 회차에 실제 있는 번호는 강조)
+    const inRound = new Set(ROUND_NUMBERS[key] || []);
     const picked = currentPickedSet();
     numHeadRound.textContent = '— ' + active.grade + ' ' + active.year + '년 ' + active.month + '월';
     numGrid.innerHTML = '';
+    const nums = [];
+    for (let n = 18; n <= 50; n++) nums.push(n);
     nums.forEach(n => {
       const el = document.createElement('span');
-      el.className = 'chip-num' + (picked.has(n) ? ' on' : '');
+      el.className = 'chip-num' + (picked.has(n) ? ' on' : '') + (inRound.has(n) ? '' : ' dim');
       el.dataset.n = n;
       el.textContent = n;
+      if (!inRound.has(n)) el.title = '이 회차에는 데이터가 없을 수 있어요';
       el.addEventListener('click', () => {
         if (picked.has(n)){ picked.delete(n); el.classList.remove('on'); }
         else { picked.add(n); el.classList.add('on'); }
@@ -353,11 +349,13 @@
     document.querySelectorAll('.vt-chip').forEach(c => c.classList.remove('on'));
   });
 
-  // 번호 전체 선택/해제
+  // 번호 전체 선택/해제 — 회차에 실제 존재하는 번호만 (dim 은 제외)
   document.getElementById('numAll').addEventListener('click', () => {
     const picked = currentPickedSet(); if (!picked) return;
     (ROUND_NUMBERS[currentKey()] || []).forEach(n => picked.add(n));
-    numGrid.querySelectorAll('.chip-num').forEach(el => el.classList.add('on'));
+    numGrid.querySelectorAll('.chip-num').forEach(el => {
+      if (!el.classList.contains('dim')) el.classList.add('on');
+    });
     renderPicked();
   });
   document.getElementById('numNone').addEventListener('click', () => {
