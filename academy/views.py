@@ -464,11 +464,109 @@ def save_translation_log(request):
 
 @require_download
 def download_pdf(request):
-    """변형문제 PDF 다운로드 — HWPX 출력과 동일한 양식(머리말 + 문제 블록 + 끝 페이지의 정답 모음).
+    """변형문제 PDF 다운로드 — HTML 렌더 후 WeasyPrint 로 변환.
 
+    템플릿: academy/print_paper.html (2단 column-count CSS, Nanum Gothic 폰트, 지문 박스, 정답 단단 페이지)
     GET: year, grade, month, number, category, type? — type 필터(쉼표 구분 [순서],[빈칸]…)
-    ModifiedQuestions_Data 를 필터해 한글 폰트로 readable PDF 생성. Platypus 자동 줄바꿈.
     """
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    import re as _re
+    import urllib.parse
+    import html as _html
+
+    selected_year = [y for val in request.GET.getlist('year', []) for y in val.split(',') if y]
+    selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
+    selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
+    selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
+    cat_list = [n for val in request.GET.getlist('category', []) for n in val.split(',') if n]
+    selected_category = cat_list[0] if cat_list else '변형문제'
+    selected_types = [t for val in request.GET.getlist('type', []) for t in val.split(',') if t.strip()]
+
+    pknum = KeyTable.objects.all()
+    if selected_year:
+        pknum = pknum.filter(year__in=selected_year)
+    if selected_grade:
+        pknum = pknum.filter(grade__in=selected_grade)
+    if selected_month and "전체" not in selected_month:
+        pknum = pknum.filter(month__in=selected_month)
+    if selected_numbers:
+        pknum = pknum.filter(total_number__in=selected_numbers)
+
+    pk_ids = list(pknum.values_list('pk_number', flat=True))
+    total_map = dict(pknum.values_list('pk_number', 'total_number'))
+
+    qs = ModifiedQuestions_Data.objects.filter(pk_number__in=pk_ids)
+    if selected_types:
+        qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
+    qrows = list(qs.values('question', 'sentence', 'option', 'answer',
+                            'qtype', 'pk_number').order_by('pk_number', 'index'))
+
+    # 텍스트 정리 — uFFF0 마커는 밑줄 span, literal '\r\n' 도 줄바꿈, HTML 이스케이프
+    MARK_RE = _re.compile(r'￰(.*?)￰')
+    def _clean(s):
+        s = (s or '')
+        # literal escape → 진짜 줄바꿈
+        s = s.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
+        s = _re.sub(r'\r\n?', '\n', s)
+        # HTML escape (마커 이후에 처리해야 함)
+        # 1) 마커 자리에 임시 토큰 박기
+        marks = []
+        def _grab(m):
+            marks.append(m.group(1))
+            return f'\x00MK{len(marks)-1}\x00'
+        s = MARK_RE.sub(_grab, s)
+        s = _html.escape(s)
+        # 2) 토큰 다시 풀면서 mark span 으로
+        for i, inner in enumerate(marks):
+            s = s.replace(f'\x00MK{i}\x00', f'<span class="mark">{_html.escape(inner)}</span>')
+        # 줄바꿈 → <br/> (선택지 split 전 단계는 일반 보존)
+        return s
+
+    def _split_choices(option_str):
+        cleaned = (option_str or '').replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
+        cleaned = _re.sub(r'\r\n?', '\n', cleaned)
+        return [_clean(c.strip()) for c in cleaned.split('\n') if c.strip()]
+
+    rows_ctx = []
+    answers_ctx = []
+    for r in qrows:
+        total_no = total_map.get(r['pk_number'], '')
+        date_str = total_no or ''
+        rows_ctx.append({
+            'date':    date_str,
+            'prompt':  _clean(r.get('question', '')).replace('\n', '<br/>'),
+            'passage': _clean(r.get('sentence', '')).replace('\n', '<br/>'),
+            'choices': _split_choices(r.get('option', '')),
+        })
+        ans = (r.get('answer') or '').replace('\t', ' ').strip()
+        if ans:
+            answers_ctx.append({'date': date_str, 'answer': _clean(ans).replace('\n', ' ')})
+
+    year_str = ', '.join(selected_year)
+    grade_str = ', '.join(selected_grade)
+    month_str = ', '.join(selected_month)
+    header_text = f'{year_str}년 {grade_str} {month_str}월 {selected_category}'
+
+    html_str = render_to_string('academy/print_paper.html', {
+        'header_text': header_text,
+        'rows': rows_ctx,
+        'answers': answers_ctx,
+    })
+
+    pdf_bytes = HTML(string=html_str, base_url=request.build_absolute_uri()).write_pdf()
+
+    filename = f'[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_{selected_category}.pdf'
+    encoded = urllib.parse.quote(filename, safe='')
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f"attachment; filename=\"exam.pdf\"; filename*=UTF-8''{encoded}"
+    )
+    return response
+
+
+def _download_pdf_OLD_reportlab(request):
+    """[DEPRECATED] ReportLab 기반. WeasyPrint 로 대체됨. 기존 코드 보존만 위해 남김."""
     from io import BytesIO
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm

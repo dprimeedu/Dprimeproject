@@ -1,0 +1,107 @@
+{% load common_filters %}<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{{ header_text }}</title>
+<style>
+@page {
+  size: A4;
+  margin: 14mm 12mm 14mm 12mm;
+  @top-center {
+    content: "{{ header_text }}";
+    font-family: 'Nanum Gothic', 'Malgun Gothic', sans-serif;
+    font-size: 9.5pt; font-weight: bold; padding-bottom: 4mm;
+    border-bottom: 0.4pt solid #333; width: 100%;
+  }
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font-family: 'Nanum Gothic', sans-serif; font-size: 8pt; color: #6b7280;
+  }
+}
+@page :first {
+  @top-center { content: ""; border-bottom: none; }
+}
+
+html, body { margin:0; padding:0; }
+body {
+  font-family: 'Nanum Gothic', 'Malgun Gothic', '맑은 고딕', Arial, sans-serif;
+  font-size: 9pt; line-height: 1.45; color: #1f2937;
+}
+.title {
+  text-align: center; font-weight: bold; font-size: 13pt;
+  padding: 6mm 0 6mm 0; border-bottom: 0.5pt solid #1f2937; margin-bottom: 5mm;
+}
+.body-cols { column-count: 2; column-gap: 6mm; column-fill: auto; }
+
+.q { break-inside: avoid-column; margin-bottom: 4mm; }
+.q-head {
+  font-weight: bold; font-size: 9.5pt; margin-bottom: 2mm; line-height: 1.35;
+}
+.q-head .num { margin-right: 2mm; }
+.q-head .src { font-weight: normal; color: #6b7280; font-size: 8pt; margin-left: 2mm; }
+.passage {
+  background: #fafafa; border: 0.4pt solid #d4d4d8; padding: 3mm 3.5mm;
+  font-size: 9pt; line-height: 1.55; margin-bottom: 2.5mm;
+  white-space: pre-wrap; word-wrap: break-word;
+}
+.passage .indent { display: inline-block; width: 3mm; }
+.choices { margin-top: 1mm; }
+.choices .choice {
+  display: block; padding-left: 6mm; text-indent: -6mm;
+  font-size: 9pt; line-height: 1.5; margin-bottom: 0.4mm;
+}
+
+/* 정답 페이지 — 단단 */
+.answers-page {
+  page-break-before: always; column-count: 1;
+}
+.answers-page h2 {
+  font-size: 12pt; font-weight: bold; border-bottom: 0.5pt solid #1f2937;
+  padding-bottom: 2mm; margin-bottom: 4mm;
+}
+.answer-row {
+  font-size: 9.5pt; line-height: 1.55; padding: 0.5mm 0;
+}
+.answer-row .ano { font-weight: bold; margin-right: 3mm; color: #6d28d9; }
+
+/* uFFF0 마커는 밑줄로 표시(원본 데이터의 강조) */
+.mark { text-decoration: underline; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="title">{{ header_text }}</div>
+
+{% if not rows %}
+  <p style="text-align:center; color:#6b7280; padding:30mm 0;">선택한 조건에 맞는 변형문제가 없습니다.</p>
+{% else %}
+<div class="body-cols">
+  {% for q in rows %}
+  <div class="q">
+    <div class="q-head">
+      <span class="num">{{ forloop.counter }}.</span>{{ q.prompt|safe }}<span class="src">[{{ q.date }}]</span>
+    </div>
+    {% if q.passage %}
+    <div class="passage">{{ q.passage|safe }}</div>
+    {% endif %}
+    {% if q.choices %}
+    <div class="choices">
+      {% for ch in q.choices %}<span class="choice">{{ ch|safe }}</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if answers %}
+<div class="answers-page">
+  <h2>■ 정답</h2>
+  {% for a in answers %}
+  <div class="answer-row"><span class="ano">[{{ a.date }}]</span>{{ a.answer|safe }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}
+</body>
+</html>
