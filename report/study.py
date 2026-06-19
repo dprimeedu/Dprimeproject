@@ -29,7 +29,7 @@ SUBJECT_META = [
     ('summary', '요약문', '/training/summary/'),
     ('writing', '영작', '/training/writing/'),
     ('grammar', '어법', '/training/grammar/'),
-    ('exam', '시험', '/training/exam/'),
+    ('exam', '정답입력', '/training/exam/'),
 ]
 
 SUBJECT_LABEL = {k: lab for k, lab, _ in SUBJECT_META}
@@ -396,13 +396,13 @@ def board(date):
     e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
     g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
 
-    # 시험 '선생님 처리 대기' — 날짜 무관, 학생별 모음. 시험란에 같이 표시(별도 박스 안 만든다).
-    #   모의/유형: 채점완료 + 빨파 미공개  /  내신: 채점완료 + 미확인
+    # 시험 — 날짜 무관 시험란 노출. 모의/유형은 '빨파 미공개' 처리 대기만,
+    # 내신은 한 세트 부분입력 패턴이라 채점완료 세션을 항상 표시(처리 끝 개념 없음).
     e_pending = defaultdict(list)
     for s in (ExamSession.objects
               .filter(status=ExamSession.STATUS_GRADED)
               .filter(Q(paper__source__in=['mock', 'mock_type'], redblue_released=False)
-                      | Q(paper__source='naesin', teacher_checked=False))
+                      | Q(paper__source='naesin'))
               .select_related('paper')):
         e_pending[s.student_id].append(s)
 
