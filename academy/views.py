@@ -502,31 +502,48 @@ def download_pdf(request):
     qrows = list(qs.values('question', 'sentence', 'option', 'answer',
                             'qtype', 'pk_number').order_by('pk_number', 'index'))
 
-    # 텍스트 정리 — uFFF0 마커는 밑줄 span, literal '\r\n' 도 줄바꿈, HTML 이스케이프
+    # 텍스트 정리 — uFFF0 마커는 밑줄 span, literal '\r\n' / Excel _x000D_ 도 줄바꿈, HTML 이스케이프
     MARK_RE = _re.compile(r'￰(.*?)￰')
-    def _clean(s):
+    CHOICE_MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    CHOICE_SPLIT_RE = _re.compile(r'(?=[①②③④⑤⑥⑦⑧⑨⑩])')
+
+    def _normalize_breaks(s):
+        # Excel OOXML 의 _x000D_(CR) / _x000A_(LF) 토큰 + literal escape + 실제 컨트롤
         s = (s or '')
-        # literal escape → 진짜 줄바꿈
+        s = s.replace('_x000D_', '\n').replace('_x000A_', '\n')
         s = s.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
         s = _re.sub(r'\r\n?', '\n', s)
-        # HTML escape (마커 이후에 처리해야 함)
-        # 1) 마커 자리에 임시 토큰 박기
+        # 연속 빈줄 3개 이상은 2개로 축약
+        s = _re.sub(r'\n{3,}', '\n\n', s)
+        return s
+
+    def _clean(s):
+        s = _normalize_breaks(s)
+        # HTML escape (uFFF0 마커는 보존하기 위해 임시 토큰 사용)
         marks = []
         def _grab(m):
             marks.append(m.group(1))
             return f'\x00MK{len(marks)-1}\x00'
         s = MARK_RE.sub(_grab, s)
         s = _html.escape(s)
-        # 2) 토큰 다시 풀면서 mark span 으로
         for i, inner in enumerate(marks):
             s = s.replace(f'\x00MK{i}\x00', f'<span class="mark">{_html.escape(inner)}</span>')
-        # 줄바꿈 → <br/> (선택지 split 전 단계는 일반 보존)
         return s
 
     def _split_choices(option_str):
-        cleaned = (option_str or '').replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
-        cleaned = _re.sub(r'\r\n?', '\n', cleaned)
-        return [_clean(c.strip()) for c in cleaned.split('\n') if c.strip()]
+        cleaned = _normalize_breaks(option_str)
+        parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+        # 줄바꿈으로 안 갈리고 한 줄 안에 ①②③ 가 같이 있으면 마커 앞에서 분리
+        if any(any(m in p for m in CHOICE_MARKERS) for p in parts):
+            new_parts = []
+            for p in parts:
+                if any(m in p[1:] for m in CHOICE_MARKERS):   # 첫 글자 외에 마커 더 있으면 split
+                    chunks = [c.strip() for c in CHOICE_SPLIT_RE.split(p) if c.strip()]
+                    new_parts.extend(chunks)
+                else:
+                    new_parts.append(p)
+            parts = new_parts
+        return [_clean(p) for p in parts]
 
     rows_ctx = []
     answers_ctx = []
