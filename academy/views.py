@@ -115,7 +115,8 @@ def academy_list(request):
         "grades": grades,
         "years": years,
         "months": months,
-        "round_numbers_json": json.dumps(round_numbers_list, ensure_ascii=False),
+        # json_script 필터가 알아서 직렬화 — dict 그대로 넘기지 않으면 이중 인코딩됨.
+        "round_numbers": round_numbers_list,
         "variant_types": variant_types,
     })
 
