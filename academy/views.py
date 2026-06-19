@@ -51,37 +51,72 @@ DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQues
 
 @require_variant
 def academy_list(request):
-    """모의고사 선택 — 상단 학년/년도/월 필터 + 제목 검색, 아래 리스트는 클라이언트에서 즉시 필터링."""
+    """모의고사 선택 — 학년·년도·월 + 번호 + 변형유형 한 화면 통합 선택.
+
+    번호는 KeyTable.total_number='YYYY-MM-NN' 끝 두자리(번호)를 회차별로 모아 그리드 표시,
+    변형 유형은 QuestionData.유형 distinct 를 위쪽에 칩 멀티선택.
+    """
+    import json
+    import re
+    from collections import defaultdict
+    NUM_RE = re.compile(r'^(\d{4})-(\d{2})-(\d{2})$')
+
     def _int(v):
         try:
             return int(v)
         except (TypeError, ValueError):
             return 0
 
-    # 전체 모의고사(중복 제목 1개씩) — 필터/검색은 화면에서 즉시 처리
+    # 회차별 번호 모음 — '학년|년도|월' → 정렬된 번호 리스트
+    round_numbers = defaultdict(set)
+    for r in KeyTable.objects.values('grade', 'year', 'month', 'total_number'):
+        m = NUM_RE.match(r['total_number'] or '')
+        if not m:
+            continue
+        round_numbers[f"{r['grade']}|{r['year']}|{r['month']}"].add(int(m.group(3)))
+    round_numbers_list = {k: sorted(v) for k, v in round_numbers.items()}
+
+    # 회차 목록 (학년·년도·월 조합) — 필터 chip 활성화·search 용
     formatted_exams = []
     seen_titles = set()
-    for exam in KeyTable.objects.values('pk_number', 'grade', 'year', 'month'):
+    for exam in KeyTable.objects.values('grade', 'year', 'month'):
         title = f"{exam['grade']} {exam['year']}년 {exam['month']}월 모의고사"
         if title in seen_titles:
             continue
         seen_titles.add(title)
         formatted_exams.append({
             'grade': exam['grade'], 'year': exam['year'], 'month': exam['month'],
-            'title': title, 'link': exam['pk_number'],
+            'title': title,
         })
-    # 최신 년도 → 학년 → 월 순
     formatted_exams.sort(key=lambda e: (-_int(e['year']), str(e['grade']), _int(e['month'])))
 
     grades = sorted(KeyTable.objects.values_list('grade', flat=True).distinct())
     years = sorted(KeyTable.objects.values_list('year', flat=True).distinct(), key=_int, reverse=True)
     months = sorted(KeyTable.objects.values_list('month', flat=True).distinct(), key=_int)
 
+    # 변형 유형 — QuestionData.유형 distinct(대괄호 제거). 로컬 부교재 출력의 순서를 따른다.
+    raw_types = set(
+        (t or '').strip().strip('[]')
+        for t in QuestionData.objects.values_list('유형', flat=True).distinct()
+    )
+    raw_types.discard('')
+    # 로컬 프로그램 순서 우선 정렬, 나머지는 뒤로
+    PREFERRED = ['순서', '도표', '그림', '문장넣기', '무관한문장', '연결어', '연결사',
+                 '일치불일치', '심경분위기', '지칭대상', '지칭추론', '주제', '주장',
+                 '제목', '요지', '목적', '밑줄의미', '어휘', '요약문완성', '빈칸', '어법',
+                 '장문2', '장문3']
+    variant_types = [t for t in PREFERRED if t in raw_types]
+    for t in sorted(raw_types):
+        if t not in variant_types:
+            variant_types.append(t)
+
     return render(request, "academy_list.html", {
         "exams": formatted_exams,
         "grades": grades,
         "years": years,
         "months": months,
+        "round_numbers_json": json.dumps(round_numbers_list, ensure_ascii=False),
+        "variant_types": variant_types,
     })
 
 @require_variant

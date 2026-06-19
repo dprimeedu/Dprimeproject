@@ -60,6 +60,31 @@
 .mx-selbar.show{ display:flex; }
 .mx-selbar b{ font-weight:800; }
 .mx-selbar button{ background:#fff; color:var(--pe-primary); border:none; padding:9px 20px; border-radius:10px; font-weight:700; cursor:pointer; }
+
+/* 변형 유형 / 번호 / 선택된 번호 섹션 */
+.sec{ background:#fff; border:1px solid var(--pe-line); border-radius:14px; padding:14px 16px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.sec-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.sec-head h3{ font-size:.95rem; font-weight:700; margin:0; color:var(--pe-ink); }
+.sec-head .tool-btn{ font-size:.78rem; padding:4px 10px; border:1px solid var(--pe-line); background:#fff; color:var(--pe-muted); border-radius:8px; cursor:pointer; }
+.sec-head .tool-btn:hover{ border-color:var(--pe-primary); color:var(--pe-primary); }
+.chip-row{ display:flex; flex-wrap:wrap; gap:6px; }
+.chip-num{ padding:5px 12px; border:1px solid var(--pe-line); border-radius:8px; background:#fff;
+           font-size:.85rem; font-weight:600; color:#4b5563; cursor:pointer; min-width:38px; text-align:center;
+           transition:all .12s; user-select:none; }
+.chip-num:hover{ border-color:var(--pe-primary); color:var(--pe-primary); }
+.chip-num.on{ background:var(--pe-primary); border-color:var(--pe-primary); color:#fff; }
+.picked-empty{ color:#9ca3af; font-size:.85rem; padding:6px 0; }
+.picked-chip{ background:#eef2ff; border:1px solid #c7d2fe; border-radius:8px; padding:5px 8px 5px 12px;
+              font-size:.84rem; font-weight:600; color:#3730a3; display:inline-flex; align-items:center; gap:6px; }
+.picked-chip .x{ width:16px; height:16px; line-height:14px; text-align:center; border-radius:50%;
+                 background:#fff; color:#6366f1; cursor:pointer; font-weight:800; }
+.picked-chip .x:hover{ background:#6366f1; color:#fff; }
+.output-row{ position:sticky; bottom:14px; margin-top:8px; }
+.output-btn{ width:100%; background:var(--pe-primary); color:#fff; border:none; padding:14px 18px;
+             border-radius:14px; font-size:1rem; font-weight:800; cursor:pointer;
+             box-shadow:0 8px 24px rgba(109,40,217,.3); transition:opacity .15s; }
+.output-btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+.help{ font-size:.82rem; color:#9ca3af; margin:2px 0 8px; }
 </style>
 
 <div class="mx-wrap">
@@ -82,93 +107,249 @@
     </div>
   </div>
 
-  <div class="mx-count" id="mxCountWrap" style="display:none;"><span id="mxCount">0</span>개</div>
-
   <div class="mx-prompt" id="mxPrompt">
     <i class="fas fa-magnifying-glass"></i>
-    <p>위에서 <b>학년·년도·월</b>을 선택하거나 <b>제목을 검색</b>하면 모의고사가 나옵니다.</p>
+    <p>위에서 <b>학년·년도·월</b>을 각 1개씩 선택하면 번호를 고를 수 있어요.</p>
   </div>
 
-  <div class="mx-list" id="mxList" style="display:none;">
-    {% for e in exams %}
-    <a class="exam-row" data-grade="{{ e.grade }}" data-year="{{ e.year }}" data-month="{{ e.month }}"
-       data-title="{{ e.title|lower }}"
-       href="{% url 'academy:academy_list_result' %}?year={{ e.year }}&grade={{ e.grade }}&month={{ e.month }}">
-      <input type="checkbox" class="exam-check" onclick="event.stopPropagation();event.preventDefault();this.closest('.exam-row').classList.toggle('sel',this.checked);mxSel();">
-      <span class="exam-title">{{ e.title }}</span>
-      <span class="exam-tag">모의고사</span>
-      <span class="chev"><i class="fas fa-chevron-right"></i></span>
-    </a>
-    {% endfor %}
+  {# 변형문제 유형 — 번호 그리드 위쪽에 항상 표시(기본은 '전체') #}
+  <div class="sec" id="vtSection" style="display:none;">
+    <div class="sec-head">
+      <h3><i class="fas fa-shapes me-1" style="color:#f97316"></i>변형문제 유형 <small class="text-muted" style="font-weight:500;font-size:.8rem;margin-left:6px;">(여러 개 선택 가능 · 미선택은 전체)</small></h3>
+      <div>
+        <button type="button" class="tool-btn" id="vtAll">전체 선택</button>
+        <button type="button" class="tool-btn" id="vtNone">전체 해제</button>
+      </div>
+    </div>
+    <div class="chip-row">
+      {% for t in variant_types %}
+      <span class="chip-num vt-chip" data-v="{{ t }}">{{ t }}</span>
+      {% endfor %}
+    </div>
   </div>
-  <div class="mx-empty" id="mxEmpty" style="display:none;">조건에 맞는 모의고사가 없습니다.</div>
 
-  <div class="mx-selbar" id="mxSelbar">
-    <span>선택 <b id="mxSelN">0</b>개</span>
-    <button type="button" onclick="mxOpenSelected()">선택 항목 열기</button>
+  {# 번호 그리드 — 학년·년도·월 1개씩 좁혀졌을 때만 표시 #}
+  <div class="sec" id="numSection" style="display:none;">
+    <div class="sec-head">
+      <h3><i class="fas fa-list-ol me-1" style="color:#6d28d9"></i>번호 <small class="text-muted" id="numHeadRound" style="font-weight:500;font-size:.85rem;margin-left:6px;"></small></h3>
+      <div>
+        <button type="button" class="tool-btn" id="numAll">전체 선택</button>
+        <button type="button" class="tool-btn" id="numNone">전체 해제</button>
+      </div>
+    </div>
+    <div class="chip-row" id="numGrid"></div>
+  </div>
+
+  {# 선택된 번호 누적 (현재 활성 회차) #}
+  <div class="sec" id="pickedSection" style="display:none;">
+    <div class="sec-head">
+      <h3><i class="fas fa-check-double me-1" style="color:#16a34a"></i>선택된 번호 <small class="text-muted" id="pickedCount" style="font-weight:500;font-size:.85rem;margin-left:6px;">0개</small></h3>
+      <button type="button" class="tool-btn" id="pickedClear">모두 지우기</button>
+    </div>
+    <div id="pickedChips"><div class="picked-empty">아직 선택된 번호가 없어요.</div></div>
+  </div>
+
+  <div class="output-row">
+    <button type="button" class="output-btn" id="outputBtn" disabled>
+      <i class="fas fa-arrow-right me-1"></i>선택한 번호로 결과 보기
+    </button>
   </div>
 </div>
 
+{{ round_numbers_json|json_script:"round-data" }}
+
 <script>
 (function(){
-  const active = {grade:new Set(), year:new Set(), month:new Set()};
-  const rows = Array.from(document.querySelectorAll('.exam-row'));
-  const search = document.getElementById('mxSearch');
-  const countEl = document.getElementById('mxCount');
-  const countWrap = document.getElementById('mxCountWrap');
-  const emptyEl = document.getElementById('mxEmpty');
-  const listEl  = document.getElementById('mxList');
-  const promptEl = document.getElementById('mxPrompt');
+  // 회차별 번호 데이터 — '학년|년도|월' → [번호…]
+  const ROUND_NUMBERS = JSON.parse(document.getElementById('round-data').textContent || '{}');
+  const RESULT_URL = '{% url "academy:academy_list_result" %}';
 
-  function apply(){
-    const q = (search.value || '').trim().toLowerCase();
-    const hasFilter = active.grade.size || active.year.size || active.month.size || q;
-    // 기본은 숨김 — 필터/검색이 있을 때만 결과 표시
-    if(!hasFilter){
-      promptEl.style.display = 'block';
-      listEl.style.display = 'none';
-      emptyEl.style.display = 'none';
-      countWrap.style.display = 'none';
+  // 학년/년도/월 칩 — single-select per axis (각 축에 1개만 선택). 같은 칩 다시 클릭 → 해제.
+  const active = {grade:null, year:null, month:null};
+  const variants = new Set();
+  // 선택된 번호 — '학년|년도|월' → Set<번호>. 회차를 바꿔도 다른 회차 선택은 유지.
+  const pickedByRound = new Map();
+
+  const promptEl = document.getElementById('mxPrompt');
+  const vtSection = document.getElementById('vtSection');
+  const numSection = document.getElementById('numSection');
+  const pickedSection = document.getElementById('pickedSection');
+  const numGrid = document.getElementById('numGrid');
+  const numHeadRound = document.getElementById('numHeadRound');
+  const pickedChips = document.getElementById('pickedChips');
+  const pickedCount = document.getElementById('pickedCount');
+  const outputBtn = document.getElementById('outputBtn');
+  const search = document.getElementById('mxSearch');
+
+  function currentKey(){
+    if (!active.grade || !active.year || !active.month) return null;
+    return active.grade + '|' + active.year + '|' + active.month;
+  }
+  function currentPickedSet(){
+    const k = currentKey(); if (!k) return null;
+    let s = pickedByRound.get(k);
+    if (!s){ s = new Set(); pickedByRound.set(k, s); }
+    return s;
+  }
+
+  function render(){
+    const key = currentKey();
+    // 변형 유형은 회차 선택 안 됐어도 표시. 번호/선택 칸은 회차 좁혀졌을 때만.
+    vtSection.style.display = '';
+    if (!key){
+      promptEl.style.display = '';
+      numSection.style.display = 'none';
+      pickedSection.style.display = 'none';
+      outputBtn.disabled = true;
       return;
     }
     promptEl.style.display = 'none';
-    let shown = 0;
-    rows.forEach(r=>{
-      const okG = !active.grade.size || active.grade.has(r.dataset.grade);
-      const okY = !active.year.size  || active.year.has(r.dataset.year);
-      const okM = !active.month.size || active.month.has(r.dataset.month);
-      const okQ = !q || r.dataset.title.includes(q);
-      const ok = okG && okY && okM && okQ;
-      r.style.display = ok ? '' : 'none';
-      if(ok) shown++;
+    numSection.style.display = '';
+    pickedSection.style.display = '';
+
+    // 번호 그리드
+    const nums = ROUND_NUMBERS[key] || [];
+    const picked = currentPickedSet();
+    numHeadRound.textContent = '— ' + active.grade + ' ' + active.year + '년 ' + active.month + '월';
+    numGrid.innerHTML = '';
+    nums.forEach(n => {
+      const el = document.createElement('span');
+      el.className = 'chip-num' + (picked.has(n) ? ' on' : '');
+      el.dataset.n = n;
+      el.textContent = n;
+      el.addEventListener('click', () => {
+        if (picked.has(n)){ picked.delete(n); el.classList.remove('on'); }
+        else { picked.add(n); el.classList.add('on'); }
+        renderPicked();
+      });
+      numGrid.appendChild(el);
     });
-    countEl.textContent = shown;
-    countWrap.style.display = 'block';
-    emptyEl.style.display = shown ? 'none' : 'block';
-    listEl.style.display = shown ? '' : 'none';
+    renderPicked();
   }
 
-  document.querySelectorAll('.chip').forEach(c=>{
-    c.addEventListener('click', ()=>{
-      const k=c.dataset.k, v=c.dataset.v;
-      if(active[k].has(v)){ active[k].delete(v); c.classList.remove('on'); }
-      else { active[k].add(v); c.classList.add('on'); }
-      apply();
+  function renderPicked(){
+    const picked = currentPickedSet();
+    pickedCount.textContent = (picked ? picked.size : 0) + '개';
+    outputBtn.disabled = !picked || picked.size === 0;
+    if (!picked || picked.size === 0){
+      pickedChips.innerHTML = '<div class="picked-empty">아직 선택된 번호가 없어요.</div>';
+      return;
+    }
+    pickedChips.innerHTML = '';
+    Array.from(picked).sort((a,b)=>a-b).forEach(n => {
+      const c = document.createElement('span');
+      c.className = 'picked-chip';
+      c.innerHTML = '#' + n + ' <span class="x" title="제거">×</span>';
+      c.querySelector('.x').addEventListener('click', () => {
+        picked.delete(n);
+        const inGrid = numGrid.querySelector('[data-n="' + n + '"]');
+        if (inGrid) inGrid.classList.remove('on');
+        renderPicked();
+      });
+      pickedChips.appendChild(c);
+    });
+  }
+
+  // 학년/년도/월 칩 — single-select 토글
+  document.querySelectorAll('.chip[data-k]').forEach(c => {
+    c.addEventListener('click', () => {
+      const k = c.dataset.k, v = c.dataset.v;
+      // 같은 축의 다른 칩들 해제
+      document.querySelectorAll('.chip[data-k="' + k + '"]').forEach(o => o.classList.remove('on'));
+      if (active[k] === v){ active[k] = null; }
+      else { active[k] = v; c.classList.add('on'); }
+      render();
     });
   });
-  search.addEventListener('input', apply);
 
-  // 체크박스 선택 바
-  window.mxSel = function(){
-    const sel = rows.filter(r=>r.classList.contains('sel') && r.style.display!=='none');
-    document.getElementById('mxSelN').textContent = sel.length;
-    document.getElementById('mxSelbar').classList.toggle('show', sel.length>0);
-  };
-  window.mxOpenSelected = function(){
-    rows.filter(r=>r.classList.contains('sel')).forEach(r=>window.open(r.href,'_blank'));
-  };
+  // 변형 유형 — multi-select 토글
+  document.querySelectorAll('.vt-chip').forEach(c => {
+    c.addEventListener('click', () => {
+      const v = c.dataset.v;
+      if (variants.has(v)){ variants.delete(v); c.classList.remove('on'); }
+      else { variants.add(v); c.classList.add('on'); }
+    });
+  });
+  document.getElementById('vtAll').addEventListener('click', () => {
+    document.querySelectorAll('.vt-chip').forEach(c => {
+      variants.add(c.dataset.v); c.classList.add('on');
+    });
+  });
+  document.getElementById('vtNone').addEventListener('click', () => {
+    variants.clear();
+    document.querySelectorAll('.vt-chip').forEach(c => c.classList.remove('on'));
+  });
 
-  apply();
+  // 번호 전체 선택/해제
+  document.getElementById('numAll').addEventListener('click', () => {
+    const picked = currentPickedSet(); if (!picked) return;
+    (ROUND_NUMBERS[currentKey()] || []).forEach(n => picked.add(n));
+    numGrid.querySelectorAll('.chip-num').forEach(el => el.classList.add('on'));
+    renderPicked();
+  });
+  document.getElementById('numNone').addEventListener('click', () => {
+    const picked = currentPickedSet(); if (!picked) return;
+    picked.clear();
+    numGrid.querySelectorAll('.chip-num').forEach(el => el.classList.remove('on'));
+    renderPicked();
+  });
+  document.getElementById('pickedClear').addEventListener('click', () => {
+    const picked = currentPickedSet(); if (!picked) return;
+    picked.clear();
+    numGrid.querySelectorAll('.chip-num').forEach(el => el.classList.remove('on'));
+    renderPicked();
+  });
+
+  // 출력 — 결과 페이지로 이동 (?year=&grade=&month=&number=&type=)
+  outputBtn.addEventListener('click', () => {
+    const picked = currentPickedSet(); if (!picked || picked.size === 0) return;
+    const nums = Array.from(picked).sort((a,b)=>a-b).join(',');
+    const params = new URLSearchParams();
+    params.set('year', active.year);
+    params.set('grade', active.grade);
+    params.set('month', active.month);
+    params.set('number', nums);
+    if (variants.size) params.set('type', Array.from(variants).join(','));
+    window.location.href = RESULT_URL + '?' + params.toString();
+  });
+
+  // 검색 — '고2 2026 3' 처럼 입력하면 학년/년도/월 자동 매핑
+  if (search) {
+    search.addEventListener('input', () => {
+      const q = (search.value || '').trim();
+      if (!q) return;
+      const tokens = q.split(/\s+/);
+      tokens.forEach(tk => {
+        // 학년 (고1/고2/고3)
+        const gm = tk.match(/^(고[123])/);
+        if (gm){
+          const v = gm[1];
+          document.querySelectorAll('.chip[data-k="grade"]').forEach(o => o.classList.remove('on'));
+          const el = document.querySelector('.chip[data-k="grade"][data-v="' + v + '"]');
+          if (el){ el.classList.add('on'); active.grade = v; }
+        }
+        // 년도 (4자리)
+        const ym = tk.match(/^(\d{4})/);
+        if (ym){
+          const v = ym[1];
+          document.querySelectorAll('.chip[data-k="year"]').forEach(o => o.classList.remove('on'));
+          const el = document.querySelector('.chip[data-k="year"][data-v="' + v + '"]');
+          if (el){ el.classList.add('on'); active.year = v; }
+        }
+        // 월 (1-2자리 + 월)
+        const mm = tk.match(/^(\d{1,2})월?$/);
+        if (mm){
+          const v = mm[1];
+          document.querySelectorAll('.chip[data-k="month"]').forEach(o => o.classList.remove('on'));
+          const el = document.querySelector('.chip[data-k="month"][data-v="' + v + '"]');
+          if (el){ el.classList.add('on'); active.month = v; }
+        }
+      });
+      render();
+    });
+  }
+
+  render();
 })();
 </script>
 {% endblock %}
