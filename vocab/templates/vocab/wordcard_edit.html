@@ -195,11 +195,28 @@ async function lookupWord(idx) {
             cards[idx].meaning = d.meaning;
             const mi = meaningInput(idx);
             if (mi) mi.value = d.meaning;
-            scheduleSave();
+            // 즉시 저장 — debounce 기다리지 않음. Gemini 응답이 늦으면 그 사이에
+            // 빈 meaning 으로 먼저 저장돼 페이지 이탈 시 영구히 빈 채 남는 문제 방지.
+            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+            save('draft');
         }
     } catch (e) { /* 네트워크 실패 무시 — 직접 입력 가능 */ }
     if (wrap) wrap.classList.remove('loading');
 }
+
+// 페이지 이탈 시 마지막 임시저장 보장 — sendBeacon 으로 비동기 발사.
+window.addEventListener('pagehide', function(){
+    try {
+        const blob = new Blob([JSON.stringify(payload('draft'))],
+                              { type: 'application/json' });
+        // sendBeacon 은 CSRF 토큰 헤더를 못 보내므로 keepalive fetch 로 대체.
+        fetch(SAVE_URL, {
+            method: 'POST', credentials: 'same-origin', keepalive: true,
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: blob,
+        });
+    } catch (e) { /* best-effort */ }
+});
 
 function setCount(n) {
     n = Math.max(1, Math.min(300, n | 0));
