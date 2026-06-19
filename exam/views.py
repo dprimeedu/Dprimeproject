@@ -761,18 +761,63 @@ def submit_round2_api(request):
                         json_dumps_params={'ensure_ascii': False})
 
 
+def find_next_mock_paper(paper):
+    """주어진 모의고사 paper의 '다음 회차' paper(없으면 None).
+
+    같은 학년에서 (연도, 강) > 현재 의 최소값을 찾아 get_or_create_mock_paper 한다.
+    강(월)은 '9' < '10' 처리를 위해 정수 비교. 회차가 없는 학년/연도는 None.
+    """
+    if paper.source != ExamPaper.SOURCE_MOCK:
+        return None
+    try:
+        cur = (int(paper.year), int(paper.month))
+    except (ValueError, TypeError):
+        return None
+    rows = (QuestionData.objects.filter(학년=paper.grade)
+            .values_list('연도', '강').distinct())
+    nxt = None
+    for y, m in rows:
+        try:
+            yi, mi = int(y), int(m)
+        except (ValueError, TypeError):
+            continue
+        if (yi, mi) <= cur:
+            continue
+        if nxt is None or (yi, mi) < nxt:
+            nxt = (yi, mi)
+    if nxt is None:
+        return None
+    return get_or_create_mock_paper(paper.grade, str(nxt[0]), str(nxt[1]))
+
+
 @require_POST
 def release_redblue(request, session_id):
-    """교사가 '빨파정답 공개' → 학생이 자기 1차 오답의 빨파 정답이미지를 볼 수 있게 한다."""
+    """교사가 '빨파정답 공개' → 학생이 자기 1차 오답의 빨파 정답이미지를 볼 수 있게 한다.
+
+    부수효과: 모의고사 세션이면 같은 학년 '다음 회차' 시험지를 학생에게 자동 배정 →
+    학생 홈에 다음 회차가 자동 노출.
+    """
     if not is_teacher(request.user):
         return HttpResponseBadRequest('권한 없음')
-    session = get_object_or_404(ExamSession, pk=session_id)
+    session = get_object_or_404(ExamSession.objects.select_related('paper'), pk=session_id)
+    next_paper_id = None
+    next_title = ''
     if not session.redblue_released:
         session.redblue_released = True
         session.redblue_released_at = timezone.now()
         session.teacher_checked = True
         session.save(update_fields=['redblue_released', 'redblue_released_at', 'teacher_checked'])
-    return JsonResponse({'success': True})
+        nxt = find_next_mock_paper(session.paper)
+        if nxt is not None:
+            ExamAssignment.objects.get_or_create(
+                paper=nxt, student=session.student,
+                defaults={'assigned_by': request.user},
+            )
+            next_paper_id = nxt.id
+            next_title = nxt.resolved_title
+    return JsonResponse({'success': True,
+                         'next_paper_id': next_paper_id, 'next_title': next_title},
+                        json_dumps_params={'ensure_ascii': False})
 
 
 # ─────────────────────────────────────────────

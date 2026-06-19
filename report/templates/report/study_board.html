@@ -55,6 +55,49 @@
     </div>
     {% endif %}
 
+    {% if pending_release %}
+    <div class="card border-warning mb-3" id="redblue-pending-box">
+        <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-unlock me-1 text-warning-emphasis"></i>
+                <strong>빨파 공개 대기</strong>
+                <span class="badge bg-warning text-dark ms-1">{{ pending_release|length }}</span>
+                <span class="small text-muted ms-2">— 1차 채점 끝났지만 학생이 빨파정답을 아직 못 보는 시험. [공개]를 누르면 학생 홈에 다음 회차 자동 노출됨.</span>
+            </span>
+        </div>
+        <div class="card-body p-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr><th>학생</th><th>시험</th><th>1차 점수</th><th>제출</th><th class="text-end">공개</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for p in pending_release %}
+                        <tr data-pending-row="{{ p.sid }}">
+                            <td><strong>{{ p.student }}</strong></td>
+                            <td>
+                                <a href="{% url 'exam:result' p.sid %}" class="text-decoration-none">
+                                    {{ p.title }}
+                                </a>
+                                {% if p.round2 %}<span class="badge bg-success ms-1">2차완료</span>{% endif %}
+                                {% if p.is_mock %}<span class="badge bg-info-subtle text-info-emphasis ms-1" title="공개 시 같은 학년 다음 회차 자동 배정">다음 회차 자동</span>{% endif %}
+                            </td>
+                            <td>{{ p.score }} · {{ p.percent }}점</td>
+                            <td class="small text-muted">{{ p.submitted_at|date:"m-d H:i" }}</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-warning text-dark"
+                                        data-release-btn="{{ p.sid }}">
+                                    <i class="fas fa-unlock me-1"></i>공개
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="table-responsive">
         <table class="table table-sm align-middle table-hover">
             <thead class="table-light">
@@ -202,6 +245,53 @@
     }
     tick();
     setInterval(tick, 1000);
+})();
+
+(function(){
+    function csrf(){
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+    }
+    document.querySelectorAll('[data-release-btn]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            var sid = btn.getAttribute('data-release-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            fetch('/training/exam/api/release-redblue/' + sid + '/', {
+                method:'POST', credentials:'same-origin',
+                headers:{'X-CSRFToken': csrf(), 'X-Requested-With':'XMLHttpRequest'},
+            }).then(function(r){ return r.json(); }).then(function(j){
+                if (!j || !j.success){ throw new Error('공개 실패'); }
+                var row = document.querySelector('[data-pending-row="' + sid + '"]');
+                if (row){
+                    row.style.transition = 'opacity .35s';
+                    row.style.opacity = '0';
+                    setTimeout(function(){
+                        row.remove();
+                        var rest = document.querySelectorAll('[data-pending-row]').length;
+                        if (rest === 0){
+                            var box = document.getElementById('redblue-pending-box');
+                            if (box) box.remove();
+                        }
+                    }, 350);
+                }
+                if (j.next_title){
+                    var t = document.createElement('div');
+                    t.className = 'toast align-items-center text-bg-success border-0 show position-fixed bottom-0 end-0 m-3';
+                    t.style.zIndex = '1080';
+                    t.innerHTML = '<div class="d-flex"><div class="toast-body">'
+                        + '<i class="fas fa-check me-1"></i>공개 완료 · 다음 회차 자동 배정: <strong>'
+                        + j.next_title + '</strong></div></div>';
+                    document.body.appendChild(t);
+                    setTimeout(function(){ t.remove(); }, 4000);
+                }
+            }).catch(function(e){
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-unlock me-1"></i>공개';
+                alert('공개 실패: ' + e.message);
+            });
+        });
+    });
 })();
 </script>
 {% endblock %}
