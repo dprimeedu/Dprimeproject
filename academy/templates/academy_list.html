@@ -431,6 +431,31 @@
     });
   }
 
+  // 초기 기본값 — 고1 + 최신 (연도, 월). 들어가자마자 번호 그리드까지 보이게.
+  (function setDefaults(){
+    const DEFAULT_GRADE = '고1';
+    let bestY = null, bestM = null;
+    Object.keys(ROUND_NUMBERS).forEach(k => {
+      const parts = k.split('|'); if (parts.length !== 3) return;
+      const [g, y, m] = parts;
+      if (g !== DEFAULT_GRADE) return;
+      const yi = parseInt(y, 10), mi = parseInt(m, 10);
+      if (isNaN(yi) || isNaN(mi)) return;
+      if (bestY === null || yi > bestY || (yi === bestY && mi > bestM)) {
+        bestY = yi; bestM = mi;
+      }
+    });
+    if (bestY === null) return;
+    if (selGrade){
+      selGrade.value = DEFAULT_GRADE;
+      selYear.value = String(bestY);
+      selMonth.value = String(bestM);
+      active.grade = DEFAULT_GRADE;
+      active.year  = String(bestY);
+      active.month = String(bestM);
+    }
+  })();
+
   render();
 })();
 </script>
