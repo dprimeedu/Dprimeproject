@@ -66,8 +66,9 @@
         <div class="row g-3">
             {% for a in assignments %}
             <div class="col-md-6 col-lg-4">
-                <div class="card h-100">
+                <div class="card h-100 {% if forloop.first %}border-primary border-2 shadow next-up-card{% endif %}" {% if forloop.first %}id="next-up-card"{% endif %}>
                     <div class="card-body d-flex flex-column">
+                        {% if forloop.first %}<span class="badge bg-primary mb-2 align-self-start"><i class="fas fa-arrow-right me-1"></i>다음 시험</span>{% endif %}
                         <h5 class="card-title">{{ a.paper.resolved_title }}</h5>
                         <p class="text-muted small mb-3">
                             {% if a.paper.source == 'naesin' %}내신 · {{ a.paper.category }}{% else %}모의고사{% endif %}
@@ -81,6 +82,12 @@
             </div>
             {% endfor %}
         </div>
+        <script>
+        (function(){
+            const c = document.getElementById('next-up-card');
+            if (c) setTimeout(() => c.scrollIntoView({behavior:'smooth', block:'center'}), 150);
+        })();
+        </script>
         {% else %}
         <p class="text-muted">배정받은 시험이 없습니다. 선생님께 문의하세요.</p>
         {% endif %}

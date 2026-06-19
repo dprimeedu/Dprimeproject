@@ -305,6 +305,9 @@ def student_home(request):
         my_sessions.append(s)
     my_sessions.sort(key=lambda s: s.submitted_at or s.started_at, reverse=True)
     my_sessions = my_sessions[:30]
+    # 선생님이 '빨파 정답 공개'까지 마친(=최종 확인) 결과 카드는 학생 시야에서 자동으로 숨김 →
+    # 다음 시험(다음 배정/미확인 결과)으로 자연스럽게 이동한다.
+    my_sessions = [s for s in my_sessions if not s.redblue_released]
     # 이미 응시 결과가 있는 시험지는 위 '응시 시작' 카드에서 숨김.
     # 단 내신은 분할 응시(여러 차수에 걸쳐 일부 문항만 입력)가 정상 패턴 → 항상 노출.
     assignments = [a for a in assignments
