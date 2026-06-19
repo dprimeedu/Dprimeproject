@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from vocab.models import (
     VocabSession, VocabAttempt, VocabRangeTest, VocabAssignment, StudentWordStar,
+    WordCard,
 )
 from summary.models import (
     SummarySession, SummaryBlankAnswer, SummaryRangeTest, SummaryAssignment,
@@ -426,6 +427,13 @@ def board(date):
         if a.paper_id not in sessioned_papers.get(a.student_id, set()):
             assigned_only[a.student_id].append(a)
 
+    # 학생 개인 낱말카드 단어 수 — 단어장이 따로 지정 안 됐어도 직접 모은 단어들.
+    # word & meaning 둘 다 채워진 것만 카운트(빈 칸 제외). 단어 cell에 '개인 단어 N개' 배지.
+    personal_words = defaultdict(int)
+    for r in (WordCard.objects.exclude(word='').exclude(meaning='')
+              .values('card_set__student_id').annotate(c=Count('id'))):
+        personal_words[r['card_set__student_id']] = r['c']
+
     # 오늘 볼 단어 TEST(VocabRangeTest) — 학생관리자료 '내신단어TEST' 지정만(퀴즈렛 자동청크 제외).
     # vocab '오늘 단어 TEST' 페이지와 동일 기준. 접속 안 한 학생도 표시 위해 별도 집계.
     vrt = defaultdict(list)
@@ -439,7 +447,7 @@ def board(date):
 
     out = {}
     for sid in (set(v) | set(su) | set(w) | set(e) | set(g) | set(vrt) | set(srt)
-                | set(e_pending) | set(assigned_only)):
+                | set(e_pending) | set(assigned_only) | set(personal_words)):
         vs = v.get(sid, [])
         # 시험: 그날 세션 + 처리 대기 세션(중복 session.id 제거) 합쳐 표시
         e_today = e.get(sid, [])
@@ -459,6 +467,10 @@ def board(date):
         ]
         if cells['exam']['assigned_only']:
             cells['exam']['did'] = True
+        # 학생 개인 단어장(낱말카드) — 단어장 미지정이어도 모은 단어 수 표시.
+        cells['vocab']['personal_count'] = personal_words.get(sid, 0)
+        if cells['vocab']['personal_count']:
+            cells['vocab']['did'] = True
         # 단어 '오늘 볼 TEST' 범위/합격 — 정식시험(MODE_TEST) 완료 세션 기준
         cells['vocab']['tests'] = _vocab_today_tests(
             vrt.get(sid, []),
