@@ -19,19 +19,16 @@
 .mx-search input:focus{ border-color:var(--pe-primary); box-shadow:0 0 0 3px var(--pe-primary-light); }
 .mx-search .ic{ position:absolute; left:16px; top:50%; transform:translateY(-50%); color:#9ca3af; }
 
-/* 회차 선택 드롭다운 — 로컬 부교재 출력의 학년·년도·월 콤보 스타일 */
-.mx-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px; align-items:center; }
-.mx-fcell{ display:flex; align-items:center; gap:8px; }
-.mx-flabel{ font-size:.85rem; font-weight:700; color:var(--pe-muted); }
-.mx-select{
-  appearance:none; -webkit-appearance:none; -moz-appearance:none;
-  font-size:.95rem; font-weight:600; color:var(--pe-ink);
-  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%236b7280' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat right 12px center;
-  border:1px solid var(--pe-line); border-radius:10px; padding:8px 32px 8px 14px;
-  min-width:110px; cursor:pointer; outline:none; transition:border-color .15s, box-shadow .15s;
+/* 필터 칩 — 학년/년도/월 클릭형 */
+.mx-filters{ display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.mx-frow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.mx-flabel{ font-size:.82rem; font-weight:700; color:var(--pe-muted); width:38px; flex:none; }
+.chip{
+  padding:5px 14px; border:1px solid var(--pe-line); border-radius:999px; background:#fff;
+  font-size:.88rem; font-weight:600; color:#4b5563; cursor:pointer; transition:all .12s; user-select:none;
 }
-.mx-select:hover{ border-color:var(--pe-primary); }
-.mx-select:focus{ border-color:var(--pe-primary); box-shadow:0 0 0 3px var(--pe-primary-light); }
+.chip:hover{ border-color:var(--pe-primary); color:var(--pe-primary); }
+.chip.on{ background:var(--pe-primary); border-color:var(--pe-primary); color:#fff; }
 
 /* 결과 리스트 */
 .mx-count{ font-size:.85rem; color:var(--pe-muted); margin:0 4px 6px; }
@@ -104,26 +101,14 @@
   </div>
 
   <div class="mx-filters">
-    <div class="mx-fcell">
-      <span class="mx-flabel">학년</span>
-      <select class="mx-select" id="selGrade" data-k="grade">
-        <option value="">선택</option>
-        {% for g in grades %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
-      </select>
+    <div class="mx-frow"><span class="mx-flabel">학년</span>
+      {% for g in grades %}<span class="chip" data-k="grade" data-v="{{ g }}">{{ g }}</span>{% endfor %}
     </div>
-    <div class="mx-fcell">
-      <span class="mx-flabel">년도</span>
-      <select class="mx-select" id="selYear" data-k="year">
-        <option value="">선택</option>
-        {% for y in years %}<option value="{{ y }}">{{ y }}년</option>{% endfor %}
-      </select>
+    <div class="mx-frow"><span class="mx-flabel">년도</span>
+      {% for y in years %}<span class="chip" data-k="year" data-v="{{ y }}">{{ y }}년</span>{% endfor %}
     </div>
-    <div class="mx-fcell">
-      <span class="mx-flabel">월</span>
-      <select class="mx-select" id="selMonth" data-k="month">
-        <option value="">선택</option>
-        {% for m in months %}<option value="{{ m }}">{{ m }}월</option>{% endfor %}
-      </select>
+    <div class="mx-frow"><span class="mx-flabel">월</span>
+      {% for m in months %}<span class="chip" data-k="month" data-v="{{ m }}">{{ m }}월</span>{% endfor %}
     </div>
   </div>
 
@@ -135,7 +120,7 @@
   {# 번호 추가 입력 — 그리드에 없는 번호를 직접 입력 #}
   <div class="sec" id="addInputSection" style="display:none;">
     <div class="sec-head">
-      <h3><i class="fas fa-keyboard me-1" style="color:#6b7280"></i>번호 추가 입력 <small class="text-muted" style="font-weight:500;font-size:.8rem;margin-left:6px;">선택 메뉴에 없는 번호 직접 입력</small></h3>
+      <h3><i class="fas fa-keyboard me-1" style="color:#6b7280"></i>직접 입력 <small class="text-muted" style="font-weight:500;font-size:.8rem;margin-left:6px;">번호를 직접 입력해 추가</small></h3>
     </div>
     <div class="add-row">
       <input type="text" id="addInput" class="add-text" placeholder="예) 23  또는  23,25,27  또는  23-27" autocomplete="off">
@@ -213,9 +198,6 @@
   const pickedCount = document.getElementById('pickedCount');
   const outputBtn = document.getElementById('outputBtn');
   const search = document.getElementById('mxSearch');
-  const selGrade = document.getElementById('selGrade');
-  const selYear = document.getElementById('selYear');
-  const selMonth = document.getElementById('selMonth');
   const addInput = document.getElementById('addInput');
   const addBtn = document.getElementById('addBtn');
 
@@ -290,11 +272,13 @@
     });
   }
 
-  // 학년/년도/월 드롭다운 — single-select
-  [selGrade, selYear, selMonth].forEach(sel => {
-    sel.addEventListener('change', () => {
-      const k = sel.dataset.k;
-      active[k] = sel.value || null;
+  // 학년/년도/월 칩 — single-select 토글 (같은 축 다른 칩은 자동 해제)
+  document.querySelectorAll('.chip[data-k]').forEach(c => {
+    c.addEventListener('click', () => {
+      const k = c.dataset.k, v = c.dataset.v;
+      document.querySelectorAll('.chip[data-k="' + k + '"]').forEach(o => o.classList.remove('on'));
+      if (active[k] === v){ active[k] = null; }
+      else { active[k] = v; c.classList.add('on'); }
       render();
     });
   });
@@ -378,25 +362,23 @@
     window.location.href = RESULT_URL + '?' + params.toString();
   });
 
-  // 검색 — '고2 2026 3' 토큰 자동 매핑 → select 값으로 반영
+  // 검색 — '고2 2026 3' 토큰 자동 매핑 → 칩 활성화
+  function activateChip(k, v){
+    const el = document.querySelector('.chip[data-k="' + k + '"][data-v="' + v + '"]');
+    if (!el) return false;
+    document.querySelectorAll('.chip[data-k="' + k + '"]').forEach(o => o.classList.remove('on'));
+    el.classList.add('on');
+    active[k] = v;
+    return true;
+  }
   if (search) {
-    function setSelectIfHas(sel, v){
-      if (!v) return false;
-      for (let i = 0; i < sel.options.length; i++){
-        if (sel.options[i].value === v){ sel.value = v; return true; }
-      }
-      return false;
-    }
     search.addEventListener('input', () => {
       const q = (search.value || '').trim();
       if (!q) return;
       q.split(/\s+/).forEach(tk => {
-        const gm = tk.match(/^(고[123])/);
-        if (gm && setSelectIfHas(selGrade, gm[1])) active.grade = gm[1];
-        const ym = tk.match(/^(\d{4})/);
-        if (ym && setSelectIfHas(selYear, ym[1])) active.year = ym[1];
-        const mm = tk.match(/^(\d{1,2})월?$/);
-        if (mm && setSelectIfHas(selMonth, mm[1])) active.month = mm[1];
+        const gm = tk.match(/^(고[123])/);          if (gm) activateChip('grade', gm[1]);
+        const ym = tk.match(/^(\d{4})/);            if (ym) activateChip('year',  ym[1]);
+        const mm = tk.match(/^(\d{1,2})월?$/);      if (mm) activateChip('month', mm[1]);
       });
       render();
     });
