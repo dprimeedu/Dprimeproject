@@ -709,11 +709,16 @@ def _download_pdf_OLD_reportlab(request):
 
     def _split_choices(option_str, qtype=''):
         cleaned = (option_str or '').replace('￰', '')
+        # literal '\r\n' 4글자 + 실제 CR/LF 모두 줄바꿈으로
+        cleaned = cleaned.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
         cleaned = _re.sub(r'\r\n?', '\n', cleaned)
         parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+        parts = [_strip_marker_garbage(p) for p in parts]
         parts = [_space_inline_markers(p) for p in parts]
         if (qtype or '') in _TWO_BLANK_TYPES:
             parts = [_normalize_two_blank(p) for p in parts]
+        # 남은 탭은 마지막에 공백으로
+        parts = [p.replace('\t', ' ') for p in parts]
         return parts
 
     story = [Paragraph(_esc(header_text), style_header)]
@@ -818,11 +823,23 @@ def _space_inline_markers(line):
     return _re.sub(r'(\S)([②③④⑤⑥⑦⑧⑨⑩])', r'\1   \2', line)
 
 
+def _strip_marker_garbage(line):
+    """보기 줄 앞에 잘못 들어간 숫자/공백을 제거.
+
+    예) '174 ③ Practically speaking ...' → '③ Practically speaking ...'
+    엑셀 데이터에 회차/페이지번호가 셀에 잘못 섞여 들어간 경우 방어.
+    마커가 따라오는 경우에만 제거(일반 텍스트는 손대지 않음).
+    """
+    import re as _re
+    return _re.sub(r'^\s*\d+\s+(?=[①②③④⑤⑥⑦⑧⑨⑩])', '', line)
+
+
 def _normalize_two_blank(choice):
     """두-빈칸 유형 보기의 단어 사이 구분을 ' …… ' 로 통일.
 
     DB 에 어떤 항목은 '단어A \t…… \t단어B', 어떤 항목은 '단어A \t단어B' 처럼
     들쭉날쭉하게 들어와 인쇄물에서 가독성이 떨어지는 문제를 보정.
+    탭(\\t) 단독, 2칸 이상 공백, ……/... 모두 분리자로 인식한다.
     """
     import re as _re
     MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
@@ -835,7 +852,8 @@ def _normalize_two_blank(choice):
     if _re.search(r'……|\.{3,}|⋯', body):
         body = _re.sub(r'\s*(?:……|\.{3,}|⋯)\s*', ' …… ', body, count=1)
     else:
-        body = _re.sub(r'\s{2,}', ' …… ', body, count=1)
+        # 탭 단독 또는 2칸 이상 공백/탭 혼합을 분리자로
+        body = _re.sub(r'[ \t ]{2,}|\t', ' …… ', body, count=1)
 
     return f"{marker} {body}" if marker else body
 
@@ -847,14 +865,25 @@ def _hwpx_choices(option_str, qtype=''):
     여러 보기를 둔 경우(순서 유형 등) 그 의도를 보존하기 위함.
     qtype 이 요약문완성/연결어 같은 두-빈칸 유형이면 단어 사이 구분자를
     ' …… ' 로 통일한다.
+
+    NOTE: _hwpx_clean 은 호출하지 않는다 — 탭(\\t)이 단어 구분자 신호로 쓰이므로
+    공백 치환 전에 _normalize_two_blank 가 먼저 처리해야 한다.
     """
     if not option_str:
         return []
-    cleaned = _hwpx_clean(option_str)
-    parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+    import re as _re
+    text = str(option_str)
+    text = text.replace('_x000D_', '\n').replace('_x000A_', '\n')
+    text = text.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
+    text = _re.sub(r'\r\n?', '\n', text)
+    text = _re.sub(r'icon_\d+_\d+', '', text)
+    parts = [c.strip() for c in text.split('\n') if c.strip()]
+    parts = [_strip_marker_garbage(p) for p in parts]
     parts = [_space_inline_markers(p) for p in parts]
     if (qtype or '') in _TWO_BLANK_TYPES:
         parts = [_normalize_two_blank(p) for p in parts]
+    # 남은 탭은 마지막에 공백으로 (한/글 렌더링 오류 방지)
+    parts = [p.replace('\t', ' ') for p in parts]
     return parts
 
 
