@@ -103,9 +103,11 @@ def academy_list(request):
         if not n:
             continue
         raw_types.add(TYPE_ALIAS.get(n, n))
+    # 'B. 부교재 출력.py' Question.TYPE_LIST_ALL 의 표준 순서를 따른다.
     PREFERRED = ['순서', '도표', '그림', '문장넣기', '무관한문장', '연결어',
-                 '일치불일치', '심경분위기', '지칭대상', '주제', '주장',
-                 '제목', '요지', '목적', '밑줄의미', '어휘', '요약문완성', '빈칸', '어법',
+                 '일치불일치', '기타', '심경분위기', '지칭대상',
+                 '주제', '주장', '제목', '요지', '목적', '밑줄의미',
+                 '어휘', '요약문완성', '빈칸', '어법', '서술형',
                  '장문2', '장문3']
     variant_types = [t for t in PREFERRED if t in raw_types]
     for t in sorted(raw_types):
@@ -499,8 +501,10 @@ def download_pdf(request):
     qs = ModifiedQuestions_Data.objects.filter(pk_number__in=pk_ids)
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
-    qrows = list(qs.values('question', 'sentence', 'option', 'answer',
-                            'qtype', 'pk_number').order_by('pk_number', 'index'))
+    qrows = list(qs.values('index', 'question', 'sentence', 'option', 'answer',
+                            'qtype', 'pk_number'))
+    # 'B. 부교재 출력.py' 표준 순서로 정렬 — 유형 그룹 + 회차 라운드로빈.
+    qrows = _round_robin_sort(qrows, total_map)
 
     # 텍스트 정리 — uFFF0 마커는 밑줄 span, literal '\r\n' / Excel _x000D_ 도 줄바꿈, HTML 이스케이프
     MARK_RE = _re.compile(r'￰(.*?)￰')
@@ -621,7 +625,9 @@ def _download_pdf_OLD_reportlab(request):
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
     rows = list(qs.values('index', 'question', 'sentence', 'option', 'answer',
-                          'qtype', 'pk_number').order_by('pk_number', 'index'))
+                          'qtype', 'pk_number'))
+    # 'B. 부교재 출력.py' 표준 순서로 정렬 — 유형 그룹 + 회차 라운드로빈.
+    rows = _round_robin_sort(rows, total_map)
 
     # 폰트 등록 (한글)
     from reportlab.lib import colors
@@ -812,6 +818,57 @@ def _hwpx_clean(text):
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
 
+# 'B. 부교재 출력.py' (CLASS\\고등부교재자동화.py) excel_question 의
+# __typeCheck 그룹 순서를 따른다 — TYPE1 → ... → TYPE6 → 그 외.
+_PRINT_TYPE_ORDER = [
+    '[순서]', '[문장넣기]', '[무관한문장]', '[연결어]', '[연결사]',     # TYPE1
+    '[일치불일치]', '[기타]',                                          # TYPE2
+    '[지칭대상]', '[지칭추론]',                                        # TYPE3
+    '[주제]', '[주장]', '[제목]', '[요지]', '[목적]', '[밑줄의미]', '[함축의미]',  # TYPE4
+    '[어휘]',                                                          # TYPE5
+    '[요약문완성]', '[빈칸]',                                          # TYPE6
+    # 그 외 — 표시 순서 유지
+    '[도표]', '[그림]', '[심경분위기]',
+    '[어법]', '[서술형]',
+    '[장문]', '[장문2]', '[장문3]',
+]
+_PRINT_TYPE_RANK = {qt: i for i, qt in enumerate(_PRINT_TYPE_ORDER)}
+
+
+def _round_robin_sort(rows, keytable_map):
+    """변형문제 행을 (유형 그룹) → (회차번호 라운드로빈) 순으로 재정렬.
+
+    같은 회차번호의 모든 변형이 연속으로 나오지 않고, 회차 1번/2번/3번...의
+    첫 변형 → 다시 1번/2번/3번...의 두 번째 변형 식으로 분산된다.
+    'B. 부교재 출력.py' 의 1순환 출력 의도와 동일.
+    """
+    from collections import defaultdict
+
+    def _tn_key(tn):
+        try:
+            return (0, int(tn))
+        except (TypeError, ValueError):
+            return (1, str(tn or ''))
+
+    groups = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        tn = keytable_map.get(r['pk_number'], '')
+        groups[r.get('qtype', '')][tn].append(r)
+    for qt in groups:
+        for tn in groups[qt]:
+            groups[qt][tn].sort(key=lambda r: r.get('index', 0))
+
+    qt_order = sorted(groups.keys(), key=lambda q: _PRINT_TYPE_RANK.get(q, 9999))
+    out = []
+    for qt in qt_order:
+        tn_keys = sorted(groups[qt].keys(), key=_tn_key)
+        while any(groups[qt][tn] for tn in tn_keys):
+            for tn in tn_keys:
+                if groups[qt][tn]:
+                    out.append(groups[qt][tn].pop(0))
+    return out
+
+
 def _space_inline_markers(line):
     """한 줄 안에 ②~⑩ 마커가 앞 글자에 붙어있으면 공백을 넣어 시각적으로 분리.
 
@@ -923,7 +980,9 @@ def download_modified_hwpx(request):
           .filter(pk_number__in=pk_numbers))
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
-    rows = qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number', 'qtype').order_by('pk_number', 'index')
+    rows = list(qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number', 'qtype'))
+    # 'B. 부교재 출력.py' 표준 순서로 정렬 — 유형 그룹 + 회차 라운드로빈.
+    rows = _round_robin_sort(rows, keytable_map)
 
     questions = []
     for r in rows:
