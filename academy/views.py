@@ -707,10 +707,13 @@ def _download_pdf_OLD_reportlab(request):
     month_str = ', '.join(selected_month)
     header_text = f'{year_str}년 {grade_str} {month_str}월 {selected_category}'
 
-    def _split_choices(option_str):
+    def _split_choices(option_str, qtype=''):
         cleaned = (option_str or '').replace('￰', '')
         cleaned = _re.sub(r'\r\n?', '\n', cleaned)
-        return [c.strip() for c in cleaned.split('\n') if c.strip()]
+        parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+        if (qtype or '') in _TWO_BLANK_TYPES:
+            parts = [_normalize_two_blank(p) for p in parts]
+        return parts
 
     story = [Paragraph(_esc(header_text), style_header)]
     if not rows:
@@ -726,7 +729,7 @@ def _download_pdf_OLD_reportlab(request):
             story.append(Paragraph(_esc(r['question']), style_prompt))
         if r.get('sentence'):
             story.append(_passage_box(r['sentence']))
-        for ch in _split_choices(r.get('option', '')):
+        for ch in _split_choices(r.get('option', ''), r.get('qtype', '')):
             story.append(Paragraph(_esc(ch), style_choice))
         ans = (r.get('answer') or '').replace('\t', ' ').strip()
         if ans:
@@ -800,16 +803,46 @@ def _hwpx_clean(text):
     return text
 
 
-def _hwpx_choices(option_str):
+_TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
+
+
+def _normalize_two_blank(choice):
+    """두-빈칸 유형 보기의 단어 사이 구분을 ' …… ' 로 통일.
+
+    DB 에 어떤 항목은 '단어A \t…… \t단어B', 어떤 항목은 '단어A \t단어B' 처럼
+    들쭉날쭉하게 들어와 인쇄물에서 가독성이 떨어지는 문제를 보정.
+    """
+    import re as _re
+    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    body = choice.strip()
+    marker = ''
+    if body and body[0] in MARKERS:
+        marker = body[0]
+        body = body[1:].lstrip()
+
+    if _re.search(r'……|\.{3,}|⋯', body):
+        body = _re.sub(r'\s*(?:……|\.{3,}|⋯)\s*', ' …… ', body, count=1)
+    else:
+        body = _re.sub(r'\s{2,}', ' …… ', body, count=1)
+
+    return f"{marker} {body}" if marker else body
+
+
+def _hwpx_choices(option_str, qtype=''):
     """선택지 문자열을 리스트로 분리 — 엑셀 원본의 줄바꿈만 따른다.
 
     마커(①②③) 자동 분리는 하지 않음: 출제자가 의도적으로 한 줄에
     여러 보기를 둔 경우(순서 유형 등) 그 의도를 보존하기 위함.
+    qtype 이 요약문완성/연결어 같은 두-빈칸 유형이면 단어 사이 구분자를
+    ' …… ' 로 통일한다.
     """
     if not option_str:
         return []
     cleaned = _hwpx_clean(option_str)
-    return [c.strip() for c in cleaned.split('\n') if c.strip()]
+    parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+    if (qtype or '') in _TWO_BLANK_TYPES:
+        parts = [_normalize_two_blank(p) for p in parts]
+    return parts
 
 
 # ---------------------------------------------------------------------------
@@ -848,7 +881,7 @@ def download_modified_hwpx(request):
           .filter(pk_number__in=pk_numbers))
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
-    rows = qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number').order_by('pk_number', 'index')
+    rows = qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number', 'qtype').order_by('pk_number', 'index')
 
     questions = []
     for r in rows:
@@ -857,7 +890,7 @@ def download_modified_hwpx(request):
             "date":    f"[{total_number}]" if total_number else "",
             "prompt":  _hwpx_clean(r.get('question', '')),
             "passage": _hwpx_clean(r.get('sentence', '')),
-            "choices": _hwpx_choices(r.get('option', '')),
+            "choices": _hwpx_choices(r.get('option', ''), r.get('qtype', '')),
             "answer":  r.get('answer', '').replace('\t', ' '),
         })
 
