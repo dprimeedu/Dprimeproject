@@ -801,24 +801,15 @@ def _hwpx_clean(text):
 
 
 def _hwpx_choices(option_str):
-    """선택지 문자열을 리스트로 분리. ①②③ 마커가 한 줄에 같이 있는 경우도 분리."""
-    import re as _re
+    """선택지 문자열을 리스트로 분리 — 엑셀 원본의 줄바꿈만 따른다.
+
+    마커(①②③) 자동 분리는 하지 않음: 출제자가 의도적으로 한 줄에
+    여러 보기를 둔 경우(순서 유형 등) 그 의도를 보존하기 위함.
+    """
     if not option_str:
         return []
     cleaned = _hwpx_clean(option_str)
-    parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
-    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
-    if any(any(m in p[1:] for m in MARKERS) for p in parts):
-        new_parts = []
-        SPLIT_RE = _re.compile(r'(?=[' + MARKERS + r'])')
-        for p in parts:
-            if any(m in p[1:] for m in MARKERS):
-                chunks = [c.strip() for c in SPLIT_RE.split(p) if c.strip()]
-                new_parts.extend(chunks)
-            else:
-                new_parts.append(p)
-        parts = new_parts
-    return parts
+    return [c.strip() for c in cleaned.split('\n') if c.strip()]
 
 
 # ---------------------------------------------------------------------------
