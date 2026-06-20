@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header text-center bg-secondary text-white">
+                    <h2>로그인 취소</h2>
+                </div>
+                <div class="card-body p-4 text-center">
+                    <p class="mb-4">소셜 로그인이 취소되었습니다.</p>
+                    <a href="{% url 'login' %}" class="btn btn-primary">로그인 페이지로 돌아가기</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
