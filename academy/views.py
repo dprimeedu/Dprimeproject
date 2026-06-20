@@ -711,6 +711,7 @@ def _download_pdf_OLD_reportlab(request):
         cleaned = (option_str or '').replace('￰', '')
         cleaned = _re.sub(r'\r\n?', '\n', cleaned)
         parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+        parts = [_space_inline_markers(p) for p in parts]
         if (qtype or '') in _TWO_BLANK_TYPES:
             parts = [_normalize_two_blank(p) for p in parts]
         return parts
@@ -806,6 +807,17 @@ def _hwpx_clean(text):
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
 
+def _space_inline_markers(line):
+    """한 줄 안에 ②~⑩ 마커가 앞 글자에 붙어있으면 공백을 넣어 시각적으로 분리.
+
+    예) '① (A)-(C)-(B)② (B)-(A)-(C)③ (B)-(C)-(A)'
+      → '① (A)-(C)-(B)   ② (B)-(A)-(C)   ③ (B)-(C)-(A)'
+    줄 시작의 ① 는 건드리지 않는다.
+    """
+    import re as _re
+    return _re.sub(r'(\S)([②③④⑤⑥⑦⑧⑨⑩])', r'\1   \2', line)
+
+
 def _normalize_two_blank(choice):
     """두-빈칸 유형 보기의 단어 사이 구분을 ' …… ' 로 통일.
 
@@ -840,6 +852,7 @@ def _hwpx_choices(option_str, qtype=''):
         return []
     cleaned = _hwpx_clean(option_str)
     parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+    parts = [_space_inline_markers(p) for p in parts]
     if (qtype or '') in _TWO_BLANK_TYPES:
         parts = [_normalize_two_blank(p) for p in parts]
     return parts
