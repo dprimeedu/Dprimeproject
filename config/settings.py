@@ -189,10 +189,9 @@ LOGOUT_REDIRECT_URL = '/'
 SITE_ID = 1
 
 # django-allauth 설정
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = 'none'
-ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_ADAPTER = 'member.adapters.CustomAccountAdapter'
 SOCIALACCOUNT_ADAPTER = 'member.adapters.CustomSocialAccountAdapter'
 SOCIALACCOUNT_AUTO_SIGNUP = True
