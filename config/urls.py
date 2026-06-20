@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib.auth.views import LogoutView
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
@@ -17,6 +18,9 @@ urlpatterns = [
     path('accounts/register/', views.UserCreateView.as_view(), name='register'),
     path('accounts/register/done/', views.UserCreateDoneTV.as_view(), name='register_done'),
     path('login/', CustomLoginView.as_view(), name='login'),
+    # base.html 이 {% url 'logout' %} 를 참조 — allauth.urls 는 'account_logout' 만
+    # 제공하므로 Django 기본 LogoutView 를 같은 이름으로 노출.
+    path('logout/', LogoutView.as_view(next_page='/'), name='logout'),
     #path('profile/', views.profile_view, name='profile_view'),
     #path('profile/edit/', views.profile_edit_view, name='profile_edit'),
     #path('profile/', include('member.urls')),
