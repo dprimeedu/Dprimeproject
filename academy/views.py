@@ -103,9 +103,11 @@ def academy_list(request):
         if not n:
             continue
         raw_types.add(TYPE_ALIAS.get(n, n))
+    # 'B. 부교재 출력.py' Question.TYPE_LIST_ALL 의 표준 순서를 따른다.
     PREFERRED = ['순서', '도표', '그림', '문장넣기', '무관한문장', '연결어',
-                 '일치불일치', '심경분위기', '지칭대상', '주제', '주장',
-                 '제목', '요지', '목적', '밑줄의미', '어휘', '요약문완성', '빈칸', '어법',
+                 '일치불일치', '기타', '심경분위기', '지칭대상',
+                 '주제', '주장', '제목', '요지', '목적', '밑줄의미',
+                 '어휘', '요약문완성', '빈칸', '어법', '서술형',
                  '장문2', '장문3']
     variant_types = [t for t in PREFERRED if t in raw_types]
     for t in sorted(raw_types):
@@ -499,8 +501,10 @@ def download_pdf(request):
     qs = ModifiedQuestions_Data.objects.filter(pk_number__in=pk_ids)
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
-    qrows = list(qs.values('question', 'sentence', 'option', 'answer',
-                            'qtype', 'pk_number').order_by('pk_number', 'index'))
+    qrows = list(qs.values('index', 'question', 'sentence', 'option', 'answer',
+                            'qtype', 'pk_number'))
+    # 'B. 부교재 출력.py' 표준 순서로 정렬 — 유형 그룹 + 회차 라운드로빈.
+    qrows = _round_robin_sort(qrows, total_map)
 
     # 텍스트 정리 — uFFF0 마커는 밑줄 span, literal '\r\n' / Excel _x000D_ 도 줄바꿈, HTML 이스케이프
     MARK_RE = _re.compile(r'￰(.*?)￰')
@@ -621,7 +625,9 @@ def _download_pdf_OLD_reportlab(request):
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
     rows = list(qs.values('index', 'question', 'sentence', 'option', 'answer',
-                          'qtype', 'pk_number').order_by('pk_number', 'index'))
+                          'qtype', 'pk_number'))
+    # 'B. 부교재 출력.py' 표준 순서로 정렬 — 유형 그룹 + 회차 라운드로빈.
+    rows = _round_robin_sort(rows, total_map)
 
     # 폰트 등록 (한글)
     from reportlab.lib import colors
@@ -709,11 +715,16 @@ def _download_pdf_OLD_reportlab(request):
 
     def _split_choices(option_str, qtype=''):
         cleaned = (option_str or '').replace('￰', '')
+        # literal '\r\n' 4글자 + 실제 CR/LF 모두 줄바꿈으로
+        cleaned = cleaned.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
         cleaned = _re.sub(r'\r\n?', '\n', cleaned)
         parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+        parts = [_strip_marker_garbage(p) for p in parts]
         parts = [_space_inline_markers(p) for p in parts]
         if (qtype or '') in _TWO_BLANK_TYPES:
             parts = [_normalize_two_blank(p) for p in parts]
+        # 남은 탭은 마지막에 공백으로
+        parts = [p.replace('\t', ' ') for p in parts]
         return parts
 
     story = [Paragraph(_esc(header_text), style_header)]
@@ -807,6 +818,57 @@ def _hwpx_clean(text):
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
 
+# 'B. 부교재 출력.py' (CLASS\\고등부교재자동화.py) excel_question 의
+# __typeCheck 그룹 순서를 따른다 — TYPE1 → ... → TYPE6 → 그 외.
+_PRINT_TYPE_ORDER = [
+    '[순서]', '[문장넣기]', '[무관한문장]', '[연결어]', '[연결사]',     # TYPE1
+    '[일치불일치]', '[기타]',                                          # TYPE2
+    '[지칭대상]', '[지칭추론]',                                        # TYPE3
+    '[주제]', '[주장]', '[제목]', '[요지]', '[목적]', '[밑줄의미]', '[함축의미]',  # TYPE4
+    '[어휘]',                                                          # TYPE5
+    '[요약문완성]', '[빈칸]',                                          # TYPE6
+    # 그 외 — 표시 순서 유지
+    '[도표]', '[그림]', '[심경분위기]',
+    '[어법]', '[서술형]',
+    '[장문]', '[장문2]', '[장문3]',
+]
+_PRINT_TYPE_RANK = {qt: i for i, qt in enumerate(_PRINT_TYPE_ORDER)}
+
+
+def _round_robin_sort(rows, keytable_map):
+    """변형문제 행을 (유형 그룹) → (회차번호 라운드로빈) 순으로 재정렬.
+
+    같은 회차번호의 모든 변형이 연속으로 나오지 않고, 회차 1번/2번/3번...의
+    첫 변형 → 다시 1번/2번/3번...의 두 번째 변형 식으로 분산된다.
+    'B. 부교재 출력.py' 의 1순환 출력 의도와 동일.
+    """
+    from collections import defaultdict
+
+    def _tn_key(tn):
+        try:
+            return (0, int(tn))
+        except (TypeError, ValueError):
+            return (1, str(tn or ''))
+
+    groups = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        tn = keytable_map.get(r['pk_number'], '')
+        groups[r.get('qtype', '')][tn].append(r)
+    for qt in groups:
+        for tn in groups[qt]:
+            groups[qt][tn].sort(key=lambda r: r.get('index', 0))
+
+    qt_order = sorted(groups.keys(), key=lambda q: _PRINT_TYPE_RANK.get(q, 9999))
+    out = []
+    for qt in qt_order:
+        tn_keys = sorted(groups[qt].keys(), key=_tn_key)
+        while any(groups[qt][tn] for tn in tn_keys):
+            for tn in tn_keys:
+                if groups[qt][tn]:
+                    out.append(groups[qt][tn].pop(0))
+    return out
+
+
 def _space_inline_markers(line):
     """한 줄 안에 ②~⑩ 마커가 앞 글자에 붙어있으면 공백을 넣어 시각적으로 분리.
 
@@ -818,11 +880,23 @@ def _space_inline_markers(line):
     return _re.sub(r'(\S)([②③④⑤⑥⑦⑧⑨⑩])', r'\1   \2', line)
 
 
+def _strip_marker_garbage(line):
+    """보기 줄 앞에 잘못 들어간 숫자/공백을 제거.
+
+    예) '174 ③ Practically speaking ...' → '③ Practically speaking ...'
+    엑셀 데이터에 회차/페이지번호가 셀에 잘못 섞여 들어간 경우 방어.
+    마커가 따라오는 경우에만 제거(일반 텍스트는 손대지 않음).
+    """
+    import re as _re
+    return _re.sub(r'^\s*\d+\s+(?=[①②③④⑤⑥⑦⑧⑨⑩])', '', line)
+
+
 def _normalize_two_blank(choice):
     """두-빈칸 유형 보기의 단어 사이 구분을 ' …… ' 로 통일.
 
     DB 에 어떤 항목은 '단어A \t…… \t단어B', 어떤 항목은 '단어A \t단어B' 처럼
     들쭉날쭉하게 들어와 인쇄물에서 가독성이 떨어지는 문제를 보정.
+    탭(\\t) 단독, 2칸 이상 공백, ……/... 모두 분리자로 인식한다.
     """
     import re as _re
     MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
@@ -835,7 +909,8 @@ def _normalize_two_blank(choice):
     if _re.search(r'……|\.{3,}|⋯', body):
         body = _re.sub(r'\s*(?:……|\.{3,}|⋯)\s*', ' …… ', body, count=1)
     else:
-        body = _re.sub(r'\s{2,}', ' …… ', body, count=1)
+        # 탭 단독 또는 2칸 이상 공백/탭 혼합을 분리자로
+        body = _re.sub(r'[ \t ]{2,}|\t', ' …… ', body, count=1)
 
     return f"{marker} {body}" if marker else body
 
@@ -847,14 +922,25 @@ def _hwpx_choices(option_str, qtype=''):
     여러 보기를 둔 경우(순서 유형 등) 그 의도를 보존하기 위함.
     qtype 이 요약문완성/연결어 같은 두-빈칸 유형이면 단어 사이 구분자를
     ' …… ' 로 통일한다.
+
+    NOTE: _hwpx_clean 은 호출하지 않는다 — 탭(\\t)이 단어 구분자 신호로 쓰이므로
+    공백 치환 전에 _normalize_two_blank 가 먼저 처리해야 한다.
     """
     if not option_str:
         return []
-    cleaned = _hwpx_clean(option_str)
-    parts = [c.strip() for c in cleaned.split('\n') if c.strip()]
+    import re as _re
+    text = str(option_str)
+    text = text.replace('_x000D_', '\n').replace('_x000A_', '\n')
+    text = text.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
+    text = _re.sub(r'\r\n?', '\n', text)
+    text = _re.sub(r'icon_\d+_\d+', '', text)
+    parts = [c.strip() for c in text.split('\n') if c.strip()]
+    parts = [_strip_marker_garbage(p) for p in parts]
     parts = [_space_inline_markers(p) for p in parts]
     if (qtype or '') in _TWO_BLANK_TYPES:
         parts = [_normalize_two_blank(p) for p in parts]
+    # 남은 탭은 마지막에 공백으로 (한/글 렌더링 오류 방지)
+    parts = [p.replace('\t', ' ') for p in parts]
     return parts
 
 
@@ -894,7 +980,9 @@ def download_modified_hwpx(request):
           .filter(pk_number__in=pk_numbers))
     if selected_types:
         qs = qs.filter(qtype__in=_expand_type_filter(selected_types))
-    rows = qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number', 'qtype').order_by('pk_number', 'index')
+    rows = list(qs.values('index', 'question', 'sentence', 'option', 'answer', 'pk_number', 'qtype'))
+    # 'B. 부교재 출력.py' 표준 순서로 정렬 — 유형 그룹 + 회차 라운드로빈.
+    rows = _round_robin_sort(rows, keytable_map)
 
     questions = []
     for r in rows:
