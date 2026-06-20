@@ -72,6 +72,16 @@ class Member(AbstractBaseUser, PermissionsMixin):
     is_academy = models.BooleanField(default=False)
     business_registration = models.FileField(upload_to='business_registrations/', null=True, blank=True)
     date_joined = models.DateTimeField(default=timezone.now)
+    current_session_key = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='현재 세션 키',
+        help_text='단일 세션 제한 — 새 로그인 시 갱신, 로그아웃 시 초기화.',
+    )
+    max_allowed_ips = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name='최대 허용 IP 수',
+        help_text='0 = 무제한. 1 이상 설정 시 해당 수만큼의 IP에서만 로그인 가능.',
+    )
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -109,6 +119,57 @@ class Member(AbstractBaseUser, PermissionsMixin):
     def can_download(self) -> bool:
         """볼 수 있는 자료를 '다운로드'할 권한. variant_down(승인) 또는 full/관리자."""
         return self.can_view_mock_full or self.academy_access == 'variant_down'
+
+
+class UserIP(models.Model):
+    """계정별 등록된 IP 목록 (로그인 허용 IP 관리)."""
+    user = models.ForeignKey(
+        Member, on_delete=models.CASCADE, related_name='allowed_ips',
+        verbose_name='회원',
+    )
+    ip_address = models.GenericIPAddressField(verbose_name='IP 주소')
+    first_seen = models.DateTimeField(auto_now_add=True, verbose_name='최초 접속')
+    last_seen = models.DateTimeField(auto_now=True, verbose_name='최근 접속')
+    access_count = models.PositiveIntegerField(default=1, verbose_name='접속 횟수')
+
+    class Meta:
+        db_table = 'member_user_ip'
+        unique_together = [('user', 'ip_address')]
+        verbose_name = '허용 IP'
+        verbose_name_plural = '허용 IP 목록'
+        ordering = ['-last_seen']
+
+    def __str__(self):
+        return f'{self.user} — {self.ip_address}'
+
+
+class IPAccessLog(models.Model):
+    """IP 접속 기록 (로그인·세션·차단 이력)."""
+    STATUS_CHOICES = [
+        ('login_ok',   '로그인 성공'),
+        ('login_fail', '로그인 실패'),
+        ('ip_blocked', 'IP 차단'),
+        ('session',    '세션 접속'),
+    ]
+    user = models.ForeignKey(
+        Member, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ip_logs', verbose_name='회원',
+    )
+    ip_address = models.GenericIPAddressField(verbose_name='IP 주소')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='session', verbose_name='상태')
+    path = models.CharField(max_length=500, blank=True, verbose_name='경로')
+    user_agent = models.CharField(max_length=500, blank=True, verbose_name='브라우저')
+    accessed_at = models.DateTimeField(auto_now_add=True, verbose_name='접속 시각')
+
+    class Meta:
+        db_table = 'member_ip_access_log'
+        verbose_name = 'IP 접속 기록'
+        verbose_name_plural = 'IP 접속 기록'
+        ordering = ['-accessed_at']
+
+    def __str__(self):
+        user_str = str(self.user) if self.user else '비로그인'
+        return f'[{self.get_status_display()}] {user_str} — {self.ip_address}'
 
 
 class Profile(models.Model):

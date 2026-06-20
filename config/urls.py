@@ -13,7 +13,7 @@ urlpatterns = [
     path("", views.HomeView.as_view(), name='index'),
     path('mock-exam/', views.MockExamView.as_view(), name='mock_exam'),
     path('training/', views.TrainingView.as_view(), name='training'),
-    path('accounts/', include('django.contrib.auth.urls')),
+    path('accounts/', include('allauth.urls')),
     path('accounts/register/', views.UserCreateView.as_view(), name='register'),
     path('accounts/register/done/', views.UserCreateDoneTV.as_view(), name='register_done'),
     path('login/', CustomLoginView.as_view(), name='login'),

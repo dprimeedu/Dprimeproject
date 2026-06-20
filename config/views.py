@@ -58,7 +58,32 @@ class UserCreateDoneTV(generic.TemplateView):
 
 class CustomLoginView(LoginView):
     def form_valid(self, form):
+        from member.models import UserIP, IPAccessLog
+        from member.ip_utils import get_client_ip
+
         user = form.get_user()
+        ip = get_client_ip(self.request)
+
+        # ── IP 한도 초과 시 로그인 차단 ─────────────────────────
+        if ip and getattr(user, 'max_allowed_ips', 0) > 0:
+            registered = UserIP.objects.filter(user=user)
+            if not registered.filter(ip_address=ip).exists():
+                if registered.count() >= user.max_allowed_ips:
+                    IPAccessLog.objects.create(
+                        user=user,
+                        ip_address=ip,
+                        status='ip_blocked',
+                        path=self.request.path,
+                        user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500],
+                    )
+                    messages.error(
+                        self.request,
+                        f'이 계정은 최대 {user.max_allowed_ips}개의 IP에서만 접속할 수 있습니다. '
+                        '관리자에게 문의하세요.',
+                    )
+                    self.request._ip_block_logged = True
+                    return self.form_invalid(form)
+
         auth_login(self.request, user)
 
         # 'next' 값이 있으면 해당 페이지로 리디렉션
@@ -77,6 +102,19 @@ class CustomLoginView(LoginView):
         return redirect('index')
 
     def form_invalid(self, form):
+        from member.models import IPAccessLog
+        from member.ip_utils import get_client_ip
+
+        # IP 차단으로 호출된 경우는 이미 로그 기록 완료 — 일반 실패만 기록
+        if not getattr(self.request, '_ip_block_logged', False):
+            ip = get_client_ip(self.request)
+            if ip:
+                IPAccessLog.objects.create(
+                    ip_address=ip,
+                    status='login_fail',
+                    path=self.request.path,
+                    user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500],
+                )
         messages.error(self.request, '아이디 또는 비밀번호가 잘못되었습니다.')
         return super().form_invalid(form)
     
