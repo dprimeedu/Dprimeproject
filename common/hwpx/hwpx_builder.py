@@ -235,15 +235,10 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         parts.append(_para(passage_runs, para_pr=13))  # 사방 빨강 테두리
 
     parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
-    # 3) 선택지 단락들 (일반 문단)
+    # 3) 선택지 단락들 — 각 선택지는 별도 단락(엑셀의 \r\n 줄바꿈을 보존).
     if q.get("choices"):
-        joined = "".join(q["choices"]) if all(
-            len(c) < 30 for c in q["choices"]) else None
-        if joined:
-            parts.append(_para(_run(joined, 8), para_pr=1))
-        else:
-            for ch in q["choices"]:
-                parts.append(_para(_run(ch, 8), para_pr=1))
+        for ch in q["choices"]:
+            parts.append(_para(_run(ch, 8), para_pr=1))
 
     # 4) 문제 사이 간격용 빈 단락(= Enter 한 번). 포맷을 깔끔하게.
     parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
