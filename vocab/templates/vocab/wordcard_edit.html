@@ -205,7 +205,9 @@ async function lookupWord(idx) {
 }
 
 // 페이지 이탈 시 마지막 임시저장 보장 — sendBeacon 으로 비동기 발사.
+// publishing 중이면 skip: '만들기' 버튼이 보낸 published 요청을 draft 가 덮어쓰는 경쟁 방지.
 window.addEventListener('pagehide', function(){
+    if (publishing) return;
     try {
         const blob = new Blob([JSON.stringify(payload('draft'))],
                               { type: 'application/json' });
