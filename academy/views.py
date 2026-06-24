@@ -832,8 +832,8 @@ def _normalize_passage_markers(text):
         return text
     import re as _re
     M = '①②③④⑤⑥⑦⑧⑨⑩'
-    text = _re.sub(r'[(（]\s*([' + M + r'])\s*[)）]', r'(  )', text)
-    text = _re.sub(r'([' + M + r'])(?=\S)', r' ', text)
+    text = _re.sub(r'[(（]\s*([' + M + r'])\s*[)）]', r'( \g<1> )', text)
+    text = _re.sub(r'([' + M + r'])(?=\S)', r'\g<1> ', text)
     return text
 
 
