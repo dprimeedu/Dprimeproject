@@ -89,8 +89,11 @@ def _esc(text):
 # ---------------------------------------------------------------------------
 # 단락(문단) 생성기
 # ---------------------------------------------------------------------------
-# charPr → 밑줄 charPr 매핑. 밑줄 run 은 charPr 15 (밑줄만, bold 없음) 사용.
-_UNDERLINE_MAP = {8: 12, 12: 12, 11: 12}
+# charPr → 밑줄 구간에 쓸 charPr 매핑.
+#  base 8 (지문/선택지 본문): 원문 밑줄을 보존해야 하므로 charPr 15(밑줄)로.
+#  base 12 (발문): 발문엔 밑줄을 두지 않고 굵게만 → 그대로 12.
+#  base 11 (날짜): 파랑 굵게 그대로 → 11.
+_UNDERLINE_MAP = {8: 15, 12: 12, 11: 11}
 
 
 def _run(text, char_pr):
@@ -243,7 +246,10 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     if q.get("date"):
         head_runs += _run(" " + q["date"], 11)       # 파랑 굵게
     if q.get("prompt"):
-        head_runs += _run(" " + q["prompt"], 12)     # 검정 굵게(발문 강조)
+        # 발문은 밑줄 없이 '굵게'만. 원문에 밑줄 마커(U+FFF0)가 있어도 제거해
+        # 발문 전체를 굵게(charPr 12) 단일 run 으로 출력한다. (지문 밑줄은 보존)
+        prompt_text = q["prompt"].replace("￰", "")
+        head_runs += _run(" " + prompt_text, 12)     # 검정 굵게(발문 강조)
     parts.append(_para(head_runs, para_pr=1,
                        column_break=column_break))
 
