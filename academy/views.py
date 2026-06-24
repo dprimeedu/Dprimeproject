@@ -1013,10 +1013,11 @@ def download_modified_hwpx(request):
     data = build_hwpx_bytes(TEMPLATE_PATH, header_text, questions)
 
     import urllib.parse
-    from django.utils import timezone
+    import datetime
     # 파일명에 생성시각을 넣어 매 다운로드가 '다른 파일'이 되게 한다.
     #  → 브라우저/한글이 이전에 받은 동명 파일(옛 내용)을 그대로 보여주는 혼선 방지.
-    stamp = timezone.localtime().strftime("%m%d_%H%M")
+    #  USE_TZ=False 라 timezone.localtime() 은 못 씀(naive 에러) → datetime.now() 사용.
+    stamp = datetime.datetime.now().strftime("%m%d_%H%M")
     filename = f"[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_{selected_category}_{stamp}.hwpx"
     encoded_filename = urllib.parse.quote(filename, safe='')
     response = HttpResponse(data, content_type='application/hwp+zip')
