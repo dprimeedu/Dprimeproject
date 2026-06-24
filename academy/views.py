@@ -1013,12 +1013,20 @@ def download_modified_hwpx(request):
     data = build_hwpx_bytes(TEMPLATE_PATH, header_text, questions)
 
     import urllib.parse
-    filename = f"[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_{selected_category}.hwpx"
+    from django.utils import timezone
+    # 파일명에 생성시각을 넣어 매 다운로드가 '다른 파일'이 되게 한다.
+    #  → 브라우저/한글이 이전에 받은 동명 파일(옛 내용)을 그대로 보여주는 혼선 방지.
+    stamp = timezone.localtime().strftime("%m%d_%H%M")
+    filename = f"[프라임에듀]_{year_str}년_{grade_str}_{month_str}월_{selected_category}_{stamp}.hwpx"
     encoded_filename = urllib.parse.quote(filename, safe='')
     response = HttpResponse(data, content_type='application/hwp+zip')
     response['Content-Disposition'] = (
-        f"attachment; filename=\"exam.hwpx\"; filename*=UTF-8''{encoded_filename}"
+        f"attachment; filename=\"exam_{stamp}.hwpx\"; filename*=UTF-8''{encoded_filename}"
     )
+    # 다운로드 응답 캐싱 금지 — 항상 최신 생성본을 받도록.
+    response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
 
     return response
 
