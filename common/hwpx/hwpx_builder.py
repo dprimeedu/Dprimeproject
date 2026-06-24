@@ -53,16 +53,20 @@ COL_GAP = 2268
 BODY_HEIGHT = PAGE_H - MARGIN_TB * 2 - MARGIN_HEADER - MARGIN_FOOTER  # ≈ 70016
 COL_WIDTH = (PAGE_W - MARGIN_LR * 2 - COL_GAP * (COL_COUNT - 1)) // COL_COUNT  # ≈ 25796
 
-# 줄 높이(150% 줄간격) 및 줄당 글자수(보수적 추정)
-LINE_VSIZE = 950
-LINE_SPACING = 1.5
-LINE_HEIGHT = LINE_VSIZE * LINE_SPACING            # 1425
-LINES_PER_COL = BODY_HEIGHT / LINE_HEIGHT           # ≈ 49
+# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 한 단에 순서 문제가 1개씩만
+# 들어가 페이지 아래가 비어, 줄간격을 통일해 한 단 용량을 키운다. 빌드 시 paraPr 1/13/14에 적용.
+# ★ 이 값만 바꾸면 빽빽/헐거움 조절됨. 150=양식기본(헐거움), 135=빽빽. 권장 130~150.
+LINE_SPACING_PCT = 135
 
-# 단 채움 허용오차(줄). 높이 추정이 보수적이라, '거의 들어가는' 문제를 한두 줄
-# 차이로 다음 단으로 밀어내 페이지가 헐거워지는 것을 줄인다(굳이 2개만 들어가는 현상 완화).
-# 너무 키우면 긴 문제가 단 끝에서 잘릴 수 있으므로 작게 유지(권장 0~4).
-COL_FILL_TOLERANCE = 3
+# 줄 높이 및 줄당 글자수(보수적 추정)
+LINE_VSIZE = 950
+LINE_SPACING = LINE_SPACING_PCT / 100.0
+LINE_HEIGHT = LINE_VSIZE * LINE_SPACING
+LINES_PER_COL = BODY_HEIGHT / LINE_HEIGHT           # 135%면 ≈ 55
+
+# 단 채움 허용오차(줄). '거의 들어가는' 문제를 한두 줄 차이로 다음 단으로 밀어내지 않게.
+# 줄간격으로 용량을 확보했으니 작게 유지(크면 단 끝에서 잘릴 수 있음).
+COL_FILL_TOLERANCE = 2
 # 영문 기준 한 줄에 들어가는 대략 글자 수 (보수적으로 약간 작게)
 CHARS_PER_LINE_EN = 52
 CHARS_PER_LINE_KR = 26
@@ -299,6 +303,10 @@ def build_hwpx(template_path, output_path, header_text, questions,
             "필수 스타일(charPr 11/12/15, paraPr 13, borderFill 3)을 "
             "header.xml 에 확보하지 못했습니다.")
 
+    # 본문 문단(발문/선택지=paraPr1, 지문박스=paraPr13/14) 줄간격을 통일
+    # → 한 단에 문제가 더 들어가 페이지가 덜 헐거워진다(추정 LINES_PER_COL 과 일치).
+    header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14), LINE_SPACING_PCT)
+
     files["Contents/header.xml"] = header_xml.encode("utf-8")
 
     # ---- section0.xml 편집 ----
@@ -469,6 +477,23 @@ def _inject_styles(header_xml):
                 header_xml = (header_xml[:m.start()] +
                               m.group(1) + str(new_cnt) + m.group(3) +
                               header_xml[m.end():])
+    return header_xml
+
+
+def _set_para_spacing(header_xml, para_ids, percent):
+    """지정한 paraPr id 들의 줄간격(lineSpacing PERCENT value)을 percent 로 바꾼다.
+       글자모양은 건드리지 않고 문단 줄간격만 통일 → 페이지 밀도 조절.
+    """
+    for pid in para_ids:
+        # id="1" 이 id="13" 을 잡지 않도록 닫는 따옴표까지 포함해 정확히 매칭.
+        m = re.search(r'<hh:paraPr id="%d".*?</hh:paraPr>' % pid, header_xml, re.S)
+        if not m:
+            continue
+        block = m.group(0)
+        new_block = re.sub(
+            r'(<hh:lineSpacing type="PERCENT" value=")\d+(")',
+            r'\g<1>%d\g<2>' % percent, block)
+        header_xml = header_xml[:m.start()] + new_block + header_xml[m.end():]
     return header_xml
 
 
