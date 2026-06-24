@@ -44,19 +44,25 @@ _STYLE_DEFS = {
 }
 
 
-# ---- 페이지 기하 (HWPUNIT, section0.xml 에서 확인) ----
+# ---- 페이지 기하 (HWPUNIT) ----
+# 양식 원본은 header/footer=4252(15mm), top/bottom=2834(10mm)였음.
+# 순서 문제가 박스 30줄+ 차지해 한 단(약 55줄)에 1개씩만 들어가던 문제로,
+# 빌드 시 section0.xml의 margin을 아래 값으로 패치(_set_page_margins)해 단을 길게.
 PAGE_W, PAGE_H = 59528, 84188
-MARGIN_LR, MARGIN_TB = 2834, 2834
-MARGIN_HEADER, MARGIN_FOOTER = 4252, 4252
+MARGIN_LR = 2834
+MARGIN_TB = 1417           # 10→5mm
+MARGIN_HEADER = 1417       # 15→5mm
+MARGIN_FOOTER = 1417       # 15→5mm
 COL_COUNT = 2
 COL_GAP = 2268
-BODY_HEIGHT = PAGE_H - MARGIN_TB * 2 - MARGIN_HEADER - MARGIN_FOOTER  # ≈ 70016
+BODY_HEIGHT = PAGE_H - MARGIN_TB * 2 - MARGIN_HEADER - MARGIN_FOOTER  # ≈ 78520
 COL_WIDTH = (PAGE_W - MARGIN_LR * 2 - COL_GAP * (COL_COUNT - 1)) // COL_COUNT  # ≈ 25796
 
-# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 한 단에 순서 문제가 1개씩만
-# 들어가 페이지 아래가 비어, 줄간격을 통일해 한 단 용량을 키운다. 빌드 시 paraPr 1/13/14에 적용.
-# ★ 이 값만 바꾸면 빽빽/헐거움 조절됨. 150=양식기본(헐거움), 135=빽빽. 권장 130~150.
-LINE_SPACING_PCT = 135
+# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 답답함 없이 가독성 유지
+# 위해 160%로 통일하고, 그 대신 페이지 여백 축소 + 박스/문제 사이 빈 단락 제거로
+# 한 페이지 용량을 확보한다. 빌드 시 paraPr 0/1/13/14에 적용.
+# ★ 이 값만 바꾸면 빽빽/헐거움 조절. 150=양식기본, 160=헐거움, 135=빽빽. 권장 140~160.
+LINE_SPACING_PCT = 160
 
 # 줄 높이 및 줄당 글자수(보수적 추정)
 LINE_VSIZE = 950
@@ -205,14 +211,14 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     endnote_no  : 이 문제의 미주 순번(1,2,3...)
     """
     # --- 높이 추정 ---
+    # 빈 단락(박스 후·문제 사이)을 더는 넣지 않으므로 그만큼 가산도 줄였다.
     total_lines = 0
     total_lines += _estimate_lines((q.get("date", "") + " " +
                                     q.get("prompt", "")))
     if q.get("passage"):
-        total_lines += _estimate_lines(q["passage"]) + 1  # 박스 여백
+        total_lines += _estimate_lines(q["passage"])  # 박스 내부
     for ch in q.get("choices", []):
         total_lines += _estimate_lines(ch)
-    total_lines += 1  # 문제 간 간격
 
     # --- 단 넘김 판단: 잘릴 것 같으면 새 단에서 시작 ---
     column_break = False
@@ -244,14 +250,11 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         passage_runs = _run(q["passage"], 8)
         parts.append(_para(passage_runs, para_pr=13))  # 사방 빨강 테두리
 
-    parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
     # 3) 선택지 단락들 — 각 선택지는 별도 단락(엑셀의 \r\n 줄바꿈을 보존).
+    #    박스↔선택지·문제 사이 빈 단락은 두지 않음(페이지 밀도 우선).
     if q.get("choices"):
         for ch in q["choices"]:
             parts.append(_para(_run(ch, 8), para_pr=1))
-
-    # 4) 문제 사이 간격용 빈 단락(= Enter 한 번). 포맷을 깔끔하게.
-    parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
 
     return "".join(parts)
 
@@ -311,6 +314,13 @@ def build_hwpx(template_path, output_path, header_text, questions,
 
     # ---- section0.xml 편집 ----
     sec = files["Contents/section0.xml"].decode("utf-8")
+
+    # 0) 페이지 여백 패치 — 양식 원본은 머리말 영역이 15mm로 커서 본문이 짧았다.
+    #    상수와 동일한 값으로 통일해 추정 BODY_HEIGHT 와 실제가 일치하도록 한다.
+    sec = _set_page_margins(sec,
+                            header=MARGIN_HEADER, footer=MARGIN_FOOTER,
+                            top=MARGIN_TB, bottom=MARGIN_TB,
+                            left=MARGIN_LR, right=MARGIN_LR)
 
     # 1) 머리말 치환 + 캐시 정리
     #    머리말은 [공백][탭(고정폭)][텍스트] 구조이며, 탭의 width 가
@@ -478,6 +488,18 @@ def _inject_styles(header_xml):
                               m.group(1) + str(new_cnt) + m.group(3) +
                               header_xml[m.end():])
     return header_xml
+
+
+def _set_page_margins(sec_xml, header, footer, top, bottom, left, right):
+    """section0.xml 의 <hp:margin .../> 페이지 여백을 새 값으로 교체.
+       양식의 머리말/꼬리말 영역이 커서 본문이 짧던 문제를 빌드 시 보정한다.
+    """
+    def _repl(m):
+        return ('<hp:margin '
+                f'header="{header}" footer="{footer}" gutter="0" '
+                f'left="{left}" right="{right}" '
+                f'top="{top}" bottom="{bottom}"/>')
+    return re.sub(r'<hp:margin\b[^/]*/>', _repl, sec_xml)
 
 
 def _set_para_spacing(header_xml, para_ids, percent):
