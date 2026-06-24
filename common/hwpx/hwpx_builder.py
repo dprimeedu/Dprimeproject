@@ -67,6 +67,10 @@ LINES_PER_COL = BODY_HEIGHT / LINE_HEIGHT           # 135%면 ≈ 55
 # 단 채움 허용오차(줄). '거의 들어가는' 문제를 한두 줄 차이로 다음 단으로 밀어내지 않게.
 # 줄간격으로 용량을 확보했으니 작게 유지(크면 단 끝에서 잘릴 수 있음).
 COL_FILL_TOLERANCE = 2
+# 문제 전체(발문+박스+선택지)를 한 단에 통째로 유지하기 위한 안전여유(줄).
+# 줄 수 추정이 약간 낮게 잡혀도 단 경계에서 발문/박스/선택지가 잘리지 않도록
+# 잔여 공간을 이만큼 더 요구한다. 크게 잡으면 단이 헐거워지므로 작게 유지.
+COL_KEEP_SAFETY = 1
 # 영문 기준 한 줄에 들어가는 대략 글자 수 (보수적으로 약간 작게)
 CHARS_PER_LINE_EN = 52
 CHARS_PER_LINE_KR = 26
@@ -212,12 +216,17 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     total_lines = head_lines + box_lines + choices_lines + 1  # +사이 간격
 
     # --- 단 넘김 판단 ---
-    # 발문+박스가 현재 단 잔여에 안 들어가면 발문에 column_break 삽입.
-    # 한/글의 자동 흐름은 박스만 다음 단으로 보내고 발문은 단 끝에 남기는 분리를
-    # 만들 때가 있어 그것을 막는다. 선택지는 박스 뒤에서 자유롭게 흐르게 둠.
-    needed = head_lines + box_lines
+    # 한 문제(발문+박스+선택지)는 통째로 같은 단에 들어가야 한다.
+    #   - 발문만 단 끝에 남고 박스가 다음 단/쪽으로 가는 분리(고아 발문) 방지
+    #   - 선택지가 박스와 떨어져 다음 쪽으로 넘어가는 분리 방지
+    # 따라서 잔여 공간이 '문제 전체'를 못 담으면 발문에 column_break 를 넣어
+    # 문제 전체를 다음 단으로 옮긴다. 단, 문제가 한 단보다 길면(=어차피 한 단에
+    # 못 담음) 강제하지 않고 자연 흐름에 맡긴다(무한 빈 단 생성 방지).
+    needed = total_lines + COL_KEEP_SAFETY
+    remaining = tracker.cap - tracker.used
     column_break = False
-    if force_newcol_if_overflow and (tracker.cap - tracker.used) < needed:
+    if (force_newcol_if_overflow and total_lines <= tracker.cap
+            and remaining < needed):
         column_break = True
         tracker.newcol(total_lines)
     else:
@@ -232,7 +241,7 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     if q.get("date"):
         head_runs += _run(" " + q["date"], 11)       # 파랑 굵게
     if q.get("prompt"):
-        head_runs += _run(" " + q["prompt"], 8)      # 검정 굵게
+        head_runs += _run(" " + q["prompt"], 12)     # 검정 굵게(발문 강조)
     parts.append(_para(head_runs, para_pr=1,
                        column_break=column_break))
 
@@ -359,7 +368,12 @@ def build_hwpx(template_path, output_path, header_text, questions,
     if after_header == -1:
         after_header = 0
     first_p_end = sec.find("</hp:p>", after_header) + len("</hp:p>")
-    sec = sec[:first_p_end] + blocks + sec[first_p_end:]
+
+    # 양식의 첫 본문 단락(secPr·머리말 그림을 담은 '캐리어')은 본문에서 빈 줄
+    # 하나로 렌더링된다 → 1번 문제 앞 '엔터'처럼 보임. 이를 없애기 위해 첫 문제의
+    # 발문 단락을 별도 단락으로 두지 않고 캐리어 단락 안에 합쳐 넣는다(머리말 그림은
+    # 여백 영역에 그대로, 첫 본문 줄부터 1번 발문이 시작).
+    sec = _insert_blocks_after_carrier(sec, first_p_end, blocks)
 
     files["Contents/section0.xml"] = sec.encode("utf-8")
 
@@ -394,6 +408,40 @@ def _replace_header(sec, old_text, new_text):
                       new_para, flags=re.S)
 
     return sec[:p_start] + new_para + sec[p_end:]
+
+
+def _insert_blocks_after_carrier(sec, first_p_end, blocks):
+    """본문 문제 블록을 캐리어 단락 뒤에 삽입하되, 첫 문제의 발문 단락은
+    캐리어 단락 안으로 합쳐 1번 문제 앞의 빈 줄('엔터')을 없앤다.
+
+    sec         : section0.xml 문자열
+    first_p_end : 캐리어 단락(</hp:header> 이후 첫 최상위 단락)의 </hp:p> 끝 위치
+    blocks      : 모든 문제 블록 + (선택) 끝 쪽나누기 단락이 이어붙은 문자열
+                  맨 앞은 항상 첫 문제의 발문 단락(<hp:p ...>...</hp:p>).
+    """
+    CLOSE = "</hp:p>"
+    carrier_start = sec.rfind("<hp:p ", 0, first_p_end)
+    carrier = sec[carrier_start:first_p_end]
+
+    # 첫 블록(발문 단락)을 떼어내 그 안의 run 들만 추출.
+    head_end = blocks.find(CLOSE)
+    if head_end == -1:
+        # 예상치 못한 형태면 원래 방식대로 단순 삽입(안전 폴백).
+        return sec[:first_p_end] + blocks + sec[first_p_end:]
+    head_end += len(CLOSE)
+    first_head = blocks[:head_end]
+    rest_blocks = blocks[head_end:]
+    m = re.match(r"<hp:p\b[^>]*>(.*)</hp:p>\s*$", first_head, re.S)
+    head_runs = m.group(1) if m else ""
+
+    # 캐리어의 조판 캐시(lineseg) 제거 → 합친 발문 기준으로 줄 재계산.
+    carrier = re.sub(r"<hp:linesegarray>.*?</hp:linesegarray>", "",
+                     carrier, flags=re.S)
+    # 캐리어의 닫는 </hp:p> 직전에 발문 run 들을 끼워 넣는다.
+    cut = carrier.rfind(CLOSE)
+    merged_carrier = carrier[:cut] + head_runs + carrier[cut:]
+
+    return sec[:carrier_start] + merged_carrier + rest_blocks + sec[first_p_end:]
 
 
 def _derive_charpr_from_base(header_xml):
