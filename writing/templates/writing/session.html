@@ -825,11 +825,16 @@ function loadProblem(idx) {
             // Android 소프트 키보드: 모든 키 isComposing=true로 옴 → compositionend에서 직접 제출
             const _isAndroid = /Android/i.test(navigator.userAgent);
             let _composing = false;
+            // 합성(한글 IME 등) 진행 중에 Enter를 누르면 그 Enter는 '합성 확정'에 소비되어
+            // keydown에서 제출할 수 없다. 이 플래그로 합성 종료 직후 제출을 예약한다.
+            let _enterPending = false;
             inp.addEventListener('compositionstart', () => { _composing = true; });
             inp.addEventListener('compositionend', () => {
                 _composing = false;
-                // Android에서 Enter키가 compositionend를 트리거 → 다음 틱에 제출
-                if (_isAndroid) {
+                // Android: Enter키가 compositionend를 트리거 → 다음 틱에 제출
+                // 데스크톱: 합성 중 눌린 Enter(예약됨)를 합성 확정 직후 제출 → 엔터 한 번에 확정+제출
+                if (_isAndroid || _enterPending) {
+                    _enterPending = false;
                     setTimeout(() => {
                         const st = wordStates[i];
                         if (st && !st.done && !st.submitting && inp.value.trim()) submitWord(i);
@@ -845,7 +850,12 @@ function loadProblem(idx) {
                 }
                 if (e.key === 'Enter') {
                     // Android: e.isComposing 신뢰 불가 → 무조건 제출 (submitting 잠금이 중복 차단)
-                    if (!_isAndroid && (e.isComposing || _composing)) return;
+                    // 데스크톱: 합성 중이면 이 Enter는 합성 확정용 → 버리지 말고 compositionend에서 제출 예약.
+                    //          (한글 IME 켜진 채 풀 때 '엔터 안 먹힘' 버그 수정)
+                    if (!_isAndroid && (e.isComposing || _composing)) {
+                        _enterPending = true;
+                        return;  // preventDefault 안 함 → 브라우저가 합성 텍스트를 확정하게 둠
+                    }
                     e.preventDefault();
                     submitWord(i);
                 }
