@@ -244,3 +244,23 @@ GRAMMAR_IMPORT_TOKEN = os.getenv('GRAMMAR_IMPORT_TOKEN', 'pedu-grammar-2026')
 
 # 일일리포트 카톡 페처 토큰 (회사 PC 카톡전송_웹.py 연동)
 REPORT_KAKAO_TOKEN = os.getenv('REPORT_KAKAO_TOKEN', 'pedu-report-2026')
+
+# ───────────────── 이메일 (비밀번호 재설정 등) ─────────────────
+# 네이버 메일/워크플레이스 SMTP. 운영 시 .env 에 EMAIL_HOST_USER/PASSWORD 필수.
+# 값이 비어 있으면 콘솔 백엔드로 폴백 — 개발 중에도 안전하게 동작.
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.naver.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'false').lower() == 'true'
+EMAIL_BACKEND = (
+    'django.core.mail.backends.smtp.EmailBackend'
+    if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD
+    else 'django.core.mail.backends.console.EmailBackend'
+)
+DEFAULT_FROM_EMAIL = os.getenv(
+    'DEFAULT_FROM_EMAIL',
+    '프라임에듀 <no-reply@dprimeedu.synology.me>',
+)
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24  # 24시간
