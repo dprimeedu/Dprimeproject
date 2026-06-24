@@ -822,6 +822,21 @@ def _hwpx_clean(text):
     return text
 
 
+def _normalize_passage_markers(text):
+    """지문 내 동그라미 번호 마커 표기 통일.
+      1) 괄호 마커 '(①)' → '( ① )'  (괄호 안 양쪽 공백; 문장넣기 삽입표시)
+      2) 괄호 없이 본문에 붙은 마커 '①However' → '① However' (마커 뒤 한 칸)
+    발문에는 적용하지 않는다(어법 발문의 ①~⑤ 참조 등 훼손 방지) — 지문에만 호출.
+    """
+    if not text:
+        return text
+    import re as _re
+    M = '①②③④⑤⑥⑦⑧⑨⑩'
+    text = _re.sub(r'[(（]\s*([' + M + r'])\s*[)）]', r'(  )', text)
+    text = _re.sub(r'([' + M + r'])(?=\S)', r' ', text)
+    return text
+
+
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
 
@@ -920,7 +935,7 @@ def _normalize_two_blank(choice):
     # 탭·2칸 이상 공백의 조합을 모두 분리자로 본다. 원문 'word  -  word' 때문에
     # "word …… - word" 처럼 대시가 남던 문제 교정(대시도 분리자로 보고 제거).
     # 단어 내부 하이픈(well-being)은 양옆 공백이 없어 매칭되지 않아 안전.
-    sep = r'(?:\s*(?:……|\.{3,}|⋯)\s*|\s+-+\s+|\s{2,}|	+)+'
+    sep = r'(?:\s*(?:……|\.{3,}|⋯)\s*|\s+[-/]+\s+|\s{2,}|	+)+'
     body = _re.sub(sep, ' …… ', body, count=1)
 
     return f"{marker} {body}" if marker else body
@@ -1026,7 +1041,7 @@ def download_modified_hwpx(request):
         questions.append({
             "date":    f"[{total_number}]" if total_number else "",
             "prompt":  _hwpx_clean(r.get('question', '')),
-            "passage": _hwpx_clean(r.get('sentence', '')),
+            "passage": _normalize_passage_markers(_hwpx_clean(r.get('sentence', ''))),
             "choices": _hwpx_choices(r.get('option', ''), r.get('qtype', '')),
             "answer":  r.get('answer', '').replace('\t', ' '),
         })
