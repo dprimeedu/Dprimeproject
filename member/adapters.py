@@ -36,6 +36,18 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         except Member.DoesNotExist:
             pass
 
+    def populate_user(self, request, sociallogin, data):
+        """소셜 데이터로 user 채우기. 카카오 일반앱처럼 이메일을 안 주는 프로바이더는
+        provider_uid 기반 가짜 이메일로 채워, 자동 가입(SIGNUP form 노출 없이)을 통과시킨다.
+        나중에 비즈앱 전환·이메일 동의 시 실제 이메일로 교체할 수 있다.
+        """
+        user = super().populate_user(request, sociallogin, data)
+        if not getattr(user, 'email', ''):
+            provider = sociallogin.account.provider
+            uid = sociallogin.account.uid
+            user.email = f'{provider}_{uid}@social.dprimeedu.local'
+        return user
+
     def save_user(self, request, sociallogin, form=None):
         """
         소셜 계정으로 새 Member 생성 시 기본값 설정.
