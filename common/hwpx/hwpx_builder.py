@@ -213,7 +213,9 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
                                   q.get("prompt", "")))
     box_lines = (_estimate_lines(q["passage"]) + 1) if q.get("passage") else 0
     choices_lines = sum(_estimate_lines(ch) for ch in q.get("choices", []))
-    total_lines = head_lines + box_lines + choices_lines + 1  # +사이 간격
+    # +사이 간격: 발문↔박스, 박스↔선택지, 문제↔문제 의 빈 줄(최대 3)
+    gap_lines = (2 if q.get("passage") else 1) + 1
+    total_lines = head_lines + box_lines + choices_lines + gap_lines
 
     # --- 단 넘김 판단 ---
     # 한 문제(발문+박스+선택지)는 통째로 같은 단에 들어가야 한다.
@@ -244,6 +246,12 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         head_runs += _run(" " + q["prompt"], 12)     # 검정 굵게(발문 강조)
     parts.append(_para(head_runs, para_pr=1,
                        column_break=column_break))
+
+    # 1-2) 발문과 박스 사이 간격(= Enter 한 번).
+    #   박스(붉은 테두리)의 윗변이 발문 바로 아래 붙으면 발문에 '밑줄'이 그어진
+    #   것처럼 보인다. 한 줄 띄워 발문(굵게)과 지문 박스를 분리한다.
+    if q.get("passage"):
+        parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
 
     # 2) 지문 단락(붉은 박스). paraPr 13(박스 시작)으로 감싼다.
     if q.get("passage"):
