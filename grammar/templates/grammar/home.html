@@ -65,6 +65,15 @@
                             <i class="fas fa-hourglass-half me-1"></i>오늘 시험범위가 아직 지정되지 않았어요. (학생관리자료 연동)
                         </div>
                         {% endif %}
+
+                        {% if u.flashcard_set %}
+                        <div class="mt-2 pt-2 border-top">
+                            <a href="{% url 'vocab:wordcard_flashcard' u.flashcard_set.id %}"
+                               class="btn btn-sm btn-info text-white w-100">
+                                <i class="fas fa-clone me-1"></i>플래시카드 <span class="opacity-75">({{ u.flashcard_set.filled_count }}장)</span>
+                            </a>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

@@ -189,7 +189,7 @@ LOGOUT_REDIRECT_URL = '/'
 SITE_ID = 1
 
 # django-allauth 설정
-ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_LOGIN_METHODS = {'email', 'username'}  # 학원 발급 ID(username) + 이메일 둘 다 로그인 가능
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_ADAPTER = 'member.adapters.CustomAccountAdapter'

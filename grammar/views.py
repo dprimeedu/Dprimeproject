@@ -327,6 +327,22 @@ def student_home(request):
         for rt in (GrammarRangeTest.objects.filter(student=request.user, is_active=True, unit_id__in=unit_ids)
                    .order_by('unit_id', '-created_at')):
             rt_map.setdefault(rt.unit_id, rt)
+    # 어법 단원과 같은 (학교+단계) 로 만들어진 학생 본인 플래시카드 세트 매칭
+    # title 규약: '{school} {stage} (전체 셔플 플래시)' — 부교재 출력에서 자동 생성
+    from vocab.models import WordCardSet
+    flash_map = {}
+    if is_assigned_view:
+        for u in units:
+            if not (u.school and u.exam and u.exam.startswith(f'G{u.school}내신')):
+                continue
+            stage = u.exam.replace(f'G{u.school}내신', '')
+            if not stage:
+                continue
+            wcs = (WordCardSet.objects.filter(student=request.user, title__startswith=f'{u.school} {stage}')
+                   .order_by('-updated_at').first())
+            if wcs:
+                flash_map[u.id] = wcs
+
     for u in units:
         all_idx = idx_map.get(u.id, [])
         u.num_problems = len(all_idx)
@@ -335,6 +351,7 @@ def student_home(request):
         # 단어/요약문/영작처럼: 학생관리자료에서 지정한 그날 시험범위(rt)를 40개씩 끊어 세트로.
         u.has_range = bool(rt)
         u.range_label = rt.range_label if rt else ''
+        u.flashcard_set = flash_map.get(u.id)
         if is_assigned_view and rt:
             rng = _range_indices(all_idx, rt)        # 시험범위 안 문항만
             sets = _student_sets(request.user.id, u.id, rng)
