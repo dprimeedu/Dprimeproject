@@ -214,17 +214,12 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         total_lines += _estimate_lines(ch)
     total_lines += 1  # 문제 간 간격
 
-    # --- 단 넘김 판단: 잘릴 것 같으면 새 단에서 시작 ---
+    # --- 단 넘김: 자동 column_break 삽입 비활성화 ---
+    # 추정 줄 수가 실제보다 살짝 커서, 들어갈 자리가 있어도 새 단으로 밀어 페이지가
+    # 헐겁게 차던 문제(한 페이지 2개)를 막는다. 한/글의 자동 흐름이 더 정확함
+    # (박스는 paraPr 13 한 단락이라 단 경계에서 안 잘림). tracker 는 디버깅용으로만 남김.
     column_break = False
-    if force_newcol_if_overflow and not tracker.fits(total_lines):
-        # 문제 전체가 한 단보다 작으면 새 단으로, 크면 그냥 흐르게 둠
-        if total_lines <= tracker.cap:
-            column_break = True
-            tracker.newcol(total_lines)
-        else:
-            tracker.add(total_lines)
-    else:
-        tracker.add(total_lines)
+    tracker.add(total_lines)
 
     parts = []
 
