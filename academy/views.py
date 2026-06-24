@@ -810,6 +810,13 @@ def _hwpx_clean(text):
     text = text.replace('\t', ' ')
     # 엑셀 인라인 그림(아이콘) placeholder 제거 — 예: icon_1_3
     text = _re.sub(r'icon_\d+_\d+', '', text)
+    # 빈칸 라벨 표기 통일: '(A)____' 처럼 라벨 뒤에만 밑줄 있는 형태를
+    # '___(A)___' (양쪽 밑줄, 라벨 가운데) 로 맞춘다. 밑줄이 하나도 없는
+    # '(A)'(발문의 (A),(B) 참조 등)는 그대로 둔다.
+    text = _re.sub(
+        r'_*\(([A-E])\)_*',
+        lambda m: '___(%s)___' % m.group(1) if '_' in m.group(0) else m.group(0),
+        text)
     # 연속 빈줄 3+ → 2개로
     text = _re.sub(r'\n{3,}', '\n\n', text)
     return text
