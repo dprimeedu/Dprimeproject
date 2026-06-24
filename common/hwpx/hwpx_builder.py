@@ -231,7 +231,8 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         head_runs += _run(" " + q["date"], 11)       # 파랑 굵게
     if q.get("prompt"):
         head_runs += _run(" " + q["prompt"], 8)      # 검정 굵게
-    parts.append(_para(head_runs, para_pr=1,
+    # paraPr 20 = 발문 전용(keepWithNext=1). 박스가 다음 페이지로 가면 발문도 같이.
+    parts.append(_para(head_runs, para_pr=20,
                        column_break=column_break))
 
     # 2) 지문 단락(붉은 박스). paraPr 13(박스 시작)으로 감싼다.
@@ -301,6 +302,11 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # 본문 문단(발문/선택지=paraPr1, 지문박스=paraPr13/14) 줄간격을 통일
     # → 한 단에 문제가 더 들어가 페이지가 덜 헐거워진다(추정 LINES_PER_COL 과 일치).
     header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14), LINE_SPACING_PCT)
+
+    # 박스(지문) 단락이 페이지/단 경계에서 잘리지 않게 keepLines=1.
+    # 자동 column_break 를 끈 뒤에는 한/글이 박스 중간에서 끊는 일이 있어, 박스는
+    # 통째로 다음 페이지로 가도록 강제한다.
+    header_xml = _set_para_keep(header_xml, 13, keep_lines=True)
 
     files["Contents/header.xml"] = header_xml.encode("utf-8")
 
@@ -423,6 +429,22 @@ def _derive_charpr_from_base(header_xml):
     return defs
 
 
+def _derive_parapr20_from_base(header_xml):
+    """양식 paraPr 1 을 복제해 keepWithNext="1" 인 paraPr 20 을 만든다.
+       발문 단락이 박스에서 떨어지지 않게 같은 페이지에 묶음."""
+    m = re.search(r'<hh:paraPr id="1".*?</hh:paraPr>', header_xml, re.S)
+    if not m:
+        return {}
+    p20 = m.group(0).replace('id="1"', 'id="20"', 1)
+    if 'keepWithNext="' in p20:
+        p20 = re.sub(r'keepWithNext="\d"', 'keepWithNext="1"', p20, count=1)
+    else:
+        # breakSetting 안에 속성을 끼워 넣는다
+        p20 = re.sub(r'(<hh:breakSetting\b[^>]*?)/>',
+                     r'\1 keepWithNext="1"/>', p20, count=1)
+    return {'paraPr20': p20}
+
+
 def _inject_styles(header_xml):
     """
     header.xml 에 필요한 스타일이 없으면 주입하고 itemCnt 를 갱신한다.
@@ -432,6 +454,7 @@ def _inject_styles(header_xml):
     derived = _derive_charpr_from_base(header_xml)
     all_defs = dict(_STYLE_DEFS)
     all_defs.update(derived)
+    all_defs.update(_derive_parapr20_from_base(header_xml))
 
     plans = [
         ("borderFills", "borderFill",
@@ -439,7 +462,7 @@ def _inject_styles(header_xml):
         ("charProperties", "charPr",
          [("charPr11", "11"), ("charPr12", "12"), ("charPr15", "15")]),
         ("paraProperties", "paraPr",
-         [("paraPr13", "13"), ("paraPr14", "14")]),
+         [("paraPr13", "13"), ("paraPr14", "14"), ("paraPr20", "20")]),
     ]
     for container, item_tag, items in plans:
         open_m = re.search(r'<hh:' + container + r'\b[^>]*>', header_xml)
@@ -473,6 +496,24 @@ def _inject_styles(header_xml):
                               m.group(1) + str(new_cnt) + m.group(3) +
                               header_xml[m.end():])
     return header_xml
+
+
+def _set_para_keep(header_xml, para_id, keep_lines=False, keep_with_next=False):
+    """paraPr 의 breakSetting 속성(keepLines/keepWithNext)을 설정.
+       keep_lines=True → 단락이 페이지/단 경계에서 안 잘림.
+       keep_with_next=True → 다음 단락과 같은 페이지에 묶임.
+    """
+    m = re.search(r'<hh:paraPr id="%d".*?</hh:paraPr>' % para_id, header_xml, re.S)
+    if not m:
+        return header_xml
+    block = m.group(0)
+    block = re.sub(r'keepWithNext="\d"',
+                   'keepWithNext="%d"' % (1 if keep_with_next else 0),
+                   block, count=1)
+    block = re.sub(r'keepLines="\d"',
+                   'keepLines="%d"' % (1 if keep_lines else 0),
+                   block, count=1)
+    return header_xml[:m.start()] + block + header_xml[m.end():]
 
 
 def _set_para_spacing(header_xml, para_ids, percent):
