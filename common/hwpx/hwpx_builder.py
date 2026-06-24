@@ -205,21 +205,23 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     endnote_no  : 이 문제의 미주 순번(1,2,3...)
     """
     # --- 높이 추정 ---
-    total_lines = 0
-    total_lines += _estimate_lines((q.get("date", "") + " " +
-                                    q.get("prompt", "")))
-    if q.get("passage"):
-        total_lines += _estimate_lines(q["passage"]) + 1  # 박스 여백
-    for ch in q.get("choices", []):
-        total_lines += _estimate_lines(ch)
-    total_lines += 1  # 문제 간 간격
+    head_lines = _estimate_lines((q.get("date", "") + " " +
+                                  q.get("prompt", "")))
+    box_lines = (_estimate_lines(q["passage"]) + 1) if q.get("passage") else 0
+    choices_lines = sum(_estimate_lines(ch) for ch in q.get("choices", []))
+    total_lines = head_lines + box_lines + choices_lines + 1  # +사이 간격
 
-    # --- 단 넘김: 자동 column_break 삽입 비활성화 ---
-    # 추정 줄 수가 실제보다 살짝 커서, 들어갈 자리가 있어도 새 단으로 밀어 페이지가
-    # 헐겁게 차던 문제(한 페이지 2개)를 막는다. 한/글의 자동 흐름이 더 정확함
-    # (박스는 paraPr 13 한 단락이라 단 경계에서 안 잘림). tracker 는 디버깅용으로만 남김.
+    # --- 단 넘김 판단 ---
+    # 발문+박스가 현재 단 잔여에 안 들어가면 발문에 column_break 삽입.
+    # 한/글의 자동 흐름은 박스만 다음 단으로 보내고 발문은 단 끝에 남기는 분리를
+    # 만들 때가 있어 그것을 막는다. 선택지는 박스 뒤에서 자유롭게 흐르게 둠.
+    needed = head_lines + box_lines
     column_break = False
-    tracker.add(total_lines)
+    if force_newcol_if_overflow and (tracker.cap - tracker.used) < needed:
+        column_break = True
+        tracker.newcol(total_lines)
+    else:
+        tracker.add(total_lines)
 
     parts = []
 
@@ -231,8 +233,7 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         head_runs += _run(" " + q["date"], 11)       # 파랑 굵게
     if q.get("prompt"):
         head_runs += _run(" " + q["prompt"], 8)      # 검정 굵게
-    # paraPr 20 = 발문 전용(keepWithNext=1). 박스가 다음 페이지로 가면 발문도 같이.
-    parts.append(_para(head_runs, para_pr=20,
+    parts.append(_para(head_runs, para_pr=1,
                        column_break=column_break))
 
     # 2) 지문 단락(붉은 박스). paraPr 13(박스 시작)으로 감싼다.
@@ -429,22 +430,6 @@ def _derive_charpr_from_base(header_xml):
     return defs
 
 
-def _derive_parapr20_from_base(header_xml):
-    """양식 paraPr 1 을 복제해 keepWithNext="1" 인 paraPr 20 을 만든다.
-       발문 단락이 박스에서 떨어지지 않게 같은 페이지에 묶음."""
-    m = re.search(r'<hh:paraPr id="1".*?</hh:paraPr>', header_xml, re.S)
-    if not m:
-        return {}
-    p20 = m.group(0).replace('id="1"', 'id="20"', 1)
-    if 'keepWithNext="' in p20:
-        p20 = re.sub(r'keepWithNext="\d"', 'keepWithNext="1"', p20, count=1)
-    else:
-        # breakSetting 안에 속성을 끼워 넣는다
-        p20 = re.sub(r'(<hh:breakSetting\b[^>]*?)/>',
-                     r'\1 keepWithNext="1"/>', p20, count=1)
-    return {'paraPr20': p20}
-
-
 def _inject_styles(header_xml):
     """
     header.xml 에 필요한 스타일이 없으면 주입하고 itemCnt 를 갱신한다.
@@ -454,7 +439,6 @@ def _inject_styles(header_xml):
     derived = _derive_charpr_from_base(header_xml)
     all_defs = dict(_STYLE_DEFS)
     all_defs.update(derived)
-    all_defs.update(_derive_parapr20_from_base(header_xml))
 
     plans = [
         ("borderFills", "borderFill",
@@ -462,7 +446,7 @@ def _inject_styles(header_xml):
         ("charProperties", "charPr",
          [("charPr11", "11"), ("charPr12", "12"), ("charPr15", "15")]),
         ("paraProperties", "paraPr",
-         [("paraPr13", "13"), ("paraPr14", "14"), ("paraPr20", "20")]),
+         [("paraPr13", "13"), ("paraPr14", "14")]),
     ]
     for container, item_tag, items in plans:
         open_m = re.search(r'<hh:' + container + r'\b[^>]*>', header_xml)
