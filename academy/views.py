@@ -906,13 +906,41 @@ def _normalize_two_blank(choice):
         marker = body[0]
         body = body[1:].lstrip()
 
-    if _re.search(r'……|\.{3,}|⋯', body):
-        body = _re.sub(r'\s*(?:……|\.{3,}|⋯)\s*', ' …… ', body, count=1)
-    else:
-        # 탭 단독 또는 2칸 이상 공백/탭 혼합을 분리자로
-        body = _re.sub(r'[ \t ]{2,}|\t', ' …… ', body, count=1)
+    # 엑셀 셀참조(A1, B2 …) 같은 잡토큰이 보기 맨 앞에 끼어든 경우 제거.
+    body = _re.sub(r'^[A-Z]{1,2}\d{1,3}\s+', '', body)
+
+    # A/B 두 답 사이 분리자를 ' …… ' 하나로 통일. 점선(……/.../⋯)·공백+대시(-)·
+    # 탭·2칸 이상 공백의 조합을 모두 분리자로 본다. 원문 'word  -  word' 때문에
+    # "word …… - word" 처럼 대시가 남던 문제 교정(대시도 분리자로 보고 제거).
+    # 단어 내부 하이픈(well-being)은 양옆 공백이 없어 매칭되지 않아 안전.
+    sep = r'(?:\s*(?:……|\.{3,}|⋯)\s*|\s+-+\s+|\s{2,}|	+)+'
+    body = _re.sub(sep, ' …… ', body, count=1)
 
     return f"{marker} {body}" if marker else body
+
+
+def _split_inline_long_choices(parts, threshold=30):
+    """한 줄에 보기 마커(①②③…)가 둘 이상 몰려 있고 각 보기가 문장처럼 길면
+    마커 단위로 줄을 나눈다. (요지/주제 등 긴 보기 5개가 줄바꿈 없이 한 줄에
+    붙어 나오던 문제 교정.) 보기가 짧으면(순서·연결어처럼 의도적으로 묶은 짧은
+    보기) 원래 한 줄을 유지해 기존 레이아웃을 보존한다.
+    """
+    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    out = []
+    for p in parts:
+        idxs = [i for i, ch in enumerate(p) if ch in MARKERS]
+        if len(idxs) >= 2:
+            segs = []
+            for j, start in enumerate(idxs):
+                end = idxs[j + 1] if j + 1 < len(idxs) else len(p)
+                seg = p[start:end].strip()
+                if seg:
+                    segs.append(seg)
+            if segs and max(len(s) for s in segs) > threshold:
+                out.extend(segs)
+                continue
+        out.append(p)
+    return out
 
 
 def _hwpx_choices(option_str, qtype=''):
@@ -936,6 +964,7 @@ def _hwpx_choices(option_str, qtype=''):
     text = _re.sub(r'icon_\d+_\d+', '', text)
     parts = [c.strip() for c in text.split('\n') if c.strip()]
     parts = [_strip_marker_garbage(p) for p in parts]
+    parts = _split_inline_long_choices(parts)
     parts = [_space_inline_markers(p) for p in parts]
     if (qtype or '') in _TWO_BLANK_TYPES:
         parts = [_normalize_two_blank(p) for p in parts]
