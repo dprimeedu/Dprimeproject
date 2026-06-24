@@ -58,6 +58,11 @@ LINE_VSIZE = 950
 LINE_SPACING = 1.5
 LINE_HEIGHT = LINE_VSIZE * LINE_SPACING            # 1425
 LINES_PER_COL = BODY_HEIGHT / LINE_HEIGHT           # ≈ 49
+
+# 단 채움 허용오차(줄). 높이 추정이 보수적이라, '거의 들어가는' 문제를 한두 줄
+# 차이로 다음 단으로 밀어내 페이지가 헐거워지는 것을 줄인다(굳이 2개만 들어가는 현상 완화).
+# 너무 키우면 긴 문제가 단 끝에서 잘릴 수 있으므로 작게 유지(권장 0~4).
+COL_FILL_TOLERANCE = 3
 # 영문 기준 한 줄에 들어가는 대략 글자 수 (보수적으로 약간 작게)
 CHARS_PER_LINE_EN = 52
 CHARS_PER_LINE_KR = 26
@@ -169,7 +174,8 @@ class _ColumnTracker:
         self.used = 0.0
 
     def fits(self, lines):
-        return self.used + lines <= self.cap
+        # 허용오차를 더해, 추정상 한두 줄 넘치는 문제도 같은 단에 채운다.
+        return self.used + lines <= self.cap + COL_FILL_TOLERANCE
 
     def add(self, lines):
         self.used += lines
