@@ -40,6 +40,15 @@ require_download = _require_access(lambda u: getattr(u, 'can_download', False)) 
 require_mock_full = _require_access(lambda u: getattr(u, 'can_view_mock_full', False))   # 모고 전체
 
 
+def _apply_year_limit(qs, user):
+    """사용자에 연도 제한(예: view_down_2026)이 걸려 있으면 KeyTable 쿼리셋에 year 필터 적용.
+    제한 없으면 그대로 반환. 신규 연도는 Member.YEAR_LIMITED_ACCESS 에 추가만 하면 자동 반영."""
+    yl = getattr(user, 'access_year_limit', None)
+    if yl:
+        qs = qs.filter(year=yl)
+    return qs
+
+
 # 선택한 카테고리를 이용해서 DB를 결정
 DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQuestion_Data,
             "상세해설":DetailedExplanation_Data, "객관식빈칸":FillinBlank_Data,
@@ -67,9 +76,12 @@ def academy_list(request):
         except (TypeError, ValueError):
             return 0
 
+    # 사용자 연도 제한(예: view_down_2026) — 모든 KeyTable 쿼리에 동일하게 적용
+    base_kt = _apply_year_limit(KeyTable.objects.all(), request.user)
+
     # 회차별 번호 모음 — '학년|년도|월' → 정렬된 번호 리스트
     round_numbers = defaultdict(set)
-    for r in KeyTable.objects.values('grade', 'year', 'month', 'total_number'):
+    for r in base_kt.values('grade', 'year', 'month', 'total_number'):
         m = NUM_RE.match(r['total_number'] or '')
         if not m:
             continue
@@ -79,7 +91,7 @@ def academy_list(request):
     # 회차 목록 (학년·년도·월 조합) — 필터 chip 활성화·search 용
     formatted_exams = []
     seen_titles = set()
-    for exam in KeyTable.objects.values('grade', 'year', 'month'):
+    for exam in base_kt.values('grade', 'year', 'month'):
         title = f"{exam['grade']} {exam['year']}년 {exam['month']}월 모의고사"
         if title in seen_titles:
             continue
@@ -90,9 +102,9 @@ def academy_list(request):
         })
     formatted_exams.sort(key=lambda e: (-_int(e['year']), str(e['grade']), _int(e['month'])))
 
-    grades = sorted(KeyTable.objects.values_list('grade', flat=True).distinct())
-    years = sorted(KeyTable.objects.values_list('year', flat=True).distinct(), key=_int, reverse=True)
-    months = sorted(KeyTable.objects.values_list('month', flat=True).distinct(), key=_int)
+    grades = sorted(base_kt.values_list('grade', flat=True).distinct())
+    years = sorted(base_kt.values_list('year', flat=True).distinct(), key=_int, reverse=True)
+    months = sorted(base_kt.values_list('month', flat=True).distinct(), key=_int)
 
     # 변형 유형 — QuestionData.유형 distinct(대괄호 제거).
     # 연결사 → 연결어, 지칭추론 → 지칭대상 동의어 통일.
@@ -139,7 +151,7 @@ def academy_list_result(request):
     selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
     selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
-    keys = KeyTable.objects.all()
+    keys = _apply_year_limit(KeyTable.objects.all(), request.user)
     if selected_year or selected_grade or selected_month:
         if selected_year:
             keys = keys.filter(year__in=selected_year)
@@ -195,9 +207,10 @@ def academy_list_result(request):
             'category': korname,
         })
 
-    all_grades = list(KeyTable.objects.values_list('grade', flat=True).distinct().order_by('grade'))
-    all_years  = sorted(KeyTable.objects.values_list('year',  flat=True).distinct())
-    all_months = sorted(KeyTable.objects.values_list('month', flat=True).distinct(),
+    base_kt = _apply_year_limit(KeyTable.objects.all(), request.user)
+    all_grades = list(base_kt.values_list('grade', flat=True).distinct().order_by('grade'))
+    all_years  = sorted(base_kt.values_list('year',  flat=True).distinct())
+    all_months = sorted(base_kt.values_list('month', flat=True).distinct(),
                         key=lambda m: int(m))
 
     context = {
@@ -233,7 +246,7 @@ def exam_list_result(request):
 
     # KEY_TABLE에서 PK number 가져오기 및 필터링
     # 여기서 번호도 따와야지 출력할 수 있음
-    pknum = KeyTable.objects.all()
+    pknum = _apply_year_limit(KeyTable.objects.all(), request.user)
     if selected_year or selected_grade or selected_month:
         if selected_year:
             pknum = pknum.filter(year__in=selected_year)
@@ -369,7 +382,8 @@ def grading(request):
 def translation_select(request):
     """영작 연습 시작 전 년도/학년/월 선택 페이지"""
     translation_pk_numbers = Translation_Data.objects.values_list('pk_number', flat=True)
-    keytable_qs = KeyTable.objects.filter(pk_number__in=translation_pk_numbers)
+    keytable_qs = _apply_year_limit(
+        KeyTable.objects.filter(pk_number__in=translation_pk_numbers), request.user)
 
     grades = sorted(keytable_qs.values_list('grade', flat=True).distinct())
     years = sorted(keytable_qs.values_list('year', flat=True).distinct())
@@ -397,7 +411,7 @@ def translation_practice(request):
     selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
     selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
-    pknum = KeyTable.objects.all()
+    pknum = _apply_year_limit(KeyTable.objects.all(), request.user)
     if selected_year or selected_grade or selected_month:
         if selected_year:
             pknum = pknum.filter(year__in=selected_year)
@@ -485,7 +499,7 @@ def download_pdf(request):
     selected_category = cat_list[0] if cat_list else '변형문제'
     selected_types = [t for val in request.GET.getlist('type', []) for t in val.split(',') if t.strip()]
 
-    pknum = KeyTable.objects.all()
+    pknum = _apply_year_limit(KeyTable.objects.all(), request.user)
     if selected_year:
         pknum = pknum.filter(year__in=selected_year)
     if selected_grade:
@@ -608,7 +622,7 @@ def _download_pdf_OLD_reportlab(request):
     selected_category = cat_list[0] if cat_list else '변형문제'
     selected_types = [t for val in request.GET.getlist('type', []) for t in val.split(',') if t.strip()]
 
-    pknum = KeyTable.objects.all()
+    pknum = _apply_year_limit(KeyTable.objects.all(), request.user)
     if selected_year:
         pknum = pknum.filter(year__in=selected_year)
     if selected_grade:
@@ -998,6 +1012,75 @@ def _hwpx_choices(option_str, qtype=''):
 # ---------------------------------------------------------------------------
 # 변형문제 HWPX 다운로드
 # ---------------------------------------------------------------------------
+_CIRCLED_NUMS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮'
+
+
+def _shorten_long_blanks(text, keep=10):
+    """지문의 너무 긴 밑줄 빈칸(______…)을 일정 길이로 줄인다."""
+    if not text:
+        return text
+    import re as _re
+    return _re.sub(r'_{11,}', '_' * keep, text)
+
+
+def _number_underline_segments(text):
+    """어법·어휘 밑줄형: 밑줄(U+FFF0…) 구간마다 번호 ①②③④⑤를 밑줄 앞에 새로
+    매긴다. 기존 번호(앞/뒤)는 제거. 반환:(텍스트, 밑줄개수)."""
+    import re as _re
+    MARK = '￰'
+    CIRC = _CIRCLED_NUMS
+    parts = _re.split('(' + MARK + '.*?' + MARK + ')', text)
+    seq = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
+    out, n, count = [], 0, 0
+    for p in parts:
+        if p.startswith(MARK) and p.endswith(MARK) and len(p) >= 2:
+            if out:
+                out[-1] = _re.sub(r'[' + CIRC + r']\s*$', '', out[-1])
+            num = seq[n] if n < len(seq) else '?'
+            n += 1
+            count += 1
+            out.append(num + ' ' + p)
+        else:
+            out.append(_re.sub(r'^\s*[' + CIRC + r']', '', p))
+    return ''.join(out), count
+
+
+def _has_cjk_error(choices):
+    """보기에 한자(CJK)+영문이 섞이면 데이터 오류(예: 記錄)."""
+    import re as _re
+    for c in (choices or []):
+        if _re.search(r'[一-鿿]', c) and _re.search(r'[A-Za-z]', c):
+            return True
+    return False
+
+
+def _build_modified_question(r, total_number):
+    """변형문제 한 행 → 빌더 dict. 데이터 오류/번호 깨짐이면 None(제외)."""
+    qtype = (r.get('qtype', '') or '')
+    prompt = _hwpx_clean(r.get('question', '') or '')
+    sentence = _hwpx_clean(r.get('sentence', '') or '')
+    choices = _hwpx_choices(r.get('option', '') or '', qtype)
+    choices = [c for c in choices if c.strip().lower() not in ('answer', '정답')]
+    answer = (r.get('answer', '') or '').replace('	', ' ')
+    if ('어휘' in qtype or '어법' in qtype) and '￰' in sentence:
+        sentence, n = _number_underline_segments(sentence)
+        if n != 5:
+            return None
+        choices = []
+    else:
+        sentence = _normalize_passage_markers(sentence)
+    sentence = _shorten_long_blanks(sentence)
+    if _has_cjk_error(choices):
+        return None
+    return {
+        "date":    f"[{total_number}]" if total_number else "",
+        "prompt":  prompt,
+        "passage": sentence,
+        "choices": choices,
+        "answer":  answer,
+    }
+
+
 @require_download
 def download_modified_hwpx(request):
     from common.hwpx import TEMPLATE_PATH
@@ -1011,7 +1094,7 @@ def download_modified_hwpx(request):
     # 변형 유형 필터 — '순서,빈칸,어법' 같이 와도, '[순서]' 형태 DB 값에 맞춰 대괄호 추가.
     selected_types = [t for val in request.GET.getlist('type', []) for t in val.split(',') if t.strip()]
 
-    pknum = KeyTable.objects.all()
+    pknum = _apply_year_limit(KeyTable.objects.all(), request.user)
     if selected_year or selected_grade or selected_month:
         if selected_year:
             pknum = pknum.filter(year__in=selected_year)
@@ -1038,13 +1121,9 @@ def download_modified_hwpx(request):
     questions = []
     for r in rows:
         total_number = keytable_map.get(r['pk_number'], '')
-        questions.append({
-            "date":    f"[{total_number}]" if total_number else "",
-            "prompt":  _hwpx_clean(r.get('question', '')),
-            "passage": _normalize_passage_markers(_hwpx_clean(r.get('sentence', ''))),
-            "choices": _hwpx_choices(r.get('option', ''), r.get('qtype', '')),
-            "answer":  r.get('answer', '').replace('\t', ' '),
-        })
+        q = _build_modified_question(r, total_number)
+        if q is not None:
+            questions.append(q)
 
     year_str = ', '.join(selected_year)
     grade_str = ', '.join(selected_grade)
@@ -1092,6 +1171,7 @@ ACCESS_CHOICES = [
     ('none', '접근 없음'),
     ('variant_view', '변형문제 열람만'),
     ('variant_down', '변형문제 열람+다운로드'),
+    ('view_down_2026', '2026년 열람+다운로드'),
     ('full', '모고 전체'),
 ]
 
