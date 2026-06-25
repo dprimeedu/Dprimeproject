@@ -215,6 +215,26 @@ def _has_cjk_error(choices):
     return False
 
 
+def _normalize_truefalse_prompt(prompt, qtype):
+    """일치불일치 유형의 영어 발문을 표준 한국어 발문으로 치환.
+
+    'Which of the following is NOT true ...' 같은 순수 영어 발문만 바꾼다.
+    한글이 하나라도 있는 발문('Rembrandt에 관한 내용과 일치하지 않는 것은?' 등)은
+    이미 한국어 양식이므로 고유명사를 보존하기 위해 그대로 둔다.
+    부정(NOT) 여부로 '일치하지 않는 것은?' / '일치하는 것은?' 을 고른다.
+    """
+    if '일치' not in qtype or not prompt:
+        return prompt
+    if _re.search(r'[가-힣]', prompt):          # 이미 한국어 발문 → 보존
+        return prompt
+    if not _re.search(r'[A-Za-z]', prompt):     # 영문도 한글도 아니면 손대지 않음
+        return prompt
+    negative = bool(_re.search(r"\bnot\b|n['’]t\b", prompt, _re.IGNORECASE))
+    if negative:
+        return '다음 글의 내용과 일치하지 않는 것은?'
+    return '다음 글의 내용과 일치하는 것은?'
+
+
 def _build_modified_question(r, total_number):
     """변형문제 한 행 → 빌더 dict. 데이터 오류/번호 깨짐이면 None(제외).
 
@@ -222,6 +242,7 @@ def _build_modified_question(r, total_number):
     """
     qtype = (r.get('qtype', '') or '')
     prompt = _hwpx_clean(r.get('question', '') or '')
+    prompt = _normalize_truefalse_prompt(prompt, qtype)
     sentence = _hwpx_clean(r.get('sentence', '') or '')
     choices = _hwpx_choices(r.get('option', '') or '', qtype)
     choices = [c for c in choices if c.strip().lower() not in ('answer', '정답')]
@@ -256,5 +277,5 @@ __all__ = [
     "_space_inline_markers", "_strip_marker_garbage", "_normalize_two_blank",
     "_split_inline_long_choices", "_hwpx_choices",
     "_CIRCLED_NUMS", "_shorten_long_blanks", "_number_underline_segments",
-    "_has_cjk_error", "_build_modified_question",
+    "_has_cjk_error", "_normalize_truefalse_prompt", "_build_modified_question",
 ]
