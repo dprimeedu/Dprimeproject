@@ -65,6 +65,10 @@ def _normalize_passage_markers(text):
 
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
+# 지문 밑줄을 유지해야 하는 유형(밑줄 친 부분 자체가 문제) — qtype 부분일치 키.
+# 지칭대상/지칭추론, 밑줄의미, 함축의미. 그 외 유형은 잔여 밑줄로 보고 제거.
+_UNDERLINE_KEEP_KEYS = ('지칭', '밑줄', '함축')
+
 
 # ---------------------------------------------------------------------------
 # 2) 보기(선택지) 정리
@@ -228,8 +232,11 @@ def _build_modified_question(r, total_number):
             return None
         choices = []
     else:
-        # 문장넣기 본문은 밑줄이 필요 없다 — 원문 밑줄 마커(U+FFF0)를 제거.
-        if '문장넣기' in qtype:
+        # 지문 밑줄(U+FFF0)은 '밑줄 친 부분' 자체가 문제인 유형에서만 의미가 있다
+        # — 지칭대상/지칭추론·밑줄의미·함축의미. 그 외(문장넣기·일치불일치·순서·
+        # 주제 등)는 원문에서 딸려온 잔여 밑줄이므로 제거한다.
+        # (어법·어휘는 위에서 번호 매김으로 따로 처리.)
+        if not any(k in qtype for k in _UNDERLINE_KEEP_KEYS):
             sentence = sentence.replace('￰', '')
         sentence = _normalize_passage_markers(sentence)
     sentence = _shorten_long_blanks(sentence)
