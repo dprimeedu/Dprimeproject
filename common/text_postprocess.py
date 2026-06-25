@@ -112,12 +112,19 @@ def _strip_marker_garbage(line):
     return _re.sub(r'^\s*\d+\s+(?=[①②③④⑤⑥⑦⑧⑨⑩])', '', line)
 
 
-def _normalize_two_blank(choice):
-    """두-빈칸 유형 보기의 단어 사이 구분을 ' …… ' 로 통일.
+# A/B 두 답 사이 표준 구분자.
+_TWO_BLANK_SEP = ' ----- '
 
-    DB 에 어떤 항목은 '단어A \t…… \t단어B', 어떤 항목은 '단어A \t단어B' 처럼
-    들쭉날쭉하게 들어와 인쇄물에서 가독성이 떨어지는 문제를 보정.
-    탭(\\t) 단독, 2칸 이상 공백, ……/... 모두 분리자로 인식한다.
+
+def _normalize_two_blank(choice):
+    """두-빈칸 유형 보기의 A/B 두 답 사이 구분을 '-----' 로 통일.
+
+    DB 에 항목마다 '단어A \t단어B', '단어A   ―   단어B', '단어A …… 단어B',
+    '단어A    단어B'(여러 칸 공백) 처럼 구분 표기가 들쭉날쭉해 인쇄물에서
+    제각각으로 보이던 문제를 보정. 점선(……/.../⋯)·각종 대시(- – — ― 등,
+    양옆 공백 필요)·탭·2칸 이상 공백을 모두 분리자로 보고 하나로 통일한다.
+    단어 내부 하이픈(well-being)·붙은 하이픈(mix-up)은 양옆 공백이 없어
+    매칭되지 않아 안전.
     """
     MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
     body = choice.strip()
@@ -129,12 +136,14 @@ def _normalize_two_blank(choice):
     # 엑셀 셀참조(A1, B2 …) 같은 잡토큰이 보기 맨 앞에 끼어든 경우 제거.
     body = _re.sub(r'^[A-Z]{1,2}\d{1,3}\s+', '', body)
 
-    # A/B 두 답 사이 분리자를 ' …… ' 하나로 통일. 점선(……/.../⋯)·공백+대시(-)·
-    # 탭·2칸 이상 공백의 조합을 모두 분리자로 본다. 원문 'word  -  word' 때문에
-    # "word …… - word" 처럼 대시가 남던 문제 교정(대시도 분리자로 보고 제거).
-    # 단어 내부 하이픈(well-being)은 양옆 공백이 없어 매칭되지 않아 안전.
-    sep = r'(?:\s*(?:……|\.{3,}|⋯)\s*|\s+[-/]+\s+|\s{2,}|	+)+'
-    body = _re.sub(sep, ' …… ', body, count=1)
+    # 대시(공백 포함) 분리자를 공백·탭보다 먼저 매칭해 '   ―   ' 전체를 한 번에 흡수.
+    sep = (r'(?:'
+           r'\s*(?:……|\.{3,}|⋯)\s*'
+           r'|\s+[\-‐-―−]+\s+'
+           r'|\s{2,}'
+           r'|\t+'
+           r')+')
+    body = _re.sub(sep, _TWO_BLANK_SEP, body, count=1)
 
     return f"{marker} {body}" if marker else body
 
@@ -163,13 +172,14 @@ def _split_inline_long_choices(parts, threshold=30):
     return out
 
 
-def _hwpx_choices(option_str, qtype=''):
+def _hwpx_choices(option_str, qtype='', two_blank=None):
     """선택지 문자열을 리스트로 분리 — 엑셀 원본의 줄바꿈만 따른다.
 
     마커(①②③) 자동 분리는 하지 않음: 출제자가 의도적으로 한 줄에
     여러 보기를 둔 경우(순서 유형 등) 그 의도를 보존하기 위함.
-    qtype 이 요약문완성/연결어 같은 두-빈칸 유형이면 단어 사이 구분자를
-    ' …… ' 로 통일한다.
+    두-빈칸 유형(요약문완성/연결어, 또는 지문에 (A)·(B) 빈칸이 있는 어휘변형
+    등)이면 A/B 두 답 사이 구분자를 '-----' 로 통일한다. two_blank 가 None 이면
+    qtype 으로 판정하고, True/False 면 그 값을 강제한다.
 
     NOTE: _hwpx_clean 은 호출하지 않는다 — 탭(\\t)이 단어 구분자 신호로 쓰이므로
     공백 치환 전에 _normalize_two_blank 가 먼저 처리해야 한다.
@@ -185,7 +195,9 @@ def _hwpx_choices(option_str, qtype=''):
     parts = [_strip_marker_garbage(p) for p in parts]
     parts = _split_inline_long_choices(parts)
     parts = [_space_inline_markers(p) for p in parts]
-    if (qtype or '') in _TWO_BLANK_TYPES:
+    if two_blank is None:
+        two_blank = (qtype or '') in _TWO_BLANK_TYPES
+    if two_blank:
         parts = [_normalize_two_blank(p) for p in parts]
     # 남은 탭은 마지막에 공백으로 (한/글 렌더링 오류 방지)
     parts = [p.replace('\t', ' ') for p in parts]
@@ -256,6 +268,19 @@ def _normalize_truefalse_prompt(prompt, qtype):
     return '다음 글의 내용과 일치하는 것은?'
 
 
+def _is_two_blank(qtype, sentence, prompt):
+    """두-빈칸((A)/(B)) 유형인지 판정.
+
+    요약문완성/연결어/연결사 유형이거나, 지문·발문에 (A)·(B) 빈칸이 모두
+    들어있는 경우(어휘변형 '빈칸(A)(B)' 등)를 두-빈칸으로 본다. 이 경우 보기
+    A/B 두 답 사이 구분자를 '-----' 로 통일한다.
+    """
+    if (qtype or '') in _TWO_BLANK_TYPES:
+        return True
+    blob = (sentence or '') + ' ' + (prompt or '')
+    return '(A)' in blob and '(B)' in blob
+
+
 def _build_modified_question(r, total_number):
     """변형문제 한 행 → 빌더 dict. 데이터 오류/번호 깨짐이면 None(제외).
 
@@ -265,7 +290,8 @@ def _build_modified_question(r, total_number):
     prompt = _hwpx_clean(r.get('question', '') or '')
     prompt = _normalize_truefalse_prompt(prompt, qtype)
     sentence = _hwpx_clean(r.get('sentence', '') or '')
-    choices = _hwpx_choices(r.get('option', '') or '', qtype)
+    choices = _hwpx_choices(r.get('option', '') or '', qtype,
+                            two_blank=_is_two_blank(qtype, sentence, prompt))
     choices = [c for c in choices if c.strip().lower() not in ('answer', '정답')]
     answer = (r.get('answer', '') or '').replace('	', ' ')
     if ('어휘' in qtype or '어법' in qtype) and '￰' in sentence:
@@ -303,5 +329,6 @@ __all__ = [
     "_space_inline_markers", "_strip_marker_garbage", "_normalize_two_blank",
     "_split_inline_long_choices", "_hwpx_choices",
     "_CIRCLED_NUMS", "_shorten_long_blanks", "_number_underline_segments",
-    "_has_cjk_error", "_normalize_truefalse_prompt", "_build_modified_question",
+    "_has_cjk_error", "_normalize_truefalse_prompt", "_TWO_BLANK_SEP",
+    "_is_two_blank", "_build_modified_question",
 ]
