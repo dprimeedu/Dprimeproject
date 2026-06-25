@@ -63,6 +63,25 @@ def _normalize_passage_markers(text):
     return text
 
 
+def _parenthesize_insertion_markers(text):
+    """문장넣기 지문의 삽입 위치 마커를 '( ① )' 형태로 통일.
+
+    맨 마커 '①' 와 괄호 마커 '(①)'/'( ① )' 가 섞여 있던 것을 모두 '( ① )' 로
+    맞춘다. 마커 양옆의 기존 괄호·공백(개행 제외)만 흡수하므로 문단 줄바꿈은 보존.
+    """
+    if not text:
+        return text
+    M = '①②③④⑤⑥⑦⑧⑨⑩'
+    text = _re.sub(
+        r'[ \t]*[(（]?[ \t]*([' + M + r'])[ \t]*[)）]?[ \t]*',
+        r' ( \g<1> ) ',
+        text)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)      # 군더더기 공백 정리
+    text = _re.sub(r'[ \t]+\n', '\n', text)      # 줄 끝 공백 제거
+    text = _re.sub(r'\n[ \t]+', '\n', text)      # 줄 앞 공백 제거
+    return text
+
+
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
 # 지문 밑줄을 유지해야 하는 유형(밑줄 친 부분 자체가 문제) — qtype 부분일치 키.
@@ -261,7 +280,11 @@ def _build_modified_question(r, total_number):
         # (어법·어휘는 위에서 번호 매김으로 따로 처리.)
         if not any(k in qtype for k in _UNDERLINE_KEEP_KEYS):
             sentence = sentence.replace('￰', '')
-        sentence = _normalize_passage_markers(sentence)
+        if '문장넣기' in qtype:
+            # 삽입 위치 마커를 '( ① )' 로 통일(맨 마커·괄호 마커 혼용 정리).
+            sentence = _parenthesize_insertion_markers(sentence)
+        else:
+            sentence = _normalize_passage_markers(sentence)
     sentence = _shorten_long_blanks(sentence)
     if _has_cjk_error(choices):
         return None
@@ -275,7 +298,8 @@ def _build_modified_question(r, total_number):
 
 
 __all__ = [
-    "_hwpx_clean", "_normalize_passage_markers", "_TWO_BLANK_TYPES",
+    "_hwpx_clean", "_normalize_passage_markers", "_parenthesize_insertion_markers",
+    "_TWO_BLANK_TYPES",
     "_space_inline_markers", "_strip_marker_garbage", "_normalize_two_blank",
     "_split_inline_long_choices", "_hwpx_choices",
     "_CIRCLED_NUMS", "_shorten_long_blanks", "_number_underline_segments",
