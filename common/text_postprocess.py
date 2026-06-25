@@ -188,7 +188,7 @@ def _shorten_long_blanks(text, keep=10):
 
 def _number_underline_segments(text):
     """어법·어휘 밑줄형: 밑줄(U+FFF0…) 구간마다 번호 ①②③④⑤를 밑줄 앞에 새로
-    매긴다. 기존 번호(앞/뒤)는 제거. 반환:(텍스트, 밑줄개수)."""
+    매긴다. 기존 번호(밑줄 앞/뒤, 그리고 밑줄 안)는 제거. 반환:(텍스트, 밑줄개수)."""
     MARK = '￰'
     CIRC = _CIRCLED_NUMS
     parts = _re.split('(' + MARK + '.*?' + MARK + ')', text)
@@ -198,6 +198,8 @@ def _number_underline_segments(text):
         if p.startswith(MARK) and p.endswith(MARK) and len(p) >= 2:
             if out:
                 out[-1] = _re.sub(r'[' + CIRC + r']\s*$', '', out[-1])
+            # 밑줄 안에 이미 번호가 들어있으면 제거(이중 번호 방지): ￰①word￰ → ￰word￰
+            p = _re.sub(r'^' + MARK + r'\s*[' + CIRC + r']\s*', MARK, p)
             num = seq[n] if n < len(seq) else '?'
             n += 1
             count += 1
