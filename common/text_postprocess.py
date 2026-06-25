@@ -10,6 +10,13 @@
 import re as _re
 
 
+# 엑셀 인라인 그림(아이콘) placeholder.
+#   - 좌표형 'icon_1_3' : 어디에 있든 제거
+#   - 맨몸 'icon' : 보기 마커(①②③…)에 바로 붙은 경우만 제거('icon③' → '③').
+#     실제 단어 'icon'/'iconic'(뒤가 글자) 은 건드리지 않는다.
+_ICON_PLACEHOLDER_RE = _re.compile(r'icon_\d+_\d+|icon(?=[①②③④⑤⑥⑦⑧⑨⑩])')
+
+
 # ---------------------------------------------------------------------------
 # 1) 텍스트 토큰 정리 (Excel OOXML 토큰, 줄바꿈, 빈칸 라벨)
 # ---------------------------------------------------------------------------
@@ -28,8 +35,8 @@ def _hwpx_clean(text):
     text = text.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
     text = _re.sub(r'\r\n?', '\n', text)
     text = text.replace('\t', ' ')
-    # 엑셀 인라인 그림(아이콘) placeholder 제거 — 예: icon_1_3
-    text = _re.sub(r'icon_\d+_\d+', '', text)
+    # 엑셀 인라인 그림(아이콘) placeholder 제거 — 'icon_1_3' 및 마커에 붙은 'icon③'
+    text = _ICON_PLACEHOLDER_RE.sub('', text)
     # 빈칸 라벨 표기 통일: '(A)____' 처럼 라벨 뒤에만 밑줄 있는 형태를
     # '___(A)___' (양쪽 밑줄, 라벨 가운데) 로 맞춘다. 밑줄이 하나도 없는
     # '(A)'(발문의 (A),(B) 참조 등)는 그대로 둔다.
@@ -150,7 +157,7 @@ def _hwpx_choices(option_str, qtype=''):
     text = text.replace('_x000D_', '\n').replace('_x000A_', '\n')
     text = text.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
     text = _re.sub(r'\r\n?', '\n', text)
-    text = _re.sub(r'icon_\d+_\d+', '', text)
+    text = _ICON_PLACEHOLDER_RE.sub('', text)
     parts = [c.strip() for c in text.split('\n') if c.strip()]
     parts = [_strip_marker_garbage(p) for p in parts]
     parts = _split_inline_long_choices(parts)

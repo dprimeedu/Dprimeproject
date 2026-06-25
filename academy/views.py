@@ -539,8 +539,8 @@ def download_pdf(request):
         s = s.replace('_x000D_', '\n').replace('_x000A_', '\n')
         s = s.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\\r', '\n')
         s = _re.sub(r'\r\n?', '\n', s)
-        # 엑셀 인라인 그림(아이콘) placeholder 제거 — 예: icon_1_3
-        s = _re.sub(r'icon_\d+_\d+', '', s)
+        # 엑셀 인라인 그림(아이콘) placeholder 제거 — 'icon_1_3' 및 마커에 붙은 'icon③'
+        s = _re.sub(r'icon_\d+_\d+|icon(?=[①②③④⑤⑥⑦⑧⑨⑩])', '', s)
         # 연속 빈줄 3개 이상은 2개로 축약
         s = _re.sub(r'\n{3,}', '\n\n', s)
         return s
