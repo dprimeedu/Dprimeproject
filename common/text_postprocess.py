@@ -271,14 +271,17 @@ def _normalize_truefalse_prompt(prompt, qtype):
 def _is_two_blank(qtype, sentence, prompt):
     """두-빈칸((A)/(B)) 유형인지 판정.
 
-    요약문완성/연결어/연결사 유형이거나, 지문·발문에 (A)·(B) 빈칸이 모두
-    들어있는 경우(어휘변형 '빈칸(A)(B)' 등)를 두-빈칸으로 본다. 이 경우 보기
-    A/B 두 답 사이 구분자를 '-----' 로 통일한다.
+    요약문완성/연결어/연결사 유형이거나, 지문에 밑줄로 둘러싸인 (A)·(B) 빈칸
+    (___(A)___ 등)이 모두 있는 경우(어휘변형 '빈칸(A)(B)' 등)를 두-빈칸으로 본다.
+    순서 유형의 문단 라벨 '(A) …'(밑줄 없음, (C)까지 동반)은 빈칸이 아니므로
+    제외 — 이 경우 보기에 구분자를 넣으면 안 된다.
     """
     if (qtype or '') in _TWO_BLANK_TYPES:
         return True
-    blob = (sentence or '') + ' ' + (prompt or '')
-    return '(A)' in blob and '(B)' in blob
+    s = sentence or ''
+    has_a = bool(_re.search(r'_\(A\)|\(A\)_', s))
+    has_b = bool(_re.search(r'_\(B\)|\(B\)_', s))
+    return has_a and has_b
 
 
 def _build_modified_question(r, total_number):
