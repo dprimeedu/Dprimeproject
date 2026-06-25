@@ -89,8 +89,11 @@ def _esc(text):
 # ---------------------------------------------------------------------------
 # 단락(문단) 생성기
 # ---------------------------------------------------------------------------
-# charPr → 밑줄 charPr 매핑. 밑줄 run 은 charPr 15 (밑줄만, bold 없음) 사용.
-_UNDERLINE_MAP = {8: 12, 12: 12, 11: 12}
+# charPr → 밑줄 구간 charPr 매핑.  ★HWPX 의 charPrIDRef 는 charProperties 배열의
+# 0-based '위치'로 해석된다(한/글). 양식 charPr 0~9 뒤에 주입한 3개는 반드시
+# 위치=id 가 되도록 id 10/11/12 로 넣는다: 10=날짜(파랑굵게) 11=발문(굵게)
+# 12=밑줄. 지문/선택지(base 8) 의 밑줄 구간만 12(밑줄)로 보낸다.
+_UNDERLINE_MAP = {8: 12, 10: 10, 11: 11}
 
 
 def _run(text, char_pr):
@@ -241,9 +244,11 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     if "answer" in q and q["answer"] not in (None, ""):
         head_runs += _endnote_run(q["answer"], endnote_no)
     if q.get("date"):
-        head_runs += _run(" " + q["date"], 11)       # 파랑 굵게
+        head_runs += _run(" " + q["date"], 10)       # 파랑 굵게
     if q.get("prompt"):
-        head_runs += _run(" " + q["prompt"], 12)     # 검정 굵게(발문 강조)
+        # 발문은 굵게만(밑줄 X). 원문 밑줄 마커(U+FFF0)는 제거해 통째로 굵게.
+        prompt_text = q["prompt"].replace("￰", "")
+        head_runs += _run(" " + prompt_text, 11)     # 검정 굵게(발문 강조)
     parts.append(_para(head_runs, para_pr=1,
                        column_break=column_break))
 
@@ -298,9 +303,9 @@ def build_hwpx(template_path, output_path, header_text, questions,
     header_xml = files["Contents/header.xml"].decode("utf-8")
 
     def _has_required(h):
-        return ('borderFill id="3"' in h and 'charPr id="11"' in h
-                and 'charPr id="12"' in h and 'paraPr id="13"' in h
-                and 'charPr id="15"' in h)
+        return ('borderFill id="3"' in h and 'charPr id="10"' in h
+                and 'charPr id="11"' in h and 'charPr id="12"' in h
+                and 'paraPr id="13"' in h)
 
     if not _has_required(header_xml) and reference_path:
         with zipfile.ZipFile(reference_path) as z2:
@@ -457,10 +462,10 @@ def _derive_charpr_from_base(header_xml):
     양식 header 의 charPr 8 을 읽어 파생 charPr 정의를 만든다.
     양식의 fontRef·shadeColor 등이 정확히 일치하여 글꼴 불일치가 없다.
 
-    파생 규칙:
-      11 = 8 + bold + textColor 파랑(#0000FF)   (날짜)
-      12 = 8 + bold                             (발문)
-      15 = 8 + underline BOTTOM (bold 제거)     (밑줄)
+    파생 규칙(★id = charProperties 배열 위치. 양식이 0~9 이므로 10/11/12):
+      10 = 8 + bold + textColor 파랑(#0000FF)   (날짜)
+      11 = 8 + bold                             (발문)
+      12 = 8 + underline BOTTOM (bold 제거)     (지문 밑줄)
     """
     m = re.search(r'<hh:charPr id="8".*?</hh:charPr>', header_xml, re.S)
     if not m:
@@ -480,9 +485,9 @@ def _derive_charpr_from_base(header_xml):
             s = s.replace('underline type="NONE"', 'underline type="BOTTOM"')
         return s
 
-    defs['charPr11'] = make(11, bold=True, blue=True)
-    defs['charPr12'] = make(12, bold=True)
-    defs['charPr15'] = make(15, underline=True)   # 밑줄만, bold 제거
+    defs['charPr10'] = make(10, bold=True, blue=True)   # 날짜(파랑 굵게)
+    defs['charPr11'] = make(11, bold=True)              # 발문(검정 굵게)
+    defs['charPr12'] = make(12, underline=True)         # 지문 밑줄(굵게 X)
     return defs
 
 
@@ -500,7 +505,7 @@ def _inject_styles(header_xml):
         ("borderFills", "borderFill",
          [("borderFill3", "3"), ("borderFill4", "4")]),
         ("charProperties", "charPr",
-         [("charPr11", "11"), ("charPr12", "12"), ("charPr15", "15")]),
+         [("charPr10", "10"), ("charPr11", "11"), ("charPr12", "12")]),
         ("paraProperties", "paraPr",
          [("paraPr13", "13"), ("paraPr14", "14")]),
     ]
@@ -521,13 +526,6 @@ def _inject_styles(header_xml):
                 added += 1
         if add_xml:
             header_xml = header_xml[:ci] + add_xml + header_xml[ci:]
-            m = re.search(r'(<hh:' + container + r' itemCnt=")(\d+)(")',
-                          header_xml)
-            if m:
-                new_cnt = int(m.group(2)) + added
-                header_xml = (header_xml[:m.start()] +
-                              m.group(1) + str(new_cnt) + m.group(3) +
-                              header_xml[m.end():])
             m = re.search(r'(<hh:' + container + r' itemCnt=")(\d+)(")',
                           header_xml)
             if m:
