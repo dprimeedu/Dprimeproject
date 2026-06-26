@@ -144,7 +144,8 @@ def academy_list(request):
         "variant_types": variant_types,
     })
 
-# 비로그인자도 '열람' 가능(다운로드는 require_download 로 차단).
+# 내용(카테고리별 문항 목록)은 로그인+권한 필요. picker(academy_list)만 비로그인 공개.
+@require_variant
 def academy_list_result(request):
     TABLE_NAMES_DICT = {"Additional_text":"원문추가", "Descriptive_Question":"직보서술형",
                        "DetailedExplanation":"상세해설", "FillinBlank":"객관식빈칸",
@@ -239,8 +240,9 @@ def academy_list_result(request):
 
 
 
-# 비로그인자도 '열람' 가능(다운로드 버튼은 can_download 로 템플릿에서 숨김).
+# 실제 지문/문제 내용 페이지 — 로그인+권한 필요(비로그인 직접 URL 접근 차단).
 # 기존에 있는 코딩한 내용
+@require_variant
 def exam_list_result(request):
     if request.method == "POST":
         return grading(request)
