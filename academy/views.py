@@ -48,9 +48,15 @@ require_download = _require_access(lambda u: getattr(u, 'can_download', False)) 
 require_mock_full = _require_access(lambda u: getattr(u, 'can_view_mock_full', False))   # 모고 전체
 
 
+# 비로그인자에게 공개할 연도(미리보기). 승인 'view_down_2026' 과 동일 범위로 맞춤.
+PUBLIC_PREVIEW_YEAR = '2026'
+
+
 def _apply_year_limit(qs, user):
-    """사용자에 연도 제한(예: view_down_2026)이 걸려 있으면 KeyTable 쿼리셋에 year 필터 적용.
-    제한 없으면 그대로 반환. 신규 연도는 Member.YEAR_LIMITED_ACCESS 에 추가만 하면 자동 반영."""
+    """연도 제한 적용. 비로그인자는 공개연도(PUBLIC_PREVIEW_YEAR)만,
+    로그인자는 access_year_limit(예: view_down_2026→2026)가 있으면 그 연도만. 제한 없으면 전체."""
+    if not getattr(user, 'is_authenticated', False):
+        return qs.filter(year=PUBLIC_PREVIEW_YEAR)
     yl = getattr(user, 'access_year_limit', None)
     if yl:
         qs = qs.filter(year=yl)
