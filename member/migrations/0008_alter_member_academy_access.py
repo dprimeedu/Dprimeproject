@@ -1,4 +1,5 @@
-# 0007 — academy_access 선택지에 'view_down_2026' (2026년 열람+다운로드) 추가.
+# 0008 — academy_access 선택지에 'view_down_2026' (2026년 열람+다운로드) 추가.
+# (컨테이너 적용분 0007_member_current_session_key… 뒤로 재배치)
 
 from django.db import migrations, models
 
@@ -6,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('member', '0006_alter_member_academy_access'),
+        ('member', '0007_member_current_session_key_member_max_allowed_ips_and_more'),
     ]
 
     operations = [
