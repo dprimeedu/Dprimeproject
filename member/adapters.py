@@ -61,6 +61,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         if not user.pk:
             user.is_active = True
             user.member_type = 'user'
+            user.max_allowed_ips = 2   # 소셜(이메일) 신규 가입도 IP 2개 제한
             if not getattr(user, 'username', None):
                 user.username = self._extract_name(sociallogin) or \
                                 self._extract_email(sociallogin).split('@')[0] or '사용자'

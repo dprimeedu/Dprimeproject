@@ -44,6 +44,9 @@ class UserCreateView(generic.CreateView):
             user.is_active = True         # 학생: 즉시 활성, 사이트 로그인 가능
             user.is_approved = False      # 재원생 메뉴는 별도 학원 승인 필요
 
+        # 이메일로 새로 가입하는 계정(외부/학원/일반)은 IP 2개로 제한.
+        # 재원생(primeedu*)은 관리자가 따로 생성하므로 이 흐름을 안 타 영향 없음(=무제한 유지).
+        user.max_allowed_ips = 2
         user.save()
 
         if user.is_active:
