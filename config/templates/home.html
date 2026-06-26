@@ -18,6 +18,7 @@
                 <span class="big-menu-arrow">들어가기 →</span>
             </a>
         </div>
+        {% if user.is_authenticated %}
         <div class="col-md-6">
             <a href="{% url 'training' %}" class="big-menu-card">
                 <div class="big-menu-num">MENU 02</div>
@@ -27,6 +28,7 @@
                 <span class="big-menu-arrow">들어가기 →</span>
             </a>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

@@ -66,7 +66,7 @@ DB_DICT = {"원문추가":AdditionalText_Data, "직보서술형":DescriptiveQues
             "내신TEST":SchoolExamTest_Data, "요약문완성":Summary_Data,
             "중요영작":Translation_Data, "내신단어":WordTest_Data}
 
-@require_variant
+# 비로그인자도 '열람'은 가능(다운로드는 require_download 로 별도 차단). 미리보기 성격.
 def academy_list(request):
     """모의고사 선택 — 학년·년도·월 + 번호 + 변형유형 한 화면 통합 선택.
 
@@ -144,7 +144,7 @@ def academy_list(request):
         "variant_types": variant_types,
     })
 
-@require_variant
+# 비로그인자도 '열람' 가능(다운로드는 require_download 로 차단).
 def academy_list_result(request):
     TABLE_NAMES_DICT = {"Additional_text":"원문추가", "Descriptive_Question":"직보서술형",
                        "DetailedExplanation":"상세해설", "FillinBlank":"객관식빈칸",
@@ -198,8 +198,9 @@ def academy_list_result(request):
             'total_number': keytable_map.get(c['pk_number']),
         })
 
-    # variant 전용(모고 전체 권한 없음) 계정은 변형문제 카테고리만 노출
-    only_variant = not request.user.can_view_mock_full
+    # variant 전용(모고 전체 권한 없음) 로그인 계정은 변형문제 카테고리만 노출.
+    # 비로그인자는 전체 카테고리 '열람' 허용(다운로드만 차단).
+    only_variant = request.user.is_authenticated and not request.user.can_view_mock_full
 
     exams = []
     for table, korname in TABLE_NAMES_DICT.items():
@@ -238,7 +239,7 @@ def academy_list_result(request):
 
 
 
-@require_variant
+# 비로그인자도 '열람' 가능(다운로드 버튼은 can_download 로 템플릿에서 숨김).
 # 기존에 있는 코딩한 내용
 def exam_list_result(request):
     if request.method == "POST":
@@ -247,8 +248,9 @@ def exam_list_result(request):
     selected_grade = [g for val in request.GET.getlist('grade', []) for g in val.split(',') if g]
     selected_month = [m for val in request.GET.getlist('month', []) for m in val.split(',') if m]
     selected_category = request.GET.getlist('category', [])
-    # variant 전용 계정은 변형문제 외 카테고리 요청을 무시(직접 URL 접근 차단)
-    if not request.user.can_view_mock_full:
+    # variant 전용 로그인 계정은 변형문제 외 카테고리 요청을 무시(직접 URL 접근 차단).
+    # 비로그인자는 전체 카테고리 열람 허용.
+    if request.user.is_authenticated and not request.user.can_view_mock_full:
         selected_category = [c for c in selected_category if c == '변형문제']
     selected_numbers = [n for val in request.GET.getlist('number', []) for n in val.split(',') if n]
 
