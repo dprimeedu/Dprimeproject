@@ -98,16 +98,11 @@
                                 {% if row.cells.vocab.label %}
                                     <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
                                 {% endif %}
-                                {% if row.cells.vocab.personal_count %}
-                                <a href="{% url 'vocab:student_cards' row.student.id %}"
-                                   class="badge d-block text-start border bg-success-subtle text-success-emphasis text-decoration-none mt-1"
-                                   title="클릭 → 학생이 직접 모은 낱말카드 세트 → 플래시카드 시험">
-                                    <i class="fas fa-bookmark me-1"></i>개인 단어 {{ row.cells.vocab.personal_count }}개
+                                <a href="{% url 'vocab:student_ranges' row.student.id %}"
+                                   class="badge d-block text-start border bg-info-subtle text-info-emphasis text-decoration-none mt-1"
+                                   title="클릭 → 배정된 전체 범위 중 골라 플래시카드 시험">
+                                    <i class="fas fa-layer-group me-1"></i>전체 카드
                                 </a>
-                                {% endif %}
-                                {% if not row.cells.vocab.did and not row.cells.vocab.tests and not row.cells.vocab.personal_count %}
-                                    <span class="text-muted">·</span>
-                                {% endif %}
                             {% elif key == 'summary' %}
                                 {% for t in row.cells.summary.tests %}
                                 <div class="badge d-block text-start border mb-1
