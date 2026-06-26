@@ -45,3 +45,13 @@ def pending_badges(request):
         'grammar_pending': grammar_pending,
         'exam_pending': exam_pending,
     }
+
+
+def social_login_flags(request):
+    """소셜 로그인 버튼 노출 플래그 — 유효한 키가 설정된 provider 만 True.
+    로그인/회원가입 등 모든 템플릿에서 사용."""
+    from django.conf import settings
+    return {
+        'google_login_enabled': getattr(settings, 'GOOGLE_LOGIN_ENABLED', False),
+        'kakao_login_enabled': getattr(settings, 'KAKAO_LOGIN_ENABLED', False),
+    }

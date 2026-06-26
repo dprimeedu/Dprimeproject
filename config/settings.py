@@ -97,6 +97,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'config.context_processors.pending_badges',
+                'config.context_processors.social_login_flags',
             ],
         },
     },
