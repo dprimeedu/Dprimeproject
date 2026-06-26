@@ -52,8 +52,12 @@
                             <i class="fas fa-user-edit me-1"></i>개인 단어
                         </a>
                         <a href="{% url 'vocab:student_star_flashcard' r.student_id %}" target="_blank" rel="noopener"
-                           class="btn btn-sm btn-outline-warning" title="별표(모르는 단어)만 시험">
+                           class="btn btn-sm btn-outline-warning" title="별표(모르는 단어) 전체 시험">
                             <i class="fas fa-star me-1"></i>별표
+                        </a>
+                        <a href="{% url 'vocab:student_star_flashcard_today' r.student_id %}" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-warning" title="오늘 만든 별표만 시험">
+                            <i class="fas fa-calendar-day me-1"></i>당일별표
                         </a>
                     </td>
                 </tr>

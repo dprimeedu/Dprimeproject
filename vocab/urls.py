@@ -62,6 +62,7 @@ urlpatterns = [
     path('admin/test/student/<int:student_id>/ranges/', views.student_ranges, name='student_ranges'),
     path('admin/test/student/<int:student_id>/cards/', views.student_cards, name='student_cards'),
     path('admin/test/student/<int:student_id>/stars/', views.student_star_flashcard, name='student_star_flashcard'),
+    path('admin/test/student/<int:student_id>/stars/today/', views.student_star_flashcard, {'today': True}, name='student_star_flashcard_today'),
     path('admin/test/cards/<int:set_id>/flashcard/', views.student_cardset_flashcard, name='student_cardset_flashcard'),
 
     # 선생님 / 관리자 — 학생 관리 + 배정

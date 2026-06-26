@@ -897,15 +897,19 @@ def student_cardset_flashcard(request, set_id):
 
 
 @teacher_required
-def student_star_flashcard(request, student_id):
-    """[교사] 한 학생이 별표(모르는 단어)한 것만 모아 플래시카드로 시험."""
+def student_star_flashcard(request, student_id, today=False):
+    """[교사] 한 학생이 별표(모르는 단어)한 것만 모아 플래시카드로 시험.
+    today=True 면 그 학생이 오늘(로컬 자정 이후) 만든 별표만."""
     student = get_object_or_404(get_user_model(), pk=student_id)
-    vocab_stars = (StudentWordStar.objects
-                   .filter(student=student).select_related('word')
-                   .order_by('word__unit_id', 'word__index'))
-    wc_stars = (WordCardStar.objects
-                .filter(student=student).select_related('card')
-                .order_by('card__card_set_id', 'card__index'))
+    vocab_qs = StudentWordStar.objects.filter(student=student).select_related('word')
+    wc_qs = WordCardStar.objects.filter(student=student).select_related('card')
+    if today:
+        # USE_TZ=False → now()는 Asia/Seoul 로컬 naive. created_at(auto_now_add)도 동일 기준.
+        day_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        vocab_qs = vocab_qs.filter(created_at__gte=day_start)
+        wc_qs = wc_qs.filter(created_at__gte=day_start)
+    vocab_stars = vocab_qs.order_by('word__unit_id', 'word__index')
+    wc_stars = wc_qs.order_by('card__card_set_id', 'card__index')
     cards = []
     for st in vocab_stars:
         cards.append({
@@ -921,7 +925,8 @@ def student_star_flashcard(request, student_id):
         })
     return render(request, 'vocab/flashcard.html', {
         'unit': None,
-        'range_title': f'⭐ {student.username} 별표 모음',
+        'range_title': (f'📅 {student.username} 당일 별표' if today
+                        else f'⭐ {student.username} 별표 모음'),
         'viewing_student': student.username,
         'cards_json': json.dumps(cards, ensure_ascii=False),
         'total': len(cards),
