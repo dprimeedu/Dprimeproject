@@ -47,3 +47,24 @@ class SingleSessionMiddleware:
             )
         except Exception:
             pass
+
+
+class AccountTypeSelectionMiddleware:
+    """소셜 가입 등으로 학생/학원 유형을 아직 안 고른 계정을 선택 화면으로 유도.
+
+    needs_type_selection=True 인 동안엔 선택 페이지로 리다이렉트(선택/로그아웃/소셜콜백/관리자/정적 제외).
+    선택을 마치면 needs_type_selection=False 가 되어 정상 이용.
+    """
+    SELECT_URL = '/member/select-type/'
+    ALLOW_PREFIXES = ('/member/select-type/', '/logout/', '/accounts/', '/admin/', '/static/', '/media/')
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if user is not None and user.is_authenticated and getattr(user, 'needs_type_selection', False):
+            path = request.path
+            if not path.startswith(self.ALLOW_PREFIXES):
+                return redirect(self.SELECT_URL)
+        return self.get_response(request)

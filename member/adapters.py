@@ -61,7 +61,8 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         if not user.pk:
             user.is_active = True
             user.member_type = 'user'
-            user.max_allowed_ips = 2   # 소셜(이메일) 신규 가입도 IP 2개 제한
+            user.max_allowed_ips = 2          # 소셜(이메일) 신규 가입도 IP 2개 제한
+            user.needs_type_selection = True  # 첫 접속 시 학생/학원 선택 화면으로
             if not getattr(user, 'username', None):
                 user.username = self._extract_name(sociallogin) or \
                                 self._extract_email(sociallogin).split('@')[0] or '사용자'

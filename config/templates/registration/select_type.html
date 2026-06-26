@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-header text-center bg-primary text-white">
+                    <h4 class="mb-0">회원 유형 선택</h4>
+                </div>
+                <div class="card-body p-4">
+                    <p class="text-muted text-center mb-4">가입을 마무리하려면 회원 유형을 선택해 주세요.</p>
+                    <form method="post" action="{% url 'member:select_type' %}">
+                        {% csrf_token %}
+                        <div class="mb-3 p-3 border rounded">
+                            <label class="d-flex align-items-center" style="cursor:pointer;">
+                                <input type="radio" name="user_type" value="student" checked>
+                                <span class="ms-2"><b>학생이에요</b><br>
+                                    <small class="text-muted">학습 서비스를 이용합니다.</small></span>
+                            </label>
+                        </div>
+                        <div class="mb-4 p-3 border rounded">
+                            <label class="d-flex align-items-center" style="cursor:pointer;">
+                                <input type="radio" name="user_type" value="academy">
+                                <span class="ms-2"><b>학원입니다</b><br>
+                                    <small class="text-muted">모의고사 변형문제 자료를 이용합니다.</small></span>
+                            </label>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">선택 완료</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -15,6 +15,9 @@ urlpatterns = [
     # path('login/kakao/', views.kakao_login, name='kakao_login'),
     # path('login/kakao/callback/', views.kakao_callback, name='kakao_callback'),
     
+    # 소셜 가입 후 학생/학원 유형 1회 선택
+    path('select-type/', views.select_type, name='select_type'),
+
     # Profile
     path('profile/', views.profile_view, name='profile_view'),
     path('profile/edit/', views.profile_edit_view, name='profile_edit'),

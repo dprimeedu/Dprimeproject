@@ -88,6 +88,11 @@ class Member(AbstractBaseUser, PermissionsMixin):
         verbose_name='최대 허용 IP 수',
         help_text='0 = 무제한. 1 이상 설정 시 해당 수만큼의 IP에서만 로그인 가능.',
     )
+    needs_type_selection = models.BooleanField(
+        default=False,
+        verbose_name='가입 유형 선택 필요',
+        help_text='소셜 가입처럼 학생/학원 구분을 안 받은 계정 — 다음 접속 시 선택 화면을 띄움.',
+    )
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []

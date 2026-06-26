@@ -93,3 +93,31 @@ def change_password_view(request):
 def mypage(request):
     profile, created = Profile.objects.get_or_create(user=request.user)
     return render(request, 'member/mypage.html', {'profile': profile})
+
+
+@login_required
+def select_type(request):
+    """소셜 가입 등 학생/학원 미선택 계정의 1회성 유형 선택.
+
+    학원 선택 시 변형문제 열람(variant_view) 권한 부여. 학생은 일반 회원.
+    """
+    user = request.user
+    if not getattr(user, 'needs_type_selection', False):
+        return redirect('index')
+
+    if request.method == 'POST':
+        if request.POST.get('user_type') == 'academy':
+            user.is_academy = True
+            user.member_type = 'academy_admin'
+            user.academy_access = 'variant_view'   # 가입=변형문제 열람만(다운로드는 관리자 승인)
+            msg = '학원 계정으로 설정되었습니다. 변형문제 자료를 열람하실 수 있습니다.'
+        else:
+            user.is_academy = False
+            user.member_type = 'user'
+            msg = '학생 계정으로 설정되었습니다.'
+        user.needs_type_selection = False
+        user.save(update_fields=['is_academy', 'member_type', 'academy_access', 'needs_type_selection'])
+        messages.success(request, msg)
+        return redirect('index')
+
+    return render(request, 'registration/select_type.html')
