@@ -216,6 +216,11 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
+# 소셜 로그인 버튼 노출 제어 — 유효한 키가 있을 때만 화면에 표시(가짜/미설정 키면 숨김).
+# 구글: 진짜 client_id 는 '...apps.googleusercontent.com' 형식 → 그때만 활성. 키 넣으면 자동 노출.
+GOOGLE_LOGIN_ENABLED = os.getenv('GOOGLE_CLIENT_ID', '').strip().endswith('.apps.googleusercontent.com')
+KAKAO_LOGIN_ENABLED = bool(os.getenv('KAKAO_CLIENT_ID', '').strip())
+
 CSRF_COOKIE_HTTPONLY = True
 CSRF_USE_SESSIONS = False
 # 대용량 단원(수백 문제) admin 편집 허용

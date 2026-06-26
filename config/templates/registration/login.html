@@ -19,8 +19,10 @@
                 </div>
                 <div class="card-body p-4">
 
-                    <!-- 소셜 로그인 -->
+                    <!-- 소셜 로그인 — 유효한 키가 설정된 provider 만 노출 -->
+                    {% if google_login_enabled or kakao_login_enabled %}
                     <div class="d-grid gap-2 mb-3">
+                        {% if google_login_enabled %}
                         <a href="{% provider_login_url 'google' next=request.GET.next %}"
                            class="btn d-flex align-items-center justify-content-center gap-2"
                            style="border:1px solid #dadce0; background:#fff; color:#3c4043; font-weight:500;">
@@ -32,6 +34,8 @@
                             </svg>
                             Google 계정으로 로그인
                         </a>
+                        {% endif %}
+                        {% if kakao_login_enabled %}
                         <a href="{% provider_login_url 'kakao' next=request.GET.next %}"
                            class="btn d-flex align-items-center justify-content-center gap-2"
                            style="background:#FEE500; color:#191919; font-weight:500; border:none;">
@@ -40,11 +44,13 @@
                             </svg>
                             카카오 계정으로 로그인
                         </a>
+                        {% endif %}
                     </div>
 
                     <div class="d-flex align-items-center my-3">
                         <hr class="flex-grow-1"><span class="px-2 text-muted" style="font-size:.85rem;">또는</span><hr class="flex-grow-1">
                     </div>
+                    {% endif %}
 
                     <!-- 일반 로그인 폼 -->
                     <form action="{% url 'login' %}" method="post">

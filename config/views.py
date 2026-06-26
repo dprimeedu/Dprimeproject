@@ -57,6 +57,13 @@ class UserCreateDoneTV(generic.TemplateView):
     template_name = 'registration/register_done.html'
 
 class CustomLoginView(LoginView):
+    def get_context_data(self, **kwargs):
+        from django.conf import settings
+        ctx = super().get_context_data(**kwargs)
+        ctx['google_login_enabled'] = getattr(settings, 'GOOGLE_LOGIN_ENABLED', False)
+        ctx['kakao_login_enabled'] = getattr(settings, 'KAKAO_LOGIN_ENABLED', False)
+        return ctx
+
     def form_valid(self, form):
         from member.models import UserIP, IPAccessLog
         from member.ip_utils import get_client_ip
