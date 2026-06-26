@@ -43,6 +43,8 @@ tr.wrong td{background:#fef2f2}
     <div class="text-end mt-2">
         <button class="btn btn-outline-secondary" id="saveBtn">저장</button>
         <button class="btn btn-primary" id="finalBtn"><i class="fas fa-check me-1"></i>검수 완료</button>
+        <button class="btn btn-dark" id="closeBtn" title="2차 채점 종료 — 학생 홈에서 이 차시를 더 이상 안 보이게 마감">
+            <i class="fas fa-flag-checkered me-1"></i>검수 완료 + 마감(학생 숨김)</button>
     </div>
 </div>
 <script>
@@ -62,13 +64,16 @@ document.getElementById('xOnly').addEventListener('change',e=>{
     document.querySelectorAll('.g-tr').forEach(tr=>{ tr.style.display=(e.target.checked && !tr.classList.contains('wrong'))?'none':''; });
 });
 function collect(){const v={};document.querySelectorAll('.g-tr').forEach(tr=>{v[tr.dataset.aid]=tr.querySelector('.o').classList.contains('on')?'O':'X';});return v;}
-async function save(finalize){
-    const r=await fetch('{% url "grammar:grade_update" session.id %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({verdicts:collect(),finalize})});
+async function save(finalize, close){
+    const r=await fetch('{% url "grammar:grade_update" session.id %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({verdicts:collect(),finalize,close:!!close})});
     const d=await r.json();
     if(d.success){ if(finalize) window.location.href='{% url "grammar:grade_list" %}'; else alert('저장됨 ('+d.correct+'/'+d.total+')'); }
     else alert('저장 실패');
 }
-document.getElementById('saveBtn').addEventListener('click',()=>save(false));
-document.getElementById('finalBtn').addEventListener('click',()=>save(true));
+document.getElementById('saveBtn').addEventListener('click',()=>save(false,false));
+document.getElementById('finalBtn').addEventListener('click',()=>save(true,false));
+document.getElementById('closeBtn').addEventListener('click',()=>{
+    if(confirm('이 차시를 마감하면 학생 홈에서 더 이상 보이지 않습니다. 진행할까요?')) save(true,true);
+});
 </script>
 {% endblock %}

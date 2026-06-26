@@ -112,6 +112,8 @@ class GrammarSession(models.Model):
     graded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='grammar_sessions_graded')
+    # 교사가 2차 채점에서 '마감' 버튼을 누르면 True — 학생 홈에서 '다시 풀 문제(차시)'로 더 안 보임.
+    closed = models.BooleanField(default=False, db_index=True, verbose_name='마감(학생에게 숨김)')
 
     class Meta:
         db_table = 'grammar_session'

@@ -285,6 +285,13 @@ def range_import_api(request):
         if source and source != '어법TEST':
             unit = (GrammarUnit.objects.filter(school=school, exam=source, is_active=True)
                     .order_by('-created_at').first())
+            # 표기 차이 흡수: 시트 'G동백중3내신어법' ↔ 웹 '동백중3 내신어법'(앞 G·공백 제거 후 비교).
+            if not unit:
+                def _norm(s):
+                    return str(s).lstrip('Gg').replace(' ', '').strip()
+                want = _norm(source)
+                unit = next((u for u in GrammarUnit.objects.filter(school=school, is_active=True)
+                             .order_by('-created_at') if _norm(u.exam) == want), None)
         if not unit:
             unit = GrammarUnit.objects.filter(school=school, is_active=True).order_by('-created_at').first()
         if not unit:
@@ -359,18 +366,20 @@ def student_home(request):
         else:
             u.sets = []
 
-    # 다시 풀 차시 — 본인 세션 중 (1) 진행중인 2차시+ 이어풀기, (2) 채점완료 후 틀린 문제 재시험 대기
+    # 다시 풀 차시 — 본인 세션 중 (1) 진행중인 2차시 이어풀기, (2) 1차시 채점완료 후 틀린 문제 2차시 대기.
+    # 정책: 1차시→(2차시 수정)→교사 2차 채점에서 '마감'하면 끝. 3차시 이상은 안 만들고(상한),
+    #       교사가 마감(closed=True)한 세션은 더 이상 학생에게 노출하지 않는다.
     retries = []
     if is_assigned_view:
-        my = (GrammarSession.objects.filter(student=request.user, unit_id__in=unit_ids)
+        my = (GrammarSession.objects.filter(student=request.user, unit_id__in=unit_ids, closed=False)
               .exclude(status=GrammarSession.STATUS_SUBMITTED)
               .select_related('unit').prefetch_related('answers', 'retries').order_by('-started_at'))
         for s in my:
-            if s.status == GrammarSession.STATUS_IN_PROGRESS and s.round_no > 1:
+            if s.status == GrammarSession.STATUS_IN_PROGRESS and 1 < s.round_no <= 2:
                 retries.append({'session': s, 'kind': 'continue',
                                 'unit': s.unit.title, 'label': s.range_label,
                                 'count': len(s.problem_indices and json.loads(s.problem_indices) or [])})
-            elif s.status == GrammarSession.STATUS_GRADED and not s.retries.all():
+            elif s.status == GrammarSession.STATUS_GRADED and not s.retries.all() and s.round_no < 2:
                 wrong = sum(1 for a in s.answers.all() if not a.is_correct)
                 if wrong:
                     retries.append({'session': s, 'kind': 'retry',
@@ -431,6 +440,10 @@ def start_retry(request, session_id):
         return redirect('grammar:home')
     if parent.status != GrammarSession.STATUS_GRADED:
         messages.info(request, '선생님 채점이 끝난 뒤 다시 풀 수 있어요.')
+        return redirect('grammar:result', session_id=parent.id)
+    # 차시 상한 — 2차시까지만. 2차시 채점 후엔 교사 검수로 종료(3차시 생성 금지).
+    if parent.round_no >= 2 or parent.closed:
+        messages.info(request, '2차시까지 다 풀었어요. 선생님 검수 결과를 기다려 주세요.')
         return redirect('grammar:result', session_id=parent.id)
     # 이미 다음 차시가 있으면 그것으로 이동(중복 생성 방지)
     existing = parent.retries.order_by('-started_at').first()
@@ -515,8 +528,10 @@ def result_view(request, session_id):
     wrong_n = sum(1 for a in answers if not a.is_correct)
     # 다음 차시: 채점완료 + 틀린 문제 있음 + 아직 다음 차시 미생성
     next_round = session.round_no + 1
+    # 2차시까지만 + 교사가 마감(closed)하지 않은 경우에만 '다음 차시' 노출.
     can_retry = (session.status == GrammarSession.STATUS_GRADED and wrong_n > 0
-                 and not session.retries.exists())
+                 and not session.retries.exists()
+                 and session.round_no < 2 and not session.closed)
     retry_existing = session.retries.order_by('-started_at').first()
     return render(request, 'grammar/result.html', {
         'session': session, 'answers': answers, 'wrong_n': wrong_n,
@@ -574,12 +589,17 @@ def grade_detail(request, session_id):
 @teacher_required
 @require_POST
 def grade_update_api(request, session_id):
-    """채점 반영 — {verdicts:{answer_id:'O'|'X'}, finalize:bool}."""
+    """채점 반영 — {verdicts:{answer_id:'O'|'X'}, finalize:bool, close:bool}.
+
+    close=True 면 검수 확정과 함께 이 차시 체인(1차시·2차시 전부)을 '마감'해
+    학생 홈에서 더 이상 '다시 풀 문제'로 보이지 않게 한다(교사 2차 채점 종료 버튼).
+    """
     session = get_object_or_404(GrammarSession, pk=session_id)
     try:
         data = json.loads(request.body or '{}')
         verdicts = data.get('verdicts') or {}
         finalize = bool(data.get('finalize'))
+        close = bool(data.get('close'))
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid')
     by_id = {a.id: a for a in session.answers.all()}
@@ -609,7 +629,22 @@ def grade_update_api(request, session_id):
         session.graded_at = timezone.now()
         session.graded_by = request.user
         fields += ['status', 'graded_at', 'graded_by']
+    if close:
+        session.closed = True
+        fields.append('closed')
     session.save(update_fields=fields)
+
+    # 마감 — 이 세션이 속한 차시 체인(부모 1차시 + 모든 자식 차시)을 통째로 학생 홈에서 숨김.
+    if close:
+        root = session
+        while root.parent_id:
+            root = root.parent
+        chain_ids, stack = set(), [root]
+        while stack:
+            cur = stack.pop()
+            chain_ids.add(cur.id)
+            stack.extend(cur.retries.all())
+        GrammarSession.objects.filter(id__in=chain_ids).update(closed=True)
 
     # 최초 검수완료에만 개인 오답 누적(재검수 시 중복 카운트 방지) — 구글 '틀린횟수' 패턴
     if finalize and not was_graded:
