@@ -59,13 +59,19 @@ class Member(AbstractBaseUser, PermissionsMixin):
         ('none', '접근 없음'),
         ('variant_view', '변형문제 열람만'),
         ('variant_down', '변형문제 열람+다운로드'),
+        ('view_down_2026', '2026년 열람+다운로드'),
         ('full', '모고 전체'),
     )
+    # 연도 제한이 있는 권한 → 해당 연도 문자열 매핑. 신규 연도(예: 2027) 추가 시 여기에 1줄.
+    YEAR_LIMITED_ACCESS = {
+        'view_down_2026': '2026',
+    }
     academy_access = models.CharField(
         max_length=15, choices=ACADEMY_ACCESS, default='none',
         verbose_name='모고 데이터 접근범위',
         help_text="외부/학원 계정용. none=접근X, variant_view=변형문제 열람만, "
-                  "variant_down=변형문제 열람+다운로드, full=모고 전체. "
+                  "variant_down=변형문제 열람+다운로드, view_down_2026=2026년 자료만 열람+다운로드, "
+                  "full=모고 전체. "
                   "관리자(is_staff·is_superuser)는 이 값과 무관하게 항상 전체.",
     )
     phone = models.CharField(max_length=15, null=True, blank=True)
@@ -107,8 +113,9 @@ class Member(AbstractBaseUser, PermissionsMixin):
 
     @property
     def can_view_mock_full(self) -> bool:
-        """모고 데이터 전체(모든 카테고리) 열람·다운로드 가능 여부."""
-        return self.is_admin_level or self.academy_access == 'full'
+        """모고 데이터 전체(모든 카테고리) 열람·다운로드 가능 여부.
+        view_down_2026 은 카테고리는 전체 권한이지만 연도가 2026 으로 제한된다(뷰 단에서 필터)."""
+        return self.is_admin_level or self.academy_access in ('full', 'view_down_2026')
 
     @property
     def can_view_variant(self) -> bool:
@@ -117,8 +124,17 @@ class Member(AbstractBaseUser, PermissionsMixin):
 
     @property
     def can_download(self) -> bool:
-        """볼 수 있는 자료를 '다운로드'할 권한. variant_down(승인) 또는 full/관리자."""
-        return self.can_view_mock_full or self.academy_access == 'variant_down'
+        """볼 수 있는 자료를 '다운로드'할 권한. variant_down·view_down_2026·full·관리자."""
+        return self.is_admin_level or self.academy_access in ('variant_down', 'view_down_2026', 'full')
+
+    @property
+    def access_year_limit(self) -> str | None:
+        """연도 제한이 있으면 그 연도 문자열, 없으면 None.
+        예: view_down_2026 → '2026'. 관리자/full 은 항상 제한 없음.
+        연도별 추가는 YEAR_LIMITED_ACCESS 에 1줄 추가만 하면 된다."""
+        if self.is_admin_level:
+            return None
+        return self.YEAR_LIMITED_ACCESS.get(self.academy_access)
 
 
 class UserIP(models.Model):

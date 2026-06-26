@@ -16,14 +16,22 @@ def signup(request):
             user = form.save(commit=False)
             user.member_type = 'academy_admin' if user_type == 'academy' else 'user'
             user.is_academy = (user_type == 'academy')  # 학원인 경우 is_academy=True로 설정
+            if user.is_academy:
+                # 선생님(학원) 가입 — 즉시 로그인 가능, 관리자 승인 전까지는 변형문제 열람만 허용
+                user.is_active = True
+                user.academy_access = 'variant_view'
             user.save()
 
             # 사업자등록증 처리
             if user.is_academy and request.FILES.get('business_registration'):
                 business_registration = request.FILES['business_registration']
                 user.business_registration.save(business_registration.name, business_registration)
-        
-            messages.info(request, "회원가입이 완료되었습니다. 관리자 승인 후 로그인해주세요.")
+
+            if user.is_academy:
+                messages.info(request,
+                              "회원가입이 완료되었습니다. 관리자 승인 전까지는 변형문제 열람만 가능합니다.")
+            else:
+                messages.info(request, "회원가입이 완료되었습니다. 관리자 승인 후 로그인해주세요.")
             return redirect("login")
             
             """
