@@ -317,6 +317,12 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # (keepWithNext 는 주지 않는다 → 박스↔선택지는 자유롭게 흐름/편집 가능)
     header_xml = _set_para_keep(header_xml, 13, keep_lines=True)
 
+    # 발문(head_para): 다음(박스)과 함께(keepWithNext) + 발문 자신도 쪽 경계서
+    # 줄이 쪼개지지 않게(keepLines) → '발문 첫줄만 단 끝, 둘째줄+박스는 다음 단'
+    # 같은 쪼개짐 방지.
+    header_xml = _set_para_keep(header_xml, HEAD_PARA,
+                                keep_lines=True, keep_with_next=True)
+
     files["Contents/header.xml"] = header_xml.encode("utf-8")
 
     # ---- section0.xml 편집 ----
