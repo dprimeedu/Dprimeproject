@@ -82,6 +82,26 @@ def _parenthesize_insertion_markers(text):
     return text
 
 
+def _normalize_order_passage(text):
+    """순서 유형 지문의 단락 간격을 통일한다.
+
+      - 제시문 ↔ (A) 사이 : 빈 줄 1개(= 줄바꿈 두 번)
+      - (A) ↔ (B) ↔ (C) 사이 : 줄바꿈만(빈 줄 없음)
+
+    엑셀 원본이 단락마다 0~2줄로 들쭉날쭉하던 것을 위 규칙으로 맞춘다.
+    줄 맨앞에 오는 문단 라벨 '(A)'~'(E)' 만 단락 경계로 본다(본문 중간의
+    '(A)' 참조는 \\n 이 앞에 없으므로 건드리지 않음).
+    """
+    if not text:
+        return text
+    parts = _re.split(r'\n\s*(?=\([A-E]\)[ \t])', text)
+    if len(parts) < 2:
+        return text                      # 단락 라벨이 없으면 손대지 않음
+    intro = parts[0].rstrip()
+    blocks = [p.strip() for p in parts[1:]]
+    return intro + '\n\n' + '\n'.join(blocks)
+
+
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
 
 # 지문 밑줄을 유지해야 하는 유형(밑줄 친 부분 자체가 문제) — qtype 부분일치 키.
@@ -312,6 +332,9 @@ def _build_modified_question(r, total_number):
         if '문장넣기' in qtype:
             # 삽입 위치 마커를 '( ① )' 로 통일(맨 마커·괄호 마커 혼용 정리).
             sentence = _parenthesize_insertion_markers(sentence)
+        elif '순서' in qtype:
+            # 제시문↔(A)=빈 줄 1개, (A)↔(B)↔(C)=줄바꿈만 으로 통일.
+            sentence = _normalize_order_passage(sentence)
         else:
             sentence = _normalize_passage_markers(sentence)
     sentence = _shorten_long_blanks(sentence)
@@ -328,6 +351,7 @@ def _build_modified_question(r, total_number):
 
 __all__ = [
     "_hwpx_clean", "_normalize_passage_markers", "_parenthesize_insertion_markers",
+    "_normalize_order_passage",
     "_TWO_BLANK_TYPES",
     "_space_inline_markers", "_strip_marker_garbage", "_normalize_two_blank",
     "_split_inline_long_choices", "_hwpx_choices",
