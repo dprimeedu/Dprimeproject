@@ -189,3 +189,5 @@ project_env.tar.gz
 
 # Excel sync export 임시파일
 question_data_export.xlsx
+# Django error logs
+logs/*.log

@@ -35,7 +35,7 @@ from common.text_postprocess import (
 def _require_access(check):
     def deco(view):
         @wraps(view)
-        @login_required(login_url='/accounts/login/')
+        @login_required
         def wrapped(request, *args, **kwargs):
             if not check(request.user):
                 raise PermissionDenied("이 자료에 접근할 권한이 없습니다.")

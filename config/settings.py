@@ -225,6 +225,31 @@ SOCIALACCOUNT_PROVIDERS = {
 GOOGLE_LOGIN_ENABLED = os.getenv('GOOGLE_CLIENT_ID', '').strip().endswith('.apps.googleusercontent.com')
 KAKAO_LOGIN_ENABLED = bool(os.getenv('KAKAO_CLIENT_ID', '').strip())
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django_error.log',
+            'maxBytes': 5 * 1024 * 1024,  # 5 MB
+            'backupCount': 3,
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['file'],
+        'level': 'ERROR',
+    },
+}
+
 CSRF_COOKIE_HTTPONLY = True
 CSRF_USE_SESSIONS = False
 # 대용량 단원(수백 문제) admin 편집 허용
