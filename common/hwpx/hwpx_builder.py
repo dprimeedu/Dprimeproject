@@ -211,16 +211,31 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     tracker     : _ColumnTracker
     endnote_no  : 이 문제의 미주 순번(1,2,3...)
     """
-    # --- 단 넘김은 한/글의 keepWithNext 에 맡긴다 ---
-    # 예전: 파이썬으로 줄 수를 추정해 발문에 columnBreak 를 강제했다. 그러나
-    #   (1) 추정 오차로 단을 일찍 넘겨 페이지가 헐거워지고,
-    #   (2) 손으로 빈 줄을 지우면 발문만 위로 올라오고 박스는 다음 단으로
-    #       떨어지는 '고아 발문' 분리가 생겼다.
-    # 이제 문제 내부 단락(발문·박스·선택지)에 keepWithNext 를 걸어(헤더에서 설정)
-    # 한/글이 문제 한 덩어리를 절대 쪼개지 않고 자동으로 단을 채우게 한다.
-    # 문제 사이 빈 단락(paraPr 0)만 keepWithNext=0 이라 거기서만 단/쪽이 나뉜다.
-    # (tracker/force_newcol_if_overflow 인자는 호환을 위해 유지하되 쓰지 않는다.)
+    # --- 높이 추정 ---
+    head_lines = _estimate_lines((q.get("date", "") + " " +
+                                  q.get("prompt", "")))
+    box_lines = (_estimate_lines(q["passage"]) + 1) if q.get("passage") else 0
+    choices_lines = sum(_estimate_lines(ch) for ch in q.get("choices", []))
+    # +사이 간격: 발문↔박스, 박스↔선택지, 문제↔문제 의 빈 줄(최대 3)
+    gap_lines = (2 if q.get("passage") else 1) + 1
+    total_lines = head_lines + box_lines + choices_lines + gap_lines
+
+    # --- 단 넘김 판단 ---
+    # 한 문제(발문+박스+선택지)는 통째로 같은 단에 들어가야 한다.
+    #   - 발문만 단 끝에 남고 박스가 다음 단/쪽으로 가는 분리(고아 발문) 방지
+    #   - 선택지가 박스와 떨어져 다음 쪽으로 넘어가는 분리 방지
+    # 따라서 잔여 공간이 '문제 전체'를 못 담으면 발문에 column_break 를 넣어
+    # 문제 전체를 다음 단으로 옮긴다. 단, 문제가 한 단보다 길면(=어차피 한 단에
+    # 못 담음) 강제하지 않고 자연 흐름에 맡긴다(무한 빈 단 생성 방지).
+    needed = total_lines + COL_KEEP_SAFETY
+    remaining = tracker.cap - tracker.used
     column_break = False
+    if (force_newcol_if_overflow and total_lines <= tracker.cap
+            and remaining < needed):
+        column_break = True
+        tracker.newcol(total_lines)
+    else:
+        tracker.add(total_lines)
 
     parts = []
 
@@ -255,9 +270,7 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
             parts.append(_para(_run(ch, 8), para_pr=1))
 
     # 4) 문제 사이 간격용 빈 단락(= Enter 한 번). 포맷을 깔끔하게.
-    #    paraPr 0(keepWithNext=0)을 써서 '여기서만' 단/쪽이 나뉘게 한다.
-    #    앞의 문제 내부 단락들(paraPr 1/13, keepWithNext=1)은 통째로 묶여 이동.
-    parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=0))
+    parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
 
     return "".join(parts)
 
@@ -313,15 +326,10 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # → 한 단에 문제가 더 들어가 페이지가 덜 헐거워진다(추정 LINES_PER_COL 과 일치).
     header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14), LINE_SPACING_PCT)
 
-    # 문제(발문+박스+선택지)를 한 덩어리로 유지 — 한/글의 keepWithNext 사용.
-    #   paraPr 1 (발문·문제내부 빈줄·선택지) : keepWithNext=1
-    #   paraPr 13(지문 박스)                 : keepWithNext=1 + keepLines=1(박스 안 쪼갬)
-    #   paraPr 0 (문제 사이 빈 단락)          : keepWithNext=0 → 여기서만 단/쪽 나뉨
-    # → 발문만 단 끝에 남는 분리가 원천 차단되고, 한/글이 단을 빽빽이 자동 채운다.
-    #   문제가 한 단보다 길면 keepWithNext 는 best-effort 라 자연히 끊긴다(무한루프 X).
-    header_xml = _set_para_keep(header_xml, 13, keep_lines=True, keep_with_next=True)
-    header_xml = _set_para_keep(header_xml, 1, keep_with_next=True)
-    header_xml = _set_para_keep(header_xml, 0, keep_with_next=False)
+    # 박스(지문) 단락이 페이지/단 경계에서 잘리지 않게 keepLines=1.
+    # 자동 column_break 를 끈 뒤에는 한/글이 박스 중간에서 끊는 일이 있어, 박스는
+    # 통째로 다음 페이지로 가도록 강제한다.
+    header_xml = _set_para_keep(header_xml, 13, keep_lines=True)
 
     files["Contents/header.xml"] = header_xml.encode("utf-8")
 
