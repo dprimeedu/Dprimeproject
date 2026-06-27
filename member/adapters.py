@@ -1,5 +1,8 @@
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from django.http import HttpResponseRedirect
+from django.conf import settings
 
 
 class CustomAccountAdapter(DefaultAccountAdapter):
@@ -19,8 +22,9 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def pre_social_login(self, request, sociallogin):
         """
-        소셜 로그인 시 동일 이메일 계정이 이미 존재하면 연결(connect)한다.
-        이메일 중복 오류 방지 및 기존 계정과의 통합.
+        소셜 로그인 시 동일 이메일 계정이 이미 존재하면 기존 계정에 연결한다.
+        connect() 후 ImmediateHttpResponse로 즉시 리다이렉션 — allauth의 추가
+        처리(신규 가입 흐름)가 이어지지 않도록 차단.
         """
         if sociallogin.is_existing:
             return
@@ -31,10 +35,13 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
 
         from member.models import Member
         try:
-            existing = Member.objects.get(email=email)
-            sociallogin.connect(request, existing)
+            existing = Member.objects.get(email__iexact=email)
         except Member.DoesNotExist:
-            pass
+            return
+
+        sociallogin.connect(request, existing)
+        next_url = request.GET.get('next') or request.POST.get('next') or settings.LOGIN_REDIRECT_URL
+        raise ImmediateHttpResponse(HttpResponseRedirect(next_url))
 
     def populate_user(self, request, sociallogin, data):
         """소셜 데이터로 user 채우기. 카카오 일반앱처럼 이메일을 안 주는 프로바이더는

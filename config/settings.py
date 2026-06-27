@@ -184,6 +184,7 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
+LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
@@ -198,6 +199,7 @@ ACCOUNT_ADAPTER = 'member.adapters.CustomAccountAdapter'
 SOCIALACCOUNT_ADAPTER = 'member.adapters.CustomSocialAccountAdapter'
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_EMAIL_REQUIRED = False
+SOCIALACCOUNT_LOGIN_ON_GET = True  # 소셜 로그인 확인 페이지 없이 즉시 OAuth로 이동
 
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
