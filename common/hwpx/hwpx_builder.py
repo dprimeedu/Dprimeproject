@@ -198,7 +198,8 @@ class _ColumnTracker:
 # ---------------------------------------------------------------------------
 # 문제 블록 생성
 # ---------------------------------------------------------------------------
-def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
+def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
+                         head_para=1):
     """
     하나의 문제(dict)를 단락 XML 문자열로 변환.
     q = {
@@ -211,31 +212,13 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
     tracker     : _ColumnTracker
     endnote_no  : 이 문제의 미주 순번(1,2,3...)
     """
-    # --- 높이 추정 ---
-    head_lines = _estimate_lines((q.get("date", "") + " " +
-                                  q.get("prompt", "")))
-    box_lines = (_estimate_lines(q["passage"]) + 1) if q.get("passage") else 0
-    choices_lines = sum(_estimate_lines(ch) for ch in q.get("choices", []))
-    # +사이 간격: 발문↔박스, 박스↔선택지, 문제↔문제 의 빈 줄(최대 3)
-    gap_lines = (2 if q.get("passage") else 1) + 1
-    total_lines = head_lines + box_lines + choices_lines + gap_lines
-
-    # --- 단 넘김 판단 ---
-    # 한 문제(발문+박스+선택지)는 통째로 같은 단에 들어가야 한다.
-    #   - 발문만 단 끝에 남고 박스가 다음 단/쪽으로 가는 분리(고아 발문) 방지
-    #   - 선택지가 박스와 떨어져 다음 쪽으로 넘어가는 분리 방지
-    # 따라서 잔여 공간이 '문제 전체'를 못 담으면 발문에 column_break 를 넣어
-    # 문제 전체를 다음 단으로 옮긴다. 단, 문제가 한 단보다 길면(=어차피 한 단에
-    # 못 담음) 강제하지 않고 자연 흐름에 맡긴다(무한 빈 단 생성 방지).
-    needed = total_lines + COL_KEEP_SAFETY
-    remaining = tracker.cap - tracker.used
+    # --- 단 넘김: 강제하지 않고 한/글 자연 흐름에 맡긴다 ---
+    # HWP 다운로드 사용자는 '편집'이 목적(인쇄만이면 PDF)이라 자연스러운 편집이
+    # 최우선. 강제 columnBreak 나 문제 전체 keepWithNext 는 Enter 한 번에 단이
+    # 통째로 점프해 편집을 방해하므로 쓰지 않는다.
+    # 대신 발문↔지문박스만 keepWithNext(head_para)로 묶어 '발문만 단 끝에 홀로
+    # 남고 박스는 다음 단으로' 떨어지는 분리만 막는다. 선택지·문제사이는 자유.
     column_break = False
-    if (force_newcol_if_overflow and total_lines <= tracker.cap
-            and remaining < needed):
-        column_break = True
-        tracker.newcol(total_lines)
-    else:
-        tracker.add(total_lines)
 
     parts = []
 
@@ -249,14 +232,15 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True):
         # 발문은 굵게만(밑줄 X). 원문 밑줄 마커(U+FFF0)는 제거해 통째로 굵게.
         prompt_text = q["prompt"].replace("￰", "")
         head_runs += _run(" " + prompt_text, 11)     # 검정 굵게(발문 강조)
-    parts.append(_para(head_runs, para_pr=1,
+    parts.append(_para(head_runs, para_pr=head_para,
                        column_break=column_break))
 
     # 1-2) 발문과 박스 사이 간격(= Enter 한 번).
     #   박스(붉은 테두리)의 윗변이 발문 바로 아래 붙으면 발문에 '밑줄'이 그어진
     #   것처럼 보인다. 한 줄 띄워 발문(굵게)과 지문 박스를 분리한다.
+    #   이 빈 줄도 head_para(keepWithNext)로 둬야 발문~박스가 한 단에 묶인다.
     if q.get("passage"):
-        parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
+        parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=head_para))
 
     # 2) 지문 단락(붉은 박스). paraPr 13(박스 시작)으로 감싼다.
     if q.get("passage"):
@@ -322,13 +306,15 @@ def build_hwpx(template_path, output_path, header_text, questions,
             "필수 스타일(charPr 11/12/15, paraPr 13, borderFill 3)을 "
             "header.xml 에 확보하지 못했습니다.")
 
+    # 발문↔지문박스만 묶는 keepWithNext 단락(복제)을 추가하고 그 id 를 받는다.
+    header_xml, HEAD_PARA = _inject_keepnext_para(header_xml)
+
     # 본문 문단(발문/선택지=paraPr1, 지문박스=paraPr13/14) 줄간격을 통일
     # → 한 단에 문제가 더 들어가 페이지가 덜 헐거워진다(추정 LINES_PER_COL 과 일치).
-    header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14), LINE_SPACING_PCT)
+    header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14, HEAD_PARA), LINE_SPACING_PCT)
 
-    # 박스(지문) 단락이 페이지/단 경계에서 잘리지 않게 keepLines=1.
-    # 자동 column_break 를 끈 뒤에는 한/글이 박스 중간에서 끊는 일이 있어, 박스는
-    # 통째로 다음 페이지로 가도록 강제한다.
+    # 박스(지문) 단락이 단/쪽 경계에서 중간에 잘리지 않게 keepLines=1.
+    # (keepWithNext 는 주지 않는다 → 박스↔선택지는 자유롭게 흐름/편집 가능)
     header_xml = _set_para_keep(header_xml, 13, keep_lines=True)
 
     files["Contents/header.xml"] = header_xml.encode("utf-8")
@@ -358,7 +344,8 @@ def build_hwpx(template_path, output_path, header_text, questions,
     endnote_no = 1
     for q in questions:
         has_ans = "answer" in q and q["answer"] not in (None, "")
-        blocks.append(build_question_block(q, tracker, endnote_no))
+        blocks.append(build_question_block(q, tracker, endnote_no,
+                                           head_para=HEAD_PARA))
         if has_ans:
             endnote_no += 1
     blocks = "".join(blocks)
@@ -552,6 +539,36 @@ def _set_para_keep(header_xml, para_id, keep_lines=False, keep_with_next=False):
                    'keepLines="%d"' % (1 if keep_lines else 0),
                    block, count=1)
     return header_xml[:m.start()] + block + header_xml[m.end():]
+
+
+def _inject_keepnext_para(header_xml):
+    """paraPr 1 을 복제해 keepWithNext=1 인 새 paraPr 를 추가하고 그 id 를 반환.
+       발문·(발문↔박스 빈줄)에만 적용해 '발문만 단 끝에 홀로 남고 박스가 다음
+       단으로 떨어지는' 분리를 막는다. 문제 전체를 묶지 않으므로(선택지 제외)
+       Enter 편집은 자연스럽다.
+
+       ★ paraPrIDRef 는 배열 '위치'로 해석되므로(한/글), id == 위치가 되도록
+         paraProperties 가 0..N 연속일 때만 끝에 N+1 로 추가한다. 아니면 포기(=1).
+    """
+    ids = sorted(int(x) for x in re.findall(r'<hh:paraPr id="(\d+)"', header_xml))
+    if not ids or ids != list(range(len(ids))):
+        return header_xml, 1                      # 비연속 → 안전하게 포기
+    new_id = len(ids)
+    m = re.search(r'<hh:paraPr id="1".*?</hh:paraPr>', header_xml, re.S)
+    if not m:
+        return header_xml, 1
+    block = m.group(0).replace('id="1"', 'id="%d"' % new_id, 1)
+    if 'keepWithNext="' in block:
+        block = re.sub(r'keepWithNext="\d"', 'keepWithNext="1"', block, count=1)
+    ci = header_xml.find("</hh:paraProperties>")
+    if ci == -1:
+        return header_xml, 1
+    header_xml = header_xml[:ci] + block + header_xml[ci:]
+    mm = re.search(r'(<hh:paraProperties itemCnt=")(\d+)(")', header_xml)
+    if mm:
+        header_xml = (header_xml[:mm.start()] + mm.group(1) +
+                      str(int(mm.group(2)) + 1) + mm.group(3) + header_xml[mm.end():])
+    return header_xml, new_id
 
 
 def _set_para_spacing(header_xml, para_ids, percent):
