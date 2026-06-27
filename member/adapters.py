@@ -18,7 +18,7 @@ class CustomAccountAdapter(DefaultAccountAdapter):
 
 
 class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
-    """소셜 로그인(Google, Kakao) 전용 어댑터."""
+    """소셜 로그인(Google, Kakao, Naver) 전용 어댑터."""
 
     def pre_social_login(self, request, sociallogin):
         """
@@ -90,7 +90,13 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
 
         # Kakao: kakao_account.email
         kakao_account = extra.get('kakao_account', {})
-        return kakao_account.get('email', '')
+        email = kakao_account.get('email', '')
+        if email:
+            return email
+
+        # Naver: response.email
+        response = extra.get('response', {})
+        return response.get('email', '')
 
     def _extract_name(self, sociallogin):
         """프로바이더별 이름(표시명) 추출."""
@@ -104,4 +110,10 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         # Kakao: kakao_account.profile.nickname
         kakao_account = extra.get('kakao_account', {})
         profile = kakao_account.get('profile', {})
-        return profile.get('nickname', '')
+        name = profile.get('nickname', '')
+        if name:
+            return name
+
+        # Naver: response.name 또는 response.nickname
+        response = extra.get('response', {})
+        return response.get('name') or response.get('nickname', '')

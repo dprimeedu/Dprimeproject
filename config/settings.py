@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.kakao',
+    'allauth.socialaccount.providers.naver',
     # 프로젝트 앱
     'config',
     'course.apps.CourseConfig',
@@ -220,12 +221,20 @@ SOCIALACCOUNT_PROVIDERS = {
             'key': '',
         },
     },
+    'naver': {
+        'APP': {
+            'client_id': os.getenv('NAVER_CLIENT_ID', ''),
+            'secret': os.getenv('NAVER_SECRET', ''),
+            'key': '',
+        },
+    },
 }
 
 # 소셜 로그인 버튼 노출 제어 — 유효한 키가 있을 때만 화면에 표시(가짜/미설정 키면 숨김).
 # 구글: 진짜 client_id 는 '...apps.googleusercontent.com' 형식 → 그때만 활성. 키 넣으면 자동 노출.
 GOOGLE_LOGIN_ENABLED = os.getenv('GOOGLE_CLIENT_ID', '').strip().endswith('.apps.googleusercontent.com')
 KAKAO_LOGIN_ENABLED = bool(os.getenv('KAKAO_CLIENT_ID', '').strip())
+NAVER_LOGIN_ENABLED = bool(os.getenv('NAVER_CLIENT_ID', '').strip())
 
 LOGGING = {
     'version': 1,

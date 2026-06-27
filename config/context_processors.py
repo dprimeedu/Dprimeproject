@@ -54,4 +54,5 @@ def social_login_flags(request):
     return {
         'google_login_enabled': getattr(settings, 'GOOGLE_LOGIN_ENABLED', False),
         'kakao_login_enabled': getattr(settings, 'KAKAO_LOGIN_ENABLED', False),
+        'naver_login_enabled': getattr(settings, 'NAVER_LOGIN_ENABLED', False),
     }

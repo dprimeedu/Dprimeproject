@@ -45,6 +45,16 @@
                             카카오 계정으로 로그인
                         </a>
                         {% endif %}
+                        {% if naver_login_enabled %}
+                        <a href="{% provider_login_url 'naver' next=request.GET.next %}"
+                           class="btn d-flex align-items-center justify-content-center gap-2"
+                           style="background:#03C75A; color:#fff; font-weight:500; border:none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24">
+                                <path fill="#ffffff" d="M16.273 12.845L7.376 0H0v24h7.727V11.155L16.624 24H24V0h-7.727z"/>
+                            </svg>
+                            네이버 계정으로 로그인
+                        </a>
+                        {% endif %}
                     </div>
 
                     <div class="d-flex align-items-center my-3">
