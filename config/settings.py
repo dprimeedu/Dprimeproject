@@ -210,6 +210,8 @@ SOCIALACCOUNT_PROVIDERS = {
         },
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {'access_type': 'online'},
+        'OAUTH_PKCE_ENABLED': False,
+        'FETCH_USERINFO': True,
     },
     'kakao': {
         'APP': {
@@ -230,23 +232,40 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{asctime} {levelname} {module} {message}',
+            'format': '{asctime} {levelname} {module} {process:d} {message}',
             'style': '{',
         },
     },
     'handlers': {
         'file': {
-            'level': 'ERROR',
+            'level': 'WARNING',
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'django_error.log',
-            'maxBytes': 5 * 1024 * 1024,  # 5 MB
+            'maxBytes': 5 * 1024 * 1024,
             'backupCount': 3,
             'formatter': 'verbose',
         },
     },
     'root': {
         'handlers': ['file'],
-        'level': 'ERROR',
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'allauth': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 
