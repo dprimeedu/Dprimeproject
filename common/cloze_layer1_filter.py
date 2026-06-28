@@ -153,9 +153,15 @@ def _check_stdev(choices):
 
 
 def _check_long(choices):
-    """(e) 글자수 100자 이상인 선지가 _LONG_HITS 개 이상이면 True."""
-    long_count = sum(1 for c in choices if len(c) >= _LONG_CHARS)
-    return long_count >= _LONG_HITS
+    """(e) 보기 '모두'가 _LONG_CHARS(100자) 이상이면 True.
+
+    사용자 정책(2026-06-28): 5개 보기 중 단 하나라도 100자 미만이면 결함
+    후보에서 제외 (다른 룰도 무시). 짧은 보기('① the latest digital
+    technology')가 섞여 있다면 그 문제는 결함이 아니라고 본다.
+    """
+    if not choices:
+        return False
+    return all(len(c) >= _LONG_CHARS for c in choices)
 
 
 def classify_cloze_choices(choices):
@@ -177,6 +183,11 @@ def classify_cloze_choices(choices):
         return {'flagged': False, 'rules': [], 'long_count': 0}
     cs = [_strip_marker(c) for c in choices]
     cs = [c for c in cs if c]
+    long_count = sum(1 for c in cs if len(c) >= _LONG_CHARS)
+    # 사용자 정책 게이트: 보기 5개 중 하나라도 100자 미만이면 결함 후보 아님.
+    # 짧은 보기가 섞인 문제는 변별이 명확하다고 본다 (1층 룰 자체를 건너뜀).
+    if not all(len(c) >= _LONG_CHARS for c in cs):
+        return {'flagged': False, 'rules': [], 'long_count': long_count}
     rules = []
     if _check_prefix(cs):
         rules.append('a')
@@ -191,7 +202,7 @@ def classify_cloze_choices(choices):
     return {
         'flagged': bool(rules),
         'rules': rules,
-        'long_count': sum(1 for c in cs if len(c) >= _LONG_CHARS),
+        'long_count': long_count,
     }
 
 
