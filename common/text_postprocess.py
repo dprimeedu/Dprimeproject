@@ -63,6 +63,20 @@ def _normalize_passage_markers(text):
     return text
 
 
+def _fix_irrelevant_marker_junk(text):
+    """무관한문장: 마커 뒤에 '두 칸+ 공백으로 감싼 잡토큰'이 끼어든 것을 제거.
+
+    예) '①  The  This is called …'  → '① This is called …'
+        '①  However,  Note that …'  → '① Note that …'
+        '⑤  make_up  In order …'    → '⑤ In order …'
+    '마커 + 2칸+ 공백 + 한 토큰 + 2칸+ 공백' 패턴만 잡으므로, 정상 문장
+    '① The viewer is not asked …'(마커+한 칸 공백)은 건드리지 않는다(번호 203 형태 유지).
+    """
+    if not text:
+        return text
+    return _re.sub(r'([①②③④⑤⑥⑦⑧⑨⑩])[ \t]{2,}\S+[ \t]{2,}', r'\1 ', text)
+
+
 def _parenthesize_insertion_markers(text):
     """문장넣기 지문의 삽입 위치 마커를 '( ① )' 형태로 통일.
 
@@ -590,6 +604,10 @@ def _build_modified_question(r, total_number):
             sentence = _normalize_order_passage(sentence)
             # 보기 (A)(B)(C) 사이 구분 기호를 짧은 하이픈 '-' 로 통일.
             choices = [_normalize_order_choice_sep(c) for c in choices]
+        elif '무관' in qtype:
+            # 마커 뒤 '두 칸+ 공백으로 감싼 잡토큰'(번호 204 형태) 제거 → 번호 203 형태로.
+            sentence = _fix_irrelevant_marker_junk(sentence)
+            sentence = _normalize_passage_markers(sentence)
         elif '연결' in qtype:
             # 연결어/연결사 본문 빈칸을 ____(A)____ / ____(B)____ 로 표준화.
             sentence = _standardize_connector_blanks(sentence)
@@ -638,5 +656,5 @@ __all__ = [
     "_strip_bracket_garbage", "_strip_trailing_blank", "_is_incomplete_ending",
     "_has_placeholder_garbage", "_has_parenthesized_sentence",
     "_standardize_connector_blanks", "_is_broken_connector",
-    "_normalize_order_choice_sep",
+    "_normalize_order_choice_sep", "_fix_irrelevant_marker_junk",
 ]
