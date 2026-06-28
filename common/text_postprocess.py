@@ -269,7 +269,7 @@ def _grammar_choice_sep(choice):
     body = _re.sub(r'\s+', ' ', body)
     # join 결과를 표준화: 'word1 ----- word2 ----- word3'
     body = _TWO_BLANK_SEP.join(words).strip()
-    return f"{marker}{_TWO_BLANK_SEP[:-1]}{body}" if marker else body
+    return f"{marker} {body}" if marker else body
 
 
 def _hwpx_choices(option_str, qtype='', two_blank=None):
@@ -293,10 +293,15 @@ def _hwpx_choices(option_str, qtype='', two_blank=None):
     text = _ICON_PLACEHOLDER_RE.sub('', text)
     parts = [c.strip() for c in text.split('\n') if c.strip()]
     parts = [_strip_marker_garbage(p) for p in parts]
+    # 이중 마커(ⓐ①/①①) 및 보기 내부 '점선에 둘러싸인 잡 마커'를 먼저 제거 (사진15)
+    #  — 분리(_split_inline_long_choices) 전에 해야 잡 마커에서 잘못 쪼개지지 않음.
+    parts = [_strip_interior_choice_markers(_dedupe_inline_markers(p)) for p in parts]
     parts = _split_inline_long_choices(parts)
     parts = [_space_inline_markers(p) for p in parts]
     # 보기가 두 세트(10개) 중복 출력된 데이터 방어 → 앞 5개만 사용.
     parts = _drop_duplicate_choice_set(parts)
+    # 마커만 있고 내용 없는 잡 항목(외톨이 '③' 등) 제거 (사진14).
+    parts = _drop_orphan_marker_choices(parts)
     # 보기 시작 마커가 단어에 붙은 경우 한 칸 공백('①talented' → '① talented').
     parts = [_space_marker_after_word(p) for p in parts]
     if two_blank is None:
@@ -382,7 +387,11 @@ def _is_two_blank(qtype, sentence, prompt):
     (___(A)___ 등)이 모두 있는 경우(어휘변형 '빈칸(A)(B)' 등)를 두-빈칸으로 본다.
     순서 유형의 문단 라벨 '(A) …'(밑줄 없음, (C)까지 동반)은 빈칸이 아니므로
     제외 — 이 경우 보기에 구분자를 넣으면 안 된다.
+    '(A),(B)에 공통으로 들어갈' 유형은 보기가 '한 낱말 = 양쪽 공통답'이라 두-빈칸이
+    아니다(보기에 구분자 넣으면 안 됨) — 발문에 '공통' 있으면 제외 (사진11).
     """
+    if '공통' in (prompt or ''):
+        return False
     if (qtype or '') in _TWO_BLANK_TYPES:
         return True
     s = sentence or ''
@@ -772,7 +781,9 @@ def _segment_three_blank(body, opts):
     if b is None:
         return None
     c = rest2.strip()
-    if opts['C'] and c not in opts['C']:
+    # C는 A·B 매칭 후 남는 부분으로 둔다(본문 후보와 살짝 다른 'fire'/'fired'식
+    # 데이터 불일치도 허용해 ②⑤ 보기까지 구분자가 들어가게 함, 사진12).
+    if not c:
         return None
     return [a, b, c]
 
@@ -800,6 +811,88 @@ def _normalize_three_blank(choice, opts):
         parts = seg
     res = _TWO_BLANK_SEP.join(parts)
     return f"{marker} {res}" if marker else res
+
+
+# ---------------------------------------------------------------------------
+# 5) 2026-06-28 추가 15개 수정 (새 폴더\이미지001-015)
+# ---------------------------------------------------------------------------
+_CIRC15 = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮'
+
+
+def _strip_leading_stars(text):
+    """지문 맨 앞 별표시 장식('[★★★]','★★★','***','[*]')을 제거 (사진13).
+
+    각주 '* hatchling: 갓 부화한 동물'(별표 1개 + 공백 + 단어)는 건드리지 않는다.
+    """
+    if not text:
+        return text
+    return _re.sub(r'^\s*(?:\[[\s★☆✦✧❋*]*\]|[★☆✦✧❋]+|\*{2,})\s*', '', text)
+
+
+def _dedupe_inline_markers(text):
+    """이중·중복 번호 마커 정리(본문·보기 공통).
+      - 동그라미 글자(ⓐ~ⓩ/Ⓐ~Ⓩ)가 동그라미 숫자 옆 → 글자 제거: 'ⓐ①'→'①' (사진8)
+      - 같은 동그라미 숫자가 잡문자(0~4) 끼고 중복 → 하나: '①①'·'②†②'→'①'·'②' (사진4,9)
+    """
+    if not text:
+        return text
+    C = _CIRC15
+    text = _re.sub(r'[Ⓐ-Ⓩⓐ-ⓩ]\s*(?=[' + C + r'])', '', text)
+    text = _re.sub(r'(?<=[' + C + r'])\s*[Ⓐ-Ⓩⓐ-ⓩ]', '', text)
+    text = _re.sub(r'([' + C + r'])[^0-9A-Za-z가-힣\n]{0,4}\1', r'\1', text)
+    return text
+
+
+def _collapse_space_before_marker(text):
+    """본문에서 마커 앞 군더더기 공백(2칸+) → 1칸 (사진3 '… fully    ③ engaged')."""
+    if not text:
+        return text
+    return _re.sub(r'[ \t]{2,}(?=[' + _CIRC15 + r'])', ' ', text)
+
+
+def _strip_stray_dots(text):
+    """본문 중 단어 사이에 낀 잡 점선('called.....a' / 'in……a') 제거 → 공백 (사진5)."""
+    if not text:
+        return text
+    return _re.sub(r'(?<=[A-Za-z])\s*(?:\.{3,}|…+|⋯|‥)\s*(?=[A-Za-z])', ' ', text)
+
+
+def _strip_trailing_marker_row(text):
+    """문장넣기 끝에 중복으로 붙은 삽입마커 행 '( ① ) ( ② ) … ( ⑤ )' 제거 (사진6)."""
+    if not text:
+        return text
+    return _re.sub(r'(?:\s*[(（]\s*[' + _CIRC15 + r']\s*[)）]\s*){2,}$', '', text).rstrip()
+
+
+def _strip_trailing_dashes(text):
+    """끝에 의미없이 붙은 하이픈/대시 꼬리 제거 (사진7). 밑줄(빈칸)은 보존."""
+    if not text:
+        return text
+    return _re.sub(r'\s+[-–—―]{1,}\s*$', '', text.rstrip()).rstrip()
+
+
+def _drop_orphan_marker_choices(parts):
+    """보기 목록에서 '마커만 있고 내용 없는' 잡 항목 제거 (사진14 '⑤' 뒤 외톨이 '③')."""
+    out = []
+    for p in parts:
+        body = _re.sub(r'^[' + _CIRC15 + r']\s*', '', p.strip())
+        if body.strip():
+            out.append(p)
+    return out
+
+
+def _strip_interior_choice_markers(choice):
+    """보기 내부에 '점선으로 둘러싸인 잡 마커'를 제거 (사진15 'calculatio…②…that').
+
+    점선(…/.../⋯)이 붙은 마커만 제거하므로, 점선 없이 공백으로 구분된 정상 마커
+    (여러 보기를 한 줄에 둔 '① …  ② …  ③ …'·순서 보기)는 보존한다.
+    """
+    if not choice or ('.' not in choice and '…' not in choice and '⋯' not in choice):
+        return choice
+    C = _CIRC15
+    pat = (r'\s*(?:\.{2,}|…+|⋯)\s*[' + C + r']\s*(?:\.{2,}|…+|⋯)?\s*'
+           r'|\s*[' + C + r']\s*(?:\.{2,}|…+|⋯)\s*')
+    return _re.sub(pat, ' ', choice)
 
 
 def _build_modified_question(r, total_number):
@@ -841,6 +934,7 @@ def _build_modified_question(r, total_number):
             else:
                 sentence = _parenthesize_insertion_markers(sentence)
             sentence = _normalize_insertion_intro(sentence)   # 제시문↔본문 빈 줄 1개
+            sentence = _strip_trailing_marker_row(sentence)   # 끝 '( ① )…( ⑤ )' 중복행 제거(사진6)
             choices = []                                      # 삽입 위치 = 보기 → 별도 보기 제거
         elif '순서' in qtype:
             # 제시문↔(A)=빈 줄 1개, (A)↔(B)↔(C)=줄바꿈만 으로 통일.
@@ -864,6 +958,13 @@ def _build_modified_question(r, total_number):
             sentence = _normalize_passage_markers(sentence)
 
     # ---- 전 유형 공통 품질 정리/검출 ----
+    # 지문 맨 앞 별표시([★★★]) 제거(사진13) — 대괄호 정리보다 먼저 해야 줄 통째 삭제 방지.
+    sentence = _strip_leading_stars(sentence)
+    # 이중·중복 마커(ⓐ①/①①/②†②) 정리(사진4,8,9), 마커 앞 군더더기 공백(사진3),
+    # 단어 사이 잡 점선(사진5) 정리.
+    sentence = _dedupe_inline_markers(sentence)
+    sentence = _collapse_space_before_marker(sentence)
+    sentence = _strip_stray_dots(sentence)
     # 유형 라벨 잡줄('[ 주제 / 제목 / 요지 ]' 등)은 전 유형에서 제거(어휘/어법 포함).
     sentence = _strip_type_label_garbage(sentence)
     # 어법·어휘는 본문 '[A / B]' 선택지 대괄호가 정상이므로 일반 대괄호 정리에선 제외.
@@ -875,6 +976,14 @@ def _build_modified_question(r, total_number):
     # 보존하므로 안전. 단일 \n 은 공백으로 합쳐 한 단락이 한 덩어리로 인쇄되게 함.
     sentence = _compact_paragraphs(sentence)
     sentence = _strip_trailing_blank(sentence)                # 끝 빈 줄 제거
+    sentence = _strip_trailing_dashes(sentence)               # 끝 의미없는 하이폰 제거(사진7)
+    # 지문이 비었거나(각주만 남음 등) 영문/한글 내용이 전혀 없으면 제외 (사진10).
+    # 단, 장문(2/3) 세트 문항은 본문을 메인 장문과 공유해 sentence가 비어 정상 →
+    # 장문은 제외하지 않는다.
+    if ('장문' not in qtype
+            and not _re.search(r'[A-Za-z가-힣]',
+                               _re.sub(r'(?m)^[ \t]*[*※].*$', '', sentence))):
+        return None
     # 연결어/연결사 빈칸이 문장 삽입처럼 쓰인 불량 구조 → 제외.
     if '연결' in qtype and _is_broken_connector(sentence):
         return None
@@ -925,4 +1034,8 @@ __all__ = [
     "_space_marker_after_word", "_drop_duplicate_choice_set",
     "_grammar_choice_sep", "_strip_summary_arrows", "_compact_paragraphs",
     "_is_nonstandard_labeled_passage", "_extend_to_underline",
+    # 2026-06-28 추가 15개 수정 — 새 폴더\이미지001-015
+    "_strip_leading_stars", "_dedupe_inline_markers", "_collapse_space_before_marker",
+    "_strip_stray_dots", "_strip_trailing_marker_row", "_strip_trailing_dashes",
+    "_drop_orphan_marker_choices", "_strip_interior_choice_markers",
 ]
