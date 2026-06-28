@@ -524,6 +524,19 @@ def _standardize_connector_blanks(text):
     return text
 
 
+def _normalize_order_choice_sep(choice):
+    """순서 유형 보기의 (A)(B)(C) 사이 구분 기호를 짧은 하이픈 '-'(공백 없음)으로 통일.
+
+    예) '① (A) — (C) — (B)' · '① (A)―(C)―(B)' · '① (A) - (C) - (B)'
+      → '① (A)-(C)-(B)'
+    각종 대시(- – — ― −)·물결(~)을 양옆 공백까지 흡수해 '-' 로 맞춘다.
+    괄호 사이('…) <기호> (…')만 건드리므로 본문/다른 보기엔 영향 없다.
+    """
+    if not choice:
+        return choice
+    return _re.sub(r'([)）])\s*[-‐-―−~]\s*([(（])', r'\1-\2', choice)
+
+
 def _is_broken_connector(text):
     """연결어/연결사인데 (A)/(B) 빈칸이 '문장 사이 삽입'처럼 쓰인 불량 구조면 True.
 
@@ -575,6 +588,8 @@ def _build_modified_question(r, total_number):
         elif '순서' in qtype:
             # 제시문↔(A)=빈 줄 1개, (A)↔(B)↔(C)=줄바꿈만 으로 통일.
             sentence = _normalize_order_passage(sentence)
+            # 보기 (A)(B)(C) 사이 구분 기호를 짧은 하이픈 '-' 로 통일.
+            choices = [_normalize_order_choice_sep(c) for c in choices]
         elif '연결' in qtype:
             # 연결어/연결사 본문 빈칸을 ____(A)____ / ____(B)____ 로 표준화.
             sentence = _standardize_connector_blanks(sentence)
@@ -623,4 +638,5 @@ __all__ = [
     "_strip_bracket_garbage", "_strip_trailing_blank", "_is_incomplete_ending",
     "_has_placeholder_garbage", "_has_parenthesized_sentence",
     "_standardize_connector_blanks", "_is_broken_connector",
+    "_normalize_order_choice_sep",
 ]
