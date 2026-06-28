@@ -263,13 +263,15 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
     # 박스 뒤 빈 줄 — 묶음 유형이면 flow_pr(keepWithNext)로 보기까지 연결.
     parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=flow_pr))
     # 3) 선택지 단락들 — 각 선택지는 별도 단락(엑셀의 \r\n 줄바꿈을 보존).
-    #    묶음 유형이면 마지막 보기 직전까지 flow_pr(keepWithNext)로 한 묶음 유지.
+    #    묶음 유형이면 '모든' 보기(마지막 포함)에 flow_pr(keepWithNext)를 부여해
+    #    박스↔보기 5개가 통째로 한 페이지/단에 묶이게 한다(사진 1·9: 마지막 보기가
+    #    다음 페이지로 떨어지는 쪼개짐 방지). 묶음 뒤의 '문제 사이 빈 단락'은
+    #    paraPr=1(keepWithNext=0)이라 그 뒤 새 문제는 자유롭게 흐른다.
     if q.get("choices"):
         chs = q["choices"]
-        for i, ch in enumerate(chs):
-            last = (i == len(chs) - 1)
+        for ch in chs:
             parts.append(_para(_run(ch, 8),
-                               para_pr=(1 if (last or not bind_choices) else flow_pr)))
+                               para_pr=(flow_pr if bind_choices else 1)))
 
     # 4) 문제 사이 간격용 빈 단락(= Enter 한 번). 포맷을 깔끔하게.
     parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))

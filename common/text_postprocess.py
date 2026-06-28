@@ -38,11 +38,12 @@ def _hwpx_clean(text):
     # 엑셀 인라인 그림(아이콘) placeholder 제거 — 'icon_1_3' 및 마커에 붙은 'icon③'
     text = _ICON_PLACEHOLDER_RE.sub('', text)
     # 빈칸 라벨 표기 통일: '(A)____' 처럼 라벨 뒤에만 밑줄 있는 형태를
-    # '___(A)___' (양쪽 밑줄, 라벨 가운데) 로 맞춘다. 밑줄이 하나도 없는
-    # '(A)'(발문의 (A),(B) 참조 등)는 그대로 둔다.
+    # '____(A)____' (양쪽 밑줄, 라벨 가운데) 로 맞춘다. 밑줄이 하나도 없는
+    # '(A)'(발문의 (A),(B) 참조 등)는 그대로 둔다. 라벨 양옆에 공백이 끼어 있는
+    # '____ (A) ____'(사진 18) 도 정규형으로 흡수.
     text = _re.sub(
-        r'_*\(([A-E])\)_*',
-        lambda m: '___(%s)___' % m.group(1) if '_' in m.group(0) else m.group(0),
+        r'_*[ \t]*\(([A-E])\)[ \t]*_*',
+        lambda m: '____(%s)____' % m.group(1) if '_' in m.group(0) else m.group(0),
         text)
     # 연속 빈줄 3+ → 2개로
     text = _re.sub(r'\n{3,}', '\n\n', text)
@@ -188,7 +189,9 @@ def _normalize_two_blank(choice):
            r'|\s{2,}'
            r'|\t+'
            r')+')
-    body = _re.sub(sep, _TWO_BLANK_SEP, body, count=1)
+    # 보통은 두-빈칸이라 sep 1회지만, 데이터에 3-단어 보기가 있으면 모두 통일
+    # (사진 13: '① In contrast ----- Therefore Meanwhile' → 두 번째 공백도 -----로).
+    body = _re.sub(sep, _TWO_BLANK_SEP, body)
 
     return f"{marker} {body}" if marker else body
 
@@ -217,6 +220,58 @@ def _split_inline_long_choices(parts, threshold=30):
     return out
 
 
+def _drop_duplicate_choice_set(parts):
+    """보기 마커 ① 가 2회 이상 등장하면 두 번째 세트 이후를 잘라낸다.
+
+    AI 생성 데이터에서 보기 5개가 두 세트(=10개) 중복 출력되는 케이스 방어.
+    예) ['① ignores -- harmony', ..., '⑤ encourages -- fairness',
+         '① confirm -- arbitrary',   ..., '⑤ reinforce -- objective']  → 앞 5개만.
+    """
+    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    seen_first = False
+    out = []
+    for p in parts:
+        body = p.lstrip()
+        if body[:1] == '①':
+            if seen_first:
+                break        # 두 번째 ① 등장 → 중복 세트 시작, 잘라냄
+            seen_first = True
+        out.append(p)
+    return out
+
+
+def _grammar_choice_sep(choice):
+    """어법 변형 보기 '① during adopting continues' →
+       '① during ----- adopting ----- continues' 로 단어 사이 구분 통일.
+
+    보기가 영문 단어(또는 짧은 구) 2~4개로만 구성된 경우만 처리.
+    단어 사이 공백(1칸 이상)을 모두 '-----' 로 치환. 한국어/문장형 보기는
+    건드리지 않는다.
+    """
+    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    body = choice.strip()
+    marker = ''
+    if body and body[0] in MARKERS:
+        marker = body[0]
+        body = body[1:].strip()
+    if not body:
+        return choice
+    # 이미 -----로 구분돼 있으면 _normalize_two_blank 와 같은 정규식으로 통일.
+    if _re.search(r'-{3,}|\t|\s{2,}|……|\.{3,}|⋯', body):
+        return _normalize_two_blank(choice)
+    # 단어 2~4개(영문) 만 있는 경우에만 단어 사이를 ----- 로.
+    words = body.split()
+    if not (2 <= len(words) <= 4):
+        return choice
+    if not all(_re.fullmatch(r"[A-Za-z][A-Za-z\-']*", w) for w in words):
+        return choice
+    body = _TWO_BLANK_SEP.strip().join(' ' + w + ' ' for w in words).strip()
+    body = _re.sub(r'\s+', ' ', body)
+    # join 결과를 표준화: 'word1 ----- word2 ----- word3'
+    body = _TWO_BLANK_SEP.join(words).strip()
+    return f"{marker}{_TWO_BLANK_SEP[:-1]}{body}" if marker else body
+
+
 def _hwpx_choices(option_str, qtype='', two_blank=None):
     """선택지 문자열을 리스트로 분리 — 엑셀 원본의 줄바꿈만 따른다.
 
@@ -240,10 +295,17 @@ def _hwpx_choices(option_str, qtype='', two_blank=None):
     parts = [_strip_marker_garbage(p) for p in parts]
     parts = _split_inline_long_choices(parts)
     parts = [_space_inline_markers(p) for p in parts]
+    # 보기가 두 세트(10개) 중복 출력된 데이터 방어 → 앞 5개만 사용.
+    parts = _drop_duplicate_choice_set(parts)
+    # 보기 시작 마커가 단어에 붙은 경우 한 칸 공백('①talented' → '① talented').
+    parts = [_space_marker_after_word(p) for p in parts]
     if two_blank is None:
         two_blank = (qtype or '') in _TWO_BLANK_TYPES
     if two_blank:
         parts = [_normalize_two_blank(p) for p in parts]
+    elif '어법' in (qtype or ''):
+        # 어법 변형 보기 '① word1 word2 word3' → '① word1 ----- word2 ----- word3'.
+        parts = [_grammar_choice_sep(p) for p in parts]
     # 남은 탭은 마지막에 공백으로 (한/글 렌더링 오류 방지)
     parts = [p.replace('\t', ' ') for p in parts]
     return parts
@@ -409,29 +471,53 @@ def _renumber_insertion_markers(text):
 
 
 def _normalize_insertion_intro(text):
-    """문장넣기 제시문(첫 단락)과 본문 사이를 '줄바꿈 + 빈 줄 1개' 로 통일."""
+    """문장넣기 제시문(첫 줄)과 본문 사이를 '빈 줄 1개(=\\n\\n)' 로 통일.
+
+    첫 줄을 명시적으로 잡아 (re.S + 비탐욕 조합의 잠재 버그 회피) 본문과 분리.
+    """
     if not text:
         return text
-    m = _re.match(r'(.+?)[ \t]*\n[ \t\n]*(.+)$', text, _re.S)
+    text = text.lstrip()
+    m = _re.match(r'([^\n]+)\n+([\s\S]+)$', text)
     if m:
-        return m.group(1).strip() + '\n\n' + m.group(2).strip()
-    return text.strip()
+        return m.group(1).rstrip() + '\n\n' + m.group(2).lstrip().rstrip()
+    return text.rstrip()
 
 
 def _strip_bracket_garbage(text):
     """대괄호 잡줄/꼬리 제거(어법·어휘 제외 호출).
 
       - '[' 로 시작하는 줄(통째 [..] 인용 줄) 삭제
+      - 마지막 '내용 줄' 이 ']' / '"]' / "']" 로 끝나면 그 줄 통째로 삭제
+        (예: 'Robinson: Navigating Cougar-Cub Dating and Relationships"]' → 통째 삭제)
       - 마지막 종결부호(.!?…) 뒤 꼬리에 '[' 또는 ']' 가 있으면 그 꼬리만 제거
-        (예: ... share their views. Robinson: ... Relationships"] → '...views.' 까지)
 
     NOTE: 어법·어휘는 본문에 '[A / B]' 선택지 대괄호를 정상적으로 쓰므로 이 함수를
     호출하면 안 된다(_build_modified_question 에서 유형으로 가드).
     """
     if not text:
         return text
+    # 1) '[' 로 시작하는 줄(통째 인용)은 삭제
     lines = [ln for ln in text.split('\n') if not ln.lstrip().startswith('[')]
+    # 2) 마지막 content 줄이 ']' / '"]' / "']" 로 끝나면 그 줄 통째로 삭제
+    #    (각주·빈 줄을 건너뛴 '내용 줄' 기준)
+    while lines:
+        idx = None
+        for i in range(len(lines) - 1, -1, -1):
+            s = lines[i].strip()
+            if not s or s.startswith('*') or s.startswith('※'):
+                continue
+            idx = i
+            break
+        if idx is None:
+            break
+        s = lines[idx].rstrip()
+        if s.endswith(']') or s.endswith('"]') or s.endswith("']") or s.endswith('"]'):
+            lines.pop(idx)
+            continue
+        break
     text = '\n'.join(lines)
+    # 3) 마지막 종결부호 뒤 꼬리에 '[' 또는 ']' 가 남아 있으면 꼬리만 제거
     terms = list(_re.finditer(r'[.!?…][”’"\')]*', text))
     if terms:
         end = terms[-1].end()
@@ -439,6 +525,67 @@ def _strip_bracket_garbage(text):
         if '[' in tail or ']' in tail:
             text = text[:end]
     return text
+
+
+def _strip_summary_arrows(text):
+    """본문↔요약문 사이의 화살표 마커(↓ → ⇒ ⇓ ⇨ ▼ ▽ ⬇) 제거.
+
+    요약문완성/연결어 일부 데이터에서 본문 끝 또는 요약문 시작 줄에 시각적 화살표가
+    들어있는 케이스(사진 11/19/20). 화살표만 제거하고 양옆 공백·줄바꿈은 정리.
+    """
+    if not text:
+        return text
+    text = _re.sub(r'[←-⇿⟰-⟿⬅-⬇⮕▼▽⬇]+', '', text)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    text = _re.sub(r'^[ \t]+', '', text, flags=_re.M)   # 줄 앞 공백 정리
+    text = _re.sub(r'[ \t]+$', '', text, flags=_re.M)   # 줄 끝 공백 정리
+    text = _re.sub(r'\n{3,}', '\n\n', text)
+    return text
+
+
+def _compact_paragraphs(text):
+    """단락 내부 줄바꿈(\\n)을 공백으로 합쳐 한 단락으로 만든다.
+
+    빈 줄(\\n\\n+)은 단락 경계로 보존 — 요약문완성의 '본문↔요약문',
+    문장넣기의 '제시문↔본문', 순서의 '제시문↔(A)~(C)' 단락 구분은 유지된다.
+    """
+    if not text:
+        return text
+    SENT = '\x01PARA\x01'
+    text = _re.sub(r'\n[ \t]*\n+', SENT, text)
+    text = text.replace('\n', ' ')
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    text = text.replace(SENT, '\n\n')
+    return text.strip()
+
+
+def _is_nonstandard_labeled_passage(sentence, choices):
+    """본문에 (A)~(F) 라벨 4개 이상 + 보기가 한국어인 비표준 변형 유형.
+
+    사진 23: 본문에 '(A)excited','(B)it'... 6개 라벨이 끼고, 보기는 '① In part (A),
+    we can see ...' 같은 한국어 해설형 → 수능 표준 양식이 아니므로 문제 통째 제외.
+    """
+    if not sentence or not choices:
+        return False
+    labels = set(_re.findall(r'\(([A-F])\)', sentence))
+    if len(labels) < 4:
+        return False
+    korean_count = sum(1 for c in choices if _re.search(r'[가-힣]', c))
+    return korean_count >= max(2, len(choices) // 2)
+
+
+def _extend_to_underline(text):
+    """어법 변형 밑줄에서 '￰to￰ 다음단어' → '￰to 다음단어￰' 로 확장.
+
+    'to' 만 밑줄 친 데이터를 'to + 동사' 한 덩어리로 묶어 인쇄 (사진 16 요구).
+    소문자 to / 대문자 To 모두 처리.
+    """
+    if not text:
+        return text
+    MARK = '￰'
+    return _re.sub(
+        MARK + r'([Tt]o)' + MARK + r'(\s+)([A-Za-z][A-Za-z\-\']*)',
+        MARK + r'\1\2\3' + MARK, text)
 
 
 def _strip_type_label_garbage(text):
@@ -669,9 +816,13 @@ def _build_modified_question(r, total_number):
     choices = [c for c in choices if c.strip().lower() not in ('answer', '정답')]
     answer = (r.get('answer', '') or '').replace('	', ' ')
     if ('어휘' in qtype or '어법' in qtype) and '￰' in sentence:
+        # 어법 변형의 'to' 만 밑줄 친 경우 다음 단어까지 확장 ('to get' 한 덩어리).
+        sentence = _extend_to_underline(sentence)
         sentence, n = _number_underline_segments(sentence)
         if n != 5:
             return None
+        # 본문에 마커가 단어에 붙은 경우(①classified) 한 칸 띄움.
+        sentence = _space_marker_after_word(sentence)
         choices = []
     else:
         # 지문 밑줄(U+FFF0)은 '밑줄 친 부분' 자체가 문제인 유형에서만 의미가 있다
@@ -700,9 +851,15 @@ def _build_modified_question(r, total_number):
             # 마커 뒤 '두 칸+ 공백으로 감싼 잡토큰'(번호 204 형태) 제거 → 번호 203 형태로.
             sentence = _fix_irrelevant_marker_junk(sentence)
             sentence = _normalize_passage_markers(sentence)
+            sentence = _space_marker_after_word(sentence)
         elif '연결' in qtype:
             # 연결어/연결사 본문 빈칸을 ____(A)____ / ____(B)____ 로 표준화.
             sentence = _standardize_connector_blanks(sentence)
+            # 본문↔요약·빈칸 줄 사이 화살표(↓→⇒…) 제거 (사진 11).
+            sentence = _strip_summary_arrows(sentence)
+        elif '요약' in qtype:
+            # 본문↔요약문 사이 화살표(↓→⇒…) 제거 (사진 19/20).
+            sentence = _strip_summary_arrows(sentence)
         else:
             sentence = _normalize_passage_markers(sentence)
 
@@ -713,6 +870,10 @@ def _build_modified_question(r, total_number):
     if not ('어법' in qtype or '어휘' in qtype):
         sentence = _strip_bracket_garbage(sentence)           # 대괄호 잡줄/꼬리 제거
     sentence = _shorten_long_blanks(sentence)
+    # 본문 단락화: 문장넣기/순서는 빈 줄로 단락 구분이 의미 있고 한 단락 내부엔
+    # 줄바꿈이 거의 없어 안전, 요약문완성/연결어는 본문↔요약/빈칸을 빈 줄로
+    # 보존하므로 안전. 단일 \n 은 공백으로 합쳐 한 단락이 한 덩어리로 인쇄되게 함.
+    sentence = _compact_paragraphs(sentence)
     sentence = _strip_trailing_blank(sentence)                # 끝 빈 줄 제거
     # 연결어/연결사 빈칸이 문장 삽입처럼 쓰인 불량 구조 → 제외.
     if '연결' in qtype and _is_broken_connector(sentence):
@@ -722,6 +883,9 @@ def _build_modified_question(r, total_number):
         return None
     # 본문에 placeholder/잡토큰(vitamin_D, make_up …)이나 괄호 통문장 → 품질 불량 제외.
     if _has_placeholder_garbage(sentence) or _has_parenthesized_sentence(sentence):
+        return None
+    # 본문에 (A)~(F) 라벨 4개 이상 + 보기가 한국어 해설형 → 수능 비표준 유형 → 제외.
+    if _is_nonstandard_labeled_passage(sentence, choices):
         return None
     # 세 칸((A)[x/y](B)[..](C)[..]) 선택형(어법/어휘)이면 보기 칸 사이를 ' ----- ' 로 구분.
     _abc = _extract_abc_options(sentence)
@@ -757,4 +921,8 @@ __all__ = [
     "_normalize_order_choice_sep", "_fix_irrelevant_marker_junk",
     "_strip_type_label_garbage", "_extract_abc_options",
     "_segment_three_blank", "_normalize_three_blank",
+    # 2026-06-28 추가 12개 수정 — 사진 1-23 증상 대응
+    "_space_marker_after_word", "_drop_duplicate_choice_set",
+    "_grammar_choice_sep", "_strip_summary_arrows", "_compact_paragraphs",
+    "_is_nonstandard_labeled_passage", "_extend_to_underline",
 ]
