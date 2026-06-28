@@ -430,6 +430,18 @@ def _strip_bracket_garbage(text):
     return text
 
 
+def _strip_type_label_garbage(text):
+    """지문에 잘못 삽입된 '유형 라벨' 대괄호 잡줄 제거(전 유형, 어휘·어법 포함).
+
+    예) '[ 주제 / 제목 / 요지 ]', '[주장/요지]' 처럼 대괄호 안이 '한글+슬래시(+공백/콤마)'
+    로만 이뤄지고 슬래시가 1개 이상인 것. 어휘·어법의 '[uncomplicated / intricate]'
+    (영어 선택지)나 '[중략]'(슬래시 없음)은 매칭되지 않아 그대로 둔다.
+    """
+    if not text:
+        return text
+    return _re.sub(r'[ \t]*\[[\s가-힣,·]*(?:/[\s가-힣,·]*)+\][ \t]*', ' ', text)
+
+
 def _strip_trailing_blank(text):
     """맨 끝의 쓸데없는 줄바꿈/빈 줄/공백 제거(박스 끝 빈 줄 방지)."""
     if not text:
@@ -615,7 +627,9 @@ def _build_modified_question(r, total_number):
             sentence = _normalize_passage_markers(sentence)
 
     # ---- 전 유형 공통 품질 정리/검출 ----
-    # 어법·어휘는 본문 '[A / B]' 선택지 대괄호가 정상이므로 대괄호 정리에서 제외.
+    # 유형 라벨 잡줄('[ 주제 / 제목 / 요지 ]' 등)은 전 유형에서 제거(어휘/어법 포함).
+    sentence = _strip_type_label_garbage(sentence)
+    # 어법·어휘는 본문 '[A / B]' 선택지 대괄호가 정상이므로 일반 대괄호 정리에선 제외.
     if not ('어법' in qtype or '어휘' in qtype):
         sentence = _strip_bracket_garbage(sentence)           # 대괄호 잡줄/꼬리 제거
     sentence = _shorten_long_blanks(sentence)
@@ -657,4 +671,5 @@ __all__ = [
     "_has_placeholder_garbage", "_has_parenthesized_sentence",
     "_standardize_connector_blanks", "_is_broken_connector",
     "_normalize_order_choice_sep", "_fix_irrelevant_marker_junk",
+    "_strip_type_label_garbage",
 ]
