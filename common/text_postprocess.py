@@ -63,6 +63,17 @@ def _normalize_passage_markers(text):
     return text
 
 
+def _space_marker_after_word(text):
+    """'단어붙은 마커' 다음에 공백 한 칸을 강제 (본문/보기 공통, 안전).
+    예) '①classified and …' → '① classified and …', '①Muscle …' → '① Muscle …'
+    이미 공백이 있으면 노옵. 발문 ①~⑤ 참조는 매칭 안 됨(뒤가 ','·')'·공백).
+    """
+    if not text:
+        return text
+    M = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮'
+    return _re.sub(r'([' + M + r'])(?=[A-Za-z가-힣])', r'\g<1> ', text)
+
+
 def _fix_irrelevant_marker_junk(text):
     """무관한문장: 마커 뒤에 '두 칸+ 공백으로 감싼 잡토큰'이 끼어든 것을 제거.
 
@@ -575,6 +586,75 @@ def _is_broken_connector(text):
     return bool(_re.search(r'(?:^|[.!?][”’"\')]*\s+)_*\([AB]\)_*\s+[A-Z]', text))
 
 
+def _extract_abc_options(sentence):
+    """본문의 (A)[x / y] (B)[..] (C)[..] 브래킷에서 각 칸 후보 단어를 추출.
+
+    세 칸이 모두 있으면 {'A':[...],'B':[...],'C':[...]} 반환, 아니면 None.
+    """
+    if not sentence:
+        return None
+    opts = {}
+    for lab in ('A', 'B', 'C'):
+        m = _re.search(r'\(' + lab + r'\)\s*\[([^\]]*)\]', sentence)
+        if not m:
+            return None
+        parts = [p.strip() for p in _re.split(r'\s*/\s*', m.group(1)) if p.strip()]
+        if not parts:
+            return None
+        opts[lab] = parts
+    return opts
+
+
+def _segment_three_blank(body, opts):
+    """공백만으로 붙은 세 칸 보기('shifted noticeable displaced from')를 본문 후보로
+    분절해 [A,B,C] 로 반환. 분절 실패 시 None. (두 낱말 답 'displaced from' 대응)"""
+    text = _re.sub(r'\s+', ' ', body).strip()
+
+    def match_at(s, candidates):
+        for cand in sorted(candidates, key=len, reverse=True):
+            if s == cand:
+                return cand, ''
+            if s.startswith(cand + ' '):
+                return cand, s[len(cand):].strip()
+        return None, None
+
+    a, rest = match_at(text, opts['A'])
+    if a is None:
+        return None
+    b, rest2 = match_at(rest, opts['B'])
+    if b is None:
+        return None
+    c = rest2.strip()
+    if opts['C'] and c not in opts['C']:
+        return None
+    return [a, b, c]
+
+
+def _normalize_three_blank(choice, opts):
+    """세 칸((A)(B)(C)) 보기의 칸 사이 구분을 ' ----- ' 로 통일.
+
+      - 이미 구분자(…… / 점 / 대시 / 2칸+공백)가 있으면 그걸로 3분할
+      - 구분자가 없고 공백만이면 본문 후보(opts)로 분절
+    3분할 실패 시 원본 유지.
+    """
+    MARKERS = '①②③④⑤⑥⑦⑧⑨⑩'
+    body = choice.strip()
+    marker = ''
+    if body and body[0] in MARKERS:
+        marker = body[0]
+        body = body[1:].strip()
+
+    sep = r'\s*(?:……|⋯|\.{2,}|…)\s*|\s+[\-‐-―−]+\s+|\s{2,}'
+    parts = [p.strip() for p in _re.split(sep, body) if p.strip()]
+    if len(parts) != 3:
+        seg = _segment_three_blank(body, opts) if opts else None
+        if not seg:
+            return choice
+        parts = seg
+    res = _TWO_BLANK_SEP.join(parts)
+    return f"{marker} {res}" if marker else res
+
+
 def _build_modified_question(r, total_number):
     """변형문제 한 행 → 빌더 dict. 데이터 오류/번호 깨짐이면 None(제외).
 
@@ -643,6 +723,10 @@ def _build_modified_question(r, total_number):
     # 본문에 placeholder/잡토큰(vitamin_D, make_up …)이나 괄호 통문장 → 품질 불량 제외.
     if _has_placeholder_garbage(sentence) or _has_parenthesized_sentence(sentence):
         return None
+    # 세 칸((A)[x/y](B)[..](C)[..]) 선택형(어법/어휘)이면 보기 칸 사이를 ' ----- ' 로 구분.
+    _abc = _extract_abc_options(sentence)
+    if _abc and choices:
+        choices = [_normalize_three_blank(c, _abc) for c in choices]
     if _has_cjk_error(choices):
         return None
     return {
@@ -671,5 +755,6 @@ __all__ = [
     "_has_placeholder_garbage", "_has_parenthesized_sentence",
     "_standardize_connector_blanks", "_is_broken_connector",
     "_normalize_order_choice_sep", "_fix_irrelevant_marker_junk",
-    "_strip_type_label_garbage",
+    "_strip_type_label_garbage", "_extract_abc_options",
+    "_segment_three_blank", "_normalize_three_blank",
 ]
