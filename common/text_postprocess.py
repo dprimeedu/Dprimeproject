@@ -304,6 +304,238 @@ def _is_two_blank(qtype, sentence, prompt):
     return has_a and has_b
 
 
+# ---------------------------------------------------------------------------
+# 4) 품질 불량 검출 · 마커/간격 정리 (2026-06-28 일괄 추가)
+#    AI 생성 변형문제의 정형 불량을 인쇄 직전에 자동 교정/제외한다.
+# ---------------------------------------------------------------------------
+_STD_CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩'
+
+# 다른 양식의 번호 글리프(➀ ❶ ⑴ ⒈ 등) → 표준 동그라미 번호 매핑.
+_ALT_NUM_TABLE = {}
+for _variants in (
+    '➀➁➂➃➄➅➆➇➈➉',   # dingbat circled
+    '➊➋➌➍➎➏➐➑➒➓',   # dingbat negative circled
+    '❶❷❸❹❺❻❼❽❾❿',   # negative circled
+    '⓵⓶⓷⓸⓹⓺⓻⓼⓽⓾',  # double circled
+    '⑴⑵⑶⑷⑸⑹⑺⑻⑼⑽',   # parenthesized number
+    '⒈⒉⒊⒋⒌⒍⒎⒏⒐⒑',   # number + full stop
+):
+    for _i, _ch in enumerate(_variants):
+        _ALT_NUM_TABLE[ord(_ch)] = _STD_CIRCLED[_i]
+
+
+def _normalize_alt_number_glyphs(text):
+    """번호가 다른 양식(➀ ❶ ⑴ ⒈ …)으로 된 마커를 표준 ①②③ 으로 통일."""
+    if not text:
+        return text
+    return text.translate(_ALT_NUM_TABLE)
+
+
+def _is_corrupted_AE_option(option_str):
+    """문장넣기 보기가 '① (A) ② (B) ③ (C) ④ (D) ⑤ (E)' 형태인지 판정.
+
+    이 보기 형태는 본문 삽입 마커가 ①~⑤ 가 아니라 (A)~(E)(또는 깨진 placeholder
+    'vitamin_D','einsteinium' 등)로 들어간 불량 데이터의 표식이다.
+    """
+    if not option_str:
+        return False
+    return bool(_re.search(
+        r'①\s*\(?\s*A\s*\)?.*②\s*\(?\s*B\s*\)?.*③\s*\(?\s*C\s*\)?'
+        r'.*④\s*\(?\s*D\s*\)?.*⑤\s*\(?\s*E\s*\)?', str(option_str), _re.S))
+
+
+def _marker_like_token(t):
+    """문장넣기 (A)~(E) 삽입 마커(또는 깨진 placeholder) 후보 토큰인가."""
+    if _re.fullmatch(r'[A-Za-z]', t):              # 단일 글자 A~E / e
+        return True
+    if '_' in t:                                    # vitamin_D, atomic_number_99
+        return True
+    if _re.fullmatch(r'[A-Z]{2,}', t):             # UCLA 등 약어 → 마커 아님
+        return False
+    return bool(_re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', t))  # calciferol, Es …
+
+
+def _renumber_insertion_markers(text):
+    """문장넣기: 본문의 (A)~(E)·깨진 placeholder 삽입 마커를 ( ① )~( ⑤ ) 로 치환.
+
+    괄호로 둘러싼 '단일 토큰'만 마커 후보(_marker_like_token)로 보고 등장 순서대로
+    번호를 매긴다. (D)/(E) 가 'calciferol'·'einsteinium'·'vitamin_D' 같은 원소/
+    비타민명으로 깨진 케이스까지 위치 기준으로 정상 번호로 복구된다.
+    """
+    if not text:
+        return text
+    pat = _re.compile(r'[ \t]*[(（]\s*([A-Za-z][A-Za-z0-9_]*)\s*[)）][ \t]*')
+    out, last, n = [], 0, 0
+    for m in pat.finditer(text):
+        if not _marker_like_token(m.group(1)):
+            continue
+        out.append(text[last:m.start()])
+        out.append(' ( %s ) ' % (_STD_CIRCLED[n] if n < len(_STD_CIRCLED) else '?'))
+        n += 1
+        last = m.end()
+    if n == 0:
+        return text
+    out.append(text[last:])
+    res = ''.join(out)
+    res = _re.sub(r'[ \t]{2,}', ' ', res)
+    res = _re.sub(r'[ \t]+\n', '\n', res)
+    res = _re.sub(r'\n[ \t]+', '\n', res)
+    return res
+
+
+def _normalize_insertion_intro(text):
+    """문장넣기 제시문(첫 단락)과 본문 사이를 '줄바꿈 + 빈 줄 1개' 로 통일."""
+    if not text:
+        return text
+    m = _re.match(r'(.+?)[ \t]*\n[ \t\n]*(.+)$', text, _re.S)
+    if m:
+        return m.group(1).strip() + '\n\n' + m.group(2).strip()
+    return text.strip()
+
+
+def _strip_bracket_garbage(text):
+    """대괄호 잡줄/꼬리 제거(어법·어휘 제외 호출).
+
+      - '[' 로 시작하는 줄(통째 [..] 인용 줄) 삭제
+      - 마지막 종결부호(.!?…) 뒤 꼬리에 '[' 또는 ']' 가 있으면 그 꼬리만 제거
+        (예: ... share their views. Robinson: ... Relationships"] → '...views.' 까지)
+
+    NOTE: 어법·어휘는 본문에 '[A / B]' 선택지 대괄호를 정상적으로 쓰므로 이 함수를
+    호출하면 안 된다(_build_modified_question 에서 유형으로 가드).
+    """
+    if not text:
+        return text
+    lines = [ln for ln in text.split('\n') if not ln.lstrip().startswith('[')]
+    text = '\n'.join(lines)
+    terms = list(_re.finditer(r'[.!?…][”’"\')]*', text))
+    if terms:
+        end = terms[-1].end()
+        tail = text[end:]
+        if '[' in tail or ']' in tail:
+            text = text[:end]
+    return text
+
+
+def _strip_trailing_blank(text):
+    """맨 끝의 쓸데없는 줄바꿈/빈 줄/공백 제거(박스 끝 빈 줄 방지)."""
+    if not text:
+        return text
+    return text.rstrip()
+
+
+def _is_incomplete_ending(text):
+    """마지막 문장이 '맨 소문자 낱말'로 끊겨 있으면(잘림) True → 문제 제외.
+
+    정상 종결('… .'/'…?'/'…!'/'… ."'), 빈칸 끝('… (B)'/'____(B)____'), 서명
+    ('Best regards, John Austin'·대문자 이름), 각주('*ionosphere : 전리층'),
+    한글 끝 등은 모두 '맨 소문자 알파벳 낱말'이 아니므로 건드리지 않는다.
+    오직 'It doesn't' / 'expand beyond its' 처럼 소문자 낱말로 뚝 끊긴 진짜 잘림만 잡는다.
+    """
+    if not text:
+        return False
+    # 각주(* / ※)·빈 줄을 건너뛰고 마지막 '내용 줄'을 찾는다.
+    last = None
+    for ln in reversed(text.split('\n')):
+        s = ln.strip()
+        if not s or s.startswith('*') or s.startswith('※'):
+            continue
+        last = s
+        break
+    if not last:
+        return False
+    # 같은 줄 끝에 붙은 각주 정의(' … .   *ionosphere : 전리층') 제거.
+    #   - 각주 정의는 탭/2칸+공백으로 본문과 떨어져 있다.
+    #   - 본문 중 단일 공백 각주 표시('a little *congestion')는 건드리지 않는다.
+    last = _re.sub(r'(?:\s{2,}|\t)\s*[*※].*$', '', last).rstrip()
+    # 끝에 매달린 빈 삽입 마커 '( ⑤ )' 제거(삽입점이 문장 끝일 수 있음).
+    last = _re.sub(r'[ \t]*[(（]?\s*[' + _STD_CIRCLED + r']\s*[)）]?\s*$', '', last).rstrip()
+    if not last:
+        return False
+    m = _re.search(r'([A-Za-z][A-Za-z\'’]*)$', last)   # 문장이 '맨 알파벳 낱말'로 끝?
+    return bool(m and m.group(1)[0].islower())
+
+
+_EMAIL_URL_RE = _re.compile(r'@|www\.|https?://|\.com|\.org|\.edu|\.net|\.gov', _re.I)
+
+
+def _has_placeholder_garbage(text):
+    """본문에 'vitamin_D','atomic_number_99','make_up','Hoosier_State' 같은
+    placeholder/잡토큰(밑줄결합 식별자)이 있으면 True → 품질 불량으로 제외.
+
+    이메일/URL(s_christen@gwu.edu, www.k_culture.org 등) 안의 밑줄은 정상이므로 제외.
+    """
+    if not text:
+        return False
+    for m in _re.finditer(r'[A-Za-z]+(?:_[A-Za-z0-9]+)+', text):
+        window = text[max(0, m.start() - 25): m.end() + 5]
+        if _EMAIL_URL_RE.search(window):
+            continue
+        return True
+    return False
+
+
+def _has_parenthesized_sentence(text):
+    """'( "Explore your hypothesis and assess its validity." )' 처럼 따옴표 인용문이나
+    완결 문장이 통째로 괄호에 감싸진 잡조각이 있으면 True → 품질 불량으로 제외.
+
+    삽입 마커 '( ① )'·문단 라벨 '(A)' 와는 구분된다(여러 낱말 + 따옴표/종결부호).
+    """
+    if not text:
+        return False
+    # 괄호 안이 '대문자로 시작해 종결부호로 끝나는 인용 완결 문장' 하나로만 채워진 경우만
+    # 불량으로 본다. 예) ( "Explore your hypothesis and assess its validity." )
+    # 정상 인용 곁다리 '(called "shadowing")', '(for example, "now only $20")',
+    # '("larks")', 종결부호 없는 인용 속담 '(“Birds of a feather flock together”)' 은 제외.
+    return bool(_re.search(
+        r'[(（]\s*[“"][A-Z][^”"]*[.?!][”"]\s*[)）]', text))
+
+
+_CIRCLED_LOWER = {'ⓐ': 'A', 'ⓑ': 'B', 'ⓒ': 'C', 'ⓓ': 'D', 'ⓔ': 'E'}
+
+
+def _standardize_connector_blanks(text):
+    """연결어/연결사 본문 빈칸을 '____(A)____ / ____(B)____' 로 표준화.
+
+      - 'ⓐ ________' / 'ⓑ ________'  → '____(A)____' / '____(B)____'
+      - '(A) ________' / '(A)____' / '___(A)___'  → '____(A)____'
+      - 라벨 없는 '________' 빈칸이 2개뿐이면 등장 순서대로 (A),(B) 부여
+    마지막에 지문~보기 사이에 남은 잔여 ⓐ ⓑ 마커를 제거한다.
+    """
+    if not text:
+        return text
+    # ⓐ/ⓑ + 밑줄 → (A)/(B) 라벨 빈칸
+    text = _re.sub(r'([ⓐⓑⓒⓓⓔ])\s*_{2,}',
+                   lambda m: '____(%s)____' % _CIRCLED_LOWER[m.group(1)], text)
+    # (A) 라벨의 모든 변형(앞뒤·한쪽 밑줄, 괄호 안 공백)을 한 번에 정규형으로.
+    #   양옆 밑줄을 통째로 흡수하므로 멱등(idempotent) — 두 번 돌려도 안 늘어난다.
+    text = _re.sub(r'_*\s*[(（]\s*([ABCDE])\s*[)）]\s*_*', r'____(\1)____', text)
+    # 라벨 없는 긴 밑줄 빈칸이 정확히 2개면 (A),(B) 로 라벨링
+    if not _re.search(r'\([ABCDE]\)', text):
+        blanks = list(_re.finditer(r'_{4,}', text))
+        if len(blanks) == 2:
+            for lab, m in zip(('B', 'A'), reversed(blanks)):  # 뒤에서부터 치환(인덱스 보존)
+                text = text[:m.start()] + '____(%s)____' % lab + text[m.end():]
+    # 본문 끝에 남은 '(A) (B)' 헤더(보기 열 제목이 지문에 딸려온 잔재) 제거.
+    #   예: '… make the music instead.____(A)____ ____(B)____' → '… instead.'
+    text = _re.sub(r'\s*(?:____\([ABCDE]\)____\s*){1,3}$', '', text).rstrip()
+    # 잔여 ⓐ ⓑ 마커 제거(지문~보기 사이 군더더기) + 군더더기 공백 정리
+    text = _re.sub(r'\s*[ⓐⓑⓒⓓⓔ]\s*', ' ', text)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    return text
+
+
+def _is_broken_connector(text):
+    """연결어/연결사인데 (A)/(B) 빈칸이 '문장 사이 삽입'처럼 쓰인 불량 구조면 True.
+
+    정상: '… ____(A)____, you are likely …'(문장 안, 뒤가 소문자/쉼표)
+    불량: '… areas. ____(A)____ Various viewpoints …'(앞이 마침표, 뒤가 대문자 → 독립
+          문장을 가르는 삽입 마커처럼 사용). 이런 구조는 연결어로 복구 불가 → 제외.
+    """
+    if not text:
+        return False
+    return bool(_re.search(r'(?:^|[.!?][”’"\')]*\s+)_*\([AB]\)_*\s+[A-Z]', text))
+
+
 def _build_modified_question(r, total_number):
     """변형문제 한 행 → 빌더 dict. 데이터 오류/번호 깨짐이면 None(제외).
 
@@ -329,15 +561,41 @@ def _build_modified_question(r, total_number):
         # (어법·어휘는 위에서 번호 매김으로 따로 처리.)
         if not any(k in qtype for k in _UNDERLINE_KEEP_KEYS):
             sentence = sentence.replace('￰', '')
+        # 다른 양식 번호 글리프(➀ ❶ ⑴ ⒈ …) → 표준 ①②③ 으로 통일.
+        sentence = _normalize_alt_number_glyphs(sentence)
         if '문장넣기' in qtype:
-            # 삽입 위치 마커를 '( ① )' 로 통일(맨 마커·괄호 마커 혼용 정리).
-            sentence = _parenthesize_insertion_markers(sentence)
+            # 보기가 '① (A) … ⑤ (E)' 거나 본문에 (A) 마커가 있으면, 본문 삽입
+            # 마커(깨진 placeholder 포함)를 ( ① )~( ⑤ ) 로 복구하고 보기는 버린다.
+            if _is_corrupted_AE_option(r.get('option', '')) or '(A)' in sentence:
+                sentence = _renumber_insertion_markers(sentence)
+            else:
+                sentence = _parenthesize_insertion_markers(sentence)
+            sentence = _normalize_insertion_intro(sentence)   # 제시문↔본문 빈 줄 1개
+            choices = []                                      # 삽입 위치 = 보기 → 별도 보기 제거
         elif '순서' in qtype:
             # 제시문↔(A)=빈 줄 1개, (A)↔(B)↔(C)=줄바꿈만 으로 통일.
             sentence = _normalize_order_passage(sentence)
+        elif '연결' in qtype:
+            # 연결어/연결사 본문 빈칸을 ____(A)____ / ____(B)____ 로 표준화.
+            sentence = _standardize_connector_blanks(sentence)
         else:
             sentence = _normalize_passage_markers(sentence)
+
+    # ---- 전 유형 공통 품질 정리/검출 ----
+    # 어법·어휘는 본문 '[A / B]' 선택지 대괄호가 정상이므로 대괄호 정리에서 제외.
+    if not ('어법' in qtype or '어휘' in qtype):
+        sentence = _strip_bracket_garbage(sentence)           # 대괄호 잡줄/꼬리 제거
     sentence = _shorten_long_blanks(sentence)
+    sentence = _strip_trailing_blank(sentence)                # 끝 빈 줄 제거
+    # 연결어/연결사 빈칸이 문장 삽입처럼 쓰인 불량 구조 → 제외.
+    if '연결' in qtype and _is_broken_connector(sentence):
+        return None
+    # 마지막 문장이 종결부호 없이 잘렸으면(미완성/꼬리잡문) 제외.
+    if _is_incomplete_ending(sentence):
+        return None
+    # 본문에 placeholder/잡토큰(vitamin_D, make_up …)이나 괄호 통문장 → 품질 불량 제외.
+    if _has_placeholder_garbage(sentence) or _has_parenthesized_sentence(sentence):
+        return None
     if _has_cjk_error(choices):
         return None
     return {
@@ -346,6 +604,7 @@ def _build_modified_question(r, total_number):
         "passage": sentence,
         "choices": choices,
         "answer":  answer,
+        "qtype":   qtype,     # HWPX 빌더의 레이아웃 분기용(연결어/연결사 박스+보기 묶기 등)
     }
 
 
@@ -358,4 +617,10 @@ __all__ = [
     "_CIRCLED_NUMS", "_shorten_long_blanks", "_number_underline_segments",
     "_has_cjk_error", "_normalize_truefalse_prompt", "_TWO_BLANK_SEP",
     "_is_two_blank", "_build_modified_question",
+    # 2026-06-28 품질 정리/검출 일괄 추가
+    "_normalize_alt_number_glyphs", "_is_corrupted_AE_option",
+    "_renumber_insertion_markers", "_normalize_insertion_intro",
+    "_strip_bracket_garbage", "_strip_trailing_blank", "_is_incomplete_ending",
+    "_has_placeholder_garbage", "_has_parenthesized_sentence",
+    "_standardize_connector_blanks", "_is_broken_connector",
 ]

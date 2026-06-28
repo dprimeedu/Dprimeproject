@@ -199,7 +199,7 @@ class _ColumnTracker:
 # 문제 블록 생성
 # ---------------------------------------------------------------------------
 def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
-                         head_para=1):
+                         head_para=1, box_keep=13):
     """
     하나의 문제(dict)를 단락 XML 문자열로 변환.
     q = {
@@ -208,9 +208,11 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
        "answer":   2,                    # 미주 정답
        "passage":  "Dear Mr. Kelly ...", # 지문 (붉은 박스)
        "choices":  ["① ...","② ...",...] # 선택지
+       "qtype":    "[연결어]",            # 선택, 레이아웃 분기용
     }
     tracker     : _ColumnTracker
     endnote_no  : 이 문제의 미주 순번(1,2,3...)
+    box_keep    : 박스 keepWithNext 변형 paraPr id(연결어/연결사 박스+보기 묶기용)
     """
     # --- 단 넘김: 강제하지 않고 한/글 자연 흐름에 맡긴다 ---
     # HWP 다운로드 사용자는 '편집'이 목적(인쇄만이면 PDF)이라 자연스러운 편집이
@@ -219,6 +221,16 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
     # 대신 발문↔지문박스만 keepWithNext(head_para)로 묶어 '발문만 단 끝에 홀로
     # 남고 박스는 다음 단으로' 떨어지는 분리만 막는다. 선택지·문제사이는 자유.
     column_break = False
+
+    # 보기(①~⑤)가 '짧은' 유형(순서·연결어·연결사·요약문완성·일치 등)은 박스 바로
+    # 아래 붙어야 하므로 '발문~박스~보기' 전체를 keepWithNext 로 묶어 보기가 다음
+    # 쪽/단으로 쪼개지지 않게 한다. 보기가 '긴'(문장형) 유형(주제·요지·제목 등)은
+    # 묶지 않아 큰 블록 점프 없이 편집 자유를 유지한다(유형 무관, 보기 길이로 판단).
+    _chs = q.get("choices") or []
+    bind_choices = (box_keep != 13 and bool(_chs) and
+                    max((len(c) for c in _chs), default=0) <= 70)
+    box_pr = box_keep if bind_choices else 13
+    flow_pr = head_para if bind_choices else 1   # 박스 뒤 빈 줄·보기 묶기용
 
     parts = []
 
@@ -243,15 +255,21 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
         parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=head_para))
 
     # 2) 지문 단락(붉은 박스). paraPr 13(박스 시작)으로 감싼다.
+    #    연결어/연결사면 box_pr(=keepWithNext 변형)로 박스를 다음(보기)과 묶는다.
     if q.get("passage"):
         passage_runs = _run(q["passage"], 8)
-        parts.append(_para(passage_runs, para_pr=13))  # 사방 빨강 테두리
+        parts.append(_para(passage_runs, para_pr=box_pr))  # 사방 빨강 테두리
 
-    parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
+    # 박스 뒤 빈 줄 — 묶음 유형이면 flow_pr(keepWithNext)로 보기까지 연결.
+    parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=flow_pr))
     # 3) 선택지 단락들 — 각 선택지는 별도 단락(엑셀의 \r\n 줄바꿈을 보존).
+    #    묶음 유형이면 마지막 보기 직전까지 flow_pr(keepWithNext)로 한 묶음 유지.
     if q.get("choices"):
-        for ch in q["choices"]:
-            parts.append(_para(_run(ch, 8), para_pr=1))
+        chs = q["choices"]
+        for i, ch in enumerate(chs):
+            last = (i == len(chs) - 1)
+            parts.append(_para(_run(ch, 8),
+                               para_pr=(1 if (last or not bind_choices) else flow_pr)))
 
     # 4) 문제 사이 간격용 빈 단락(= Enter 한 번). 포맷을 깔끔하게.
     parts.append(_para('<hp:run charPrIDRef="8"></hp:run>', para_pr=1))
@@ -309,13 +327,21 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # 발문↔지문박스만 묶는 keepWithNext 단락(복제)을 추가하고 그 id 를 받는다.
     header_xml, HEAD_PARA = _inject_keepnext_para(header_xml)
 
+    # 박스(paraPr 13)의 keepWithNext 변형 — 연결어/연결사처럼 '박스↔보기'가 다음
+    # 쪽으로 쪼개지면 안 되는 짧은-보기 유형에서 박스+보기를 한 묶음으로 유지한다.
+    header_xml, BOX_KEEP = _inject_keepnext_clone(header_xml, 13)
+
     # 본문 문단(발문/선택지=paraPr1, 지문박스=paraPr13/14) 줄간격을 통일
     # → 한 단에 문제가 더 들어가 페이지가 덜 헐거워진다(추정 LINES_PER_COL 과 일치).
-    header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14, HEAD_PARA), LINE_SPACING_PCT)
+    header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14, HEAD_PARA, BOX_KEEP),
+                                   LINE_SPACING_PCT)
 
     # 박스(지문) 단락이 단/쪽 경계에서 중간에 잘리지 않게 keepLines=1.
     # (keepWithNext 는 주지 않는다 → 박스↔선택지는 자유롭게 흐름/편집 가능)
     header_xml = _set_para_keep(header_xml, 13, keep_lines=True)
+    # 박스 keepWithNext 변형: 잘림 방지(keepLines) + 다음(보기)과 묶기(keepWithNext)
+    header_xml = _set_para_keep(header_xml, BOX_KEEP,
+                                keep_lines=True, keep_with_next=True)
 
     # 발문(head_para): 다음(박스)과 함께(keepWithNext) + 발문 자신도 쪽 경계서
     # 줄이 쪼개지지 않게(keepLines) → '발문 첫줄만 단 끝, 둘째줄+박스는 다음 단'
@@ -351,7 +377,7 @@ def build_hwpx(template_path, output_path, header_text, questions,
     for q in questions:
         has_ans = "answer" in q and q["answer"] not in (None, "")
         blocks.append(build_question_block(q, tracker, endnote_no,
-                                           head_para=HEAD_PARA))
+                                           head_para=HEAD_PARA, box_keep=BOX_KEEP))
         if has_ans:
             endnote_no += 1
     blocks = "".join(blocks)
@@ -569,6 +595,35 @@ def _inject_keepnext_para(header_xml):
     ci = header_xml.find("</hh:paraProperties>")
     if ci == -1:
         return header_xml, 1
+    header_xml = header_xml[:ci] + block + header_xml[ci:]
+    mm = re.search(r'(<hh:paraProperties itemCnt=")(\d+)(")', header_xml)
+    if mm:
+        header_xml = (header_xml[:mm.start()] + mm.group(1) +
+                      str(int(mm.group(2)) + 1) + mm.group(3) + header_xml[mm.end():])
+    return header_xml, new_id
+
+
+def _inject_keepnext_clone(header_xml, src_id):
+    """임의의 paraPr(src_id)를 복제해 keepWithNext=1 인 새 paraPr 를 끝에 추가하고
+    그 id 를 반환한다. (예: 박스 paraPr 13 의 keepWithNext 변형 → 연결어/연결사에서
+    박스↔보기를 한 페이지에 묶는 용도.)
+
+    ★ paraPrIDRef 는 배열 '위치'로 해석되므로(한/글) id == 위치가 되도록
+      paraProperties 가 0..N 연속일 때만 끝에 N+1 로 추가한다. 아니면 포기(=src_id).
+    """
+    ids = sorted(int(x) for x in re.findall(r'<hh:paraPr id="(\d+)"', header_xml))
+    if not ids or ids != list(range(len(ids))):
+        return header_xml, src_id
+    new_id = len(ids)
+    m = re.search(r'<hh:paraPr id="%d".*?</hh:paraPr>' % src_id, header_xml, re.S)
+    if not m:
+        return header_xml, src_id
+    block = m.group(0).replace('id="%d"' % src_id, 'id="%d"' % new_id, 1)
+    if 'keepWithNext="' in block:
+        block = re.sub(r'keepWithNext="\d"', 'keepWithNext="1"', block, count=1)
+    ci = header_xml.find("</hh:paraProperties>")
+    if ci == -1:
+        return header_xml, src_id
     header_xml = header_xml[:ci] + block + header_xml[ci:]
     mm = re.search(r'(<hh:paraProperties itemCnt=")(\d+)(")', header_xml)
     if mm:
