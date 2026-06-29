@@ -125,7 +125,26 @@ def _normalize_order_passage(text):
         return text                      # 단락 라벨이 없으면 손대지 않음
     intro = parts[0].rstrip()
     blocks = [p.strip() for p in parts[1:]]
-    return intro + '\n\n' + '\n'.join(blocks)
+    # 제시문 ↔ (A) ↔ (B) ↔ (C) 를 모두 '빈 줄 1개(\n\n)' 로 분리한다.
+    # (A)(B)(C) 사이를 단일 \n 으로 두면 뒤의 _compact_paragraphs 가 공백으로
+    # 합쳐 한 줄에 뭉치므로(=줄넘김 없음 불량), 빈 줄로 분리해 보존되게 한다.
+    return _ensure_lead_period(intro) + '\n\n' + '\n\n'.join(blocks)
+
+
+def _ensure_lead_period(text):
+    """제시문(첫 단락)이 종결부호 없이 단어로 끝나면 마침표를 붙인다.
+
+    순서·문장넣기 제시문이 마침표 없이 끝나는 불량(고1 6월 #1, 고1 9월 #3·4) 보정.
+    이미 '. ? ! …'(닫는 따옴표/괄호 동반 포함)로 끝나거나, 콜론/쉼표/대시 등으로
+    끝나면 의도된 것으로 보고 손대지 않는다 — 영문자/숫자로 끝날 때만 '.' 추가.
+    """
+    if not text:
+        return text
+    head, sep, rest = text.partition('\n\n')
+    h = head.rstrip()
+    if not _re.search(r'[.?!…]["”’\')\]]*$', h) and _re.search(r'[A-Za-z0-9]$', h):
+        h = h + '.'
+    return h + sep + rest
 
 
 _TWO_BLANK_TYPES = {'[요약문완성]', '[연결어]', '[연결사]'}
@@ -213,7 +232,13 @@ def _split_inline_long_choices(parts, threshold=30):
                 seg = p[start:end].strip()
                 if seg:
                     segs.append(seg)
-            if segs and max(len(s) for s in segs) > threshold:
+            # 순서 보기('① (A)-(C)-(B)' 처럼 한 보기에 (X) 라벨 2개 이상)는 의도적으로
+            # 한 줄에 묶은 것이므로 보존한다(구분자가 ─／－ 등 어떤 대시든 무관). 그 외
+            # (빈칸 단어·연결어 두빈칸 등)는 짧아도 마커마다 줄을 나눈다 — '① dismissed
+            # ② revived …' 한 줄 뭉침 보정 (고1 9월 #12, 고2 9월 #8).
+            order_like = bool(segs) and all(
+                len(_re.findall(r'\([A-E]\)', s)) >= 2 for s in segs)
+            if segs and (not order_like or max(len(s) for s in segs) > threshold):
                 out.extend(segs)
                 continue
         out.append(p)
@@ -479,6 +504,31 @@ def _renumber_insertion_markers(text):
     return res
 
 
+_STD_INSERTION_PROMPT = '글의 흐름으로 보아, 주어진 문장이 들어가기에 가장 적절한 곳은?'
+
+
+def _fix_insertion_prompt(prompt):
+    """문장넣기 발문이 본문 삽입표기(①~⑤)와 안 맞는 '(A)~(E) 중…' 형태면 표준 발문으로.
+
+    본문은 항상 ( ① )~( ⑤ ) 로 정규화되므로, 발문이 글자 라벨 (A)·(E) 를 함께
+    언급하면 표준 문장넣기 발문으로 교체한다. (A)~(E) 가 없는 정상 발문은 보존.
+    """
+    if not prompt:
+        return _STD_INSERTION_PROMPT
+    if _re.search(r'\(\s*A\s*\)', prompt) and _re.search(r'\(\s*E\s*\)', prompt):
+        return _STD_INSERTION_PROMPT
+    return prompt
+
+
+def _strip_score_marker(text):
+    """본문에 잘못 끼어든 배점 마커 '[3점]'/'[ 2 점 ]' 를 제거(공백/줄 정리 포함)."""
+    if not text:
+        return text
+    text = _re.sub(r'\s*\[\s*\d+\s*점\s*\]\s*', ' ', text)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    return text.strip()
+
+
 def _normalize_insertion_intro(text):
     """문장넣기 제시문(첫 줄)과 본문 사이를 '빈 줄 1개(=\\n\\n)' 로 통일.
 
@@ -544,12 +594,18 @@ def _strip_summary_arrows(text):
     """
     if not text:
         return text
-    text = _re.sub(r'[←-⇿⟰-⟿⬅-⬇⮕▼▽⬇]+', '', text)
+    # 화살표는 본문↔요약문(또는 본문↔빈칸요약)의 단락 구분자다. 빈 문자열로 지우면
+    # 두 단락이 한 덩어리로 붙어버리므로(요약 문단 미구분 불량, 고1 9월 #11/고2 9월 #6),
+    # 화살표(양옆 공백·줄바꿈 포함)를 '빈 줄 1개(\n\n)' 로 치환해 단락 경계를 보존한다.
+    # 화살표 글리프: 일반 유니코드 화살표(U+2190~21FF 등) + 윙딩/심볼 폰트의
+    # 사용자영역(PUA) 화살표(예 U+F0EA 아래화살표). 요약/연결 본문에서만 호출되므로
+    # PUA 심볼을 단락 구분자로 보고 통째 치환해도 안전하다.
+    text = _re.sub(r'[ \t\n]*[←-⇿⟰-⟿⬅-⬇⮕▼▽⬇-]+[ \t\n]*', '\n\n', text)
     text = _re.sub(r'[ \t]{2,}', ' ', text)
     text = _re.sub(r'^[ \t]+', '', text, flags=_re.M)   # 줄 앞 공백 정리
     text = _re.sub(r'[ \t]+$', '', text, flags=_re.M)   # 줄 끝 공백 정리
     text = _re.sub(r'\n{3,}', '\n\n', text)
-    return text
+    return text.strip()
 
 
 def _compact_paragraphs(text):
@@ -561,10 +617,21 @@ def _compact_paragraphs(text):
     if not text:
         return text
     SENT = '\x01PARA\x01'
+    KEEP = '\x01LINE\x01'
     text = _re.sub(r'\n[ \t]*\n+', SENT, text)
+    # 단일 \n 을 줄바꿈으로 보존하는 줄머리:
+    #   1) 대화문 화자 턴('Bimil:'·'Note:' 등 줄 첫머리 'Name:')
+    #      — 안 그러면 턴이 한 줄로 뭉친다(대화문 줄넘김 불량, 고1 9월 #10/고2 9월 #5).
+    #   2) 실용문/안내문 항목 머리 글머리표(□ ■ ● • ▶ 등)
+    #      — '□ Categories … □ Date …' 가 한 줄로 뭉치는 불량(고1 9월 #8) 방지.
+    #      ※ 는 각주/주석 마커로도 쓰여(‘※ No reservations…’) 줄 보존 시
+    #      _is_incomplete_ending 이 그 줄을 각주로 건너뛰어 직전 줄을 오판하므로 제외.
+    text = _re.sub(
+        r'\n(?=[ \t]*(?:[A-Z][A-Za-z]*\s*:|[□■◻◼▢▣▦●○◦•‣▷▶◆◇]))',
+        KEEP, text)
     text = text.replace('\n', ' ')
     text = _re.sub(r'[ \t]{2,}', ' ', text)
-    text = text.replace(SENT, '\n\n')
+    text = text.replace(SENT, '\n\n').replace(KEEP, '\n')
     return text.strip()
 
 
@@ -727,7 +794,8 @@ def _normalize_order_choice_sep(choice):
     """
     if not choice:
         return choice
-    return _re.sub(r'([)）])\s*[-‐-―−~]\s*([(（])', r'\1-\2', choice)
+    # 대시류(하이픈·각종 대시·물결·박스라인 ─·전각 －)를 양옆 공백까지 흡수해 '-' 로.
+    return _re.sub(r'([)）])\s*[-‐-―−~─━﹘﹣－]\s*([(（])', r'\1-\2', choice)
 
 
 def _is_broken_connector(text):
@@ -820,13 +888,47 @@ _CIRC15 = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮'
 
 
 def _strip_leading_stars(text):
-    """지문 맨 앞 별표시 장식('[★★★]','★★★','***','[*]')을 제거 (사진13).
+    """지문 맨 앞 장식/잡태그('[★★★]','★★★','***','[*]','( 변형 )')을 제거 (사진13,
+    고2 9월 #4). 여러 개가 연달아 붙어도(예 '( 변형 ) [★★★]') 모두 제거한다.
 
     각주 '* hatchling: 갓 부화한 동물'(별표 1개 + 공백 + 단어)는 건드리지 않는다.
     """
     if not text:
         return text
-    return _re.sub(r'^\s*(?:\[[\s★☆✦✧❋*]*\]|[★☆✦✧❋]+|\*{2,})\s*', '', text)
+    prev = None
+    while prev != text:
+        prev = text
+        text = _re.sub(r'^\s*\[[\s★☆✦✧❋*]*\]\s*', '', text)        # [★★★] / [*]
+        text = _re.sub(r'^\s*[★☆✦✧❋]+\s*', '', text)               # ★★★
+        text = _re.sub(r'^\s*\*{2,}\s*', '', text)                  # ***
+        text = _re.sub(r'^\s*[(（]\s*변형\s*[)）]\s*', '', text)      # ( 변형 )
+    return text
+
+
+def _pad_blank_labels(text):
+    """빈칸 라벨 '____(A)____' 가 단어/문장부호에 바로 붙어있으면 한 칸 띄운다.
+
+    'machines.____(A)____' → 'machines. ____(A)____'(앞),
+    '____(A)____Individuals' → '____(A)____ Individuals'(뒤, 영문자일 때만).
+    뒤가 쉼표/마침표면(','·'.') 붙여 둔다(고1 9월 #7, 고2 9월 #6).
+    """
+    if not text:
+        return text
+    text = _re.sub(r'(?<=[.,;:!?A-Za-z0-9])(?=____\([A-E]\)____)', ' ', text)
+    text = _re.sub(r'(____\([A-E]\)____)(?=[A-Za-z])', r'\1 ', text)
+    return text
+
+
+def _strip_trailing_label_header(text):
+    """본문 끝에 잔재한 '맨' 라벨 헤더 '(A) (B) (C)'(2개 이상)를 제거.
+
+    어휘 세칸((A)[x/y](B)[..](C)[..]) 등에서 보기 열 제목이 본문 끝에 딸려온
+    '… propulsion]. (A) (B) (C)'(고1 6월 #5) 보정. 대괄호가 붙은 정상 라벨
+    '(C)[propulsion]' 은 바로 뒤가 '[' 라 맨 라벨 런에 안 잡혀 보존된다.
+    """
+    if not text:
+        return text
+    return _re.sub(r'\s*(?:_*\(\s*[A-E]\s*\)_*\s*){2,}$', '', text.rstrip()).rstrip()
 
 
 def _dedupe_inline_markers(text):
@@ -934,7 +1036,11 @@ def _build_modified_question(r, total_number):
             else:
                 sentence = _parenthesize_insertion_markers(sentence)
             sentence = _normalize_insertion_intro(sentence)   # 제시문↔본문 빈 줄 1개
+            sentence = _ensure_lead_period(sentence)          # 제시문 마침표 보강(고1 9월 #3·4)
             sentence = _strip_trailing_marker_row(sentence)   # 끝 '( ① )…( ⑤ )' 중복행 제거(사진6)
+            # 발문이 '(A)~(E) 중…' 인데 본문은 ①~⑤ 삽입표기 → 발문/본문 불일치 보정
+            #   (고1 6월 #3, 고2 9월 #2). 본문은 항상 ①~⑤ 로 정규화되므로 표준 발문으로.
+            prompt = _fix_insertion_prompt(prompt)
             choices = []                                      # 삽입 위치 = 보기 → 별도 보기 제거
         elif '순서' in qtype:
             # 제시문↔(A)=빈 줄 1개, (A)↔(B)↔(C)=줄바꿈만 으로 통일.
@@ -967,6 +1073,10 @@ def _build_modified_question(r, total_number):
     sentence = _strip_stray_dots(sentence)
     # 유형 라벨 잡줄('[ 주제 / 제목 / 요지 ]' 등)은 전 유형에서 제거(어휘/어법 포함).
     sentence = _strip_type_label_garbage(sentence)
+    # 본문에 잘못 끼어든 배점 마커 '[3점]'/'[2점]' 제거(발문 배점은 보존).
+    #   본문 끝 '… conquerors. [3점]' 처럼 ']' 로 끝나면 _strip_bracket_garbage 가
+    #   그 줄(=본문 전체)을 통째로 삭제해 지문이 사라지는 불량(고1 6월 #4) 방지.
+    sentence = _strip_score_marker(sentence)
     # 어법·어휘는 본문 '[A / B]' 선택지 대괄호가 정상이므로 일반 대괄호 정리에선 제외.
     if not ('어법' in qtype or '어휘' in qtype):
         sentence = _strip_bracket_garbage(sentence)           # 대괄호 잡줄/꼬리 제거
@@ -1002,6 +1112,12 @@ def _build_modified_question(r, total_number):
         choices = [_normalize_three_blank(c, _abc) for c in choices]
     if _has_cjk_error(choices):
         return None
+    # 표시용 정리(품질 게이트 통과 후) — 제외 여부 판정은 위에서 끝났으므로 영향 없음.
+    #   1) 본문 끝에 딸려온 맨 라벨 헤더 '(A) (B) (C)' 제거(고1 6월 #5). 게이트 뒤에서
+    #      해야 _is_incomplete_ending 이 헤더 직전 요약구절을 미완성으로 오판하지 않음.
+    #   2) 빈칸 라벨 '____(A)____' 이 단어/문장부호에 붙으면 한 칸 띄움(고1 9월 #7/고2 9월 #6).
+    sentence = _strip_trailing_label_header(sentence)
+    sentence = _pad_blank_labels(sentence)
     return {
         "date":    f"[{total_number}]" if total_number else "",
         "prompt":  prompt,
@@ -1038,4 +1154,7 @@ __all__ = [
     "_strip_leading_stars", "_dedupe_inline_markers", "_collapse_space_before_marker",
     "_strip_stray_dots", "_strip_trailing_marker_row", "_strip_trailing_dashes",
     "_drop_orphan_marker_choices", "_strip_interior_choice_markers",
+    # 2026-06-29 추가 — 모고수정작업(고1 6월·9월/고2 9월) 결함 대응
+    "_ensure_lead_period", "_fix_insertion_prompt", "_strip_score_marker",
+    "_pad_blank_labels", "_strip_trailing_label_header",
 ]
