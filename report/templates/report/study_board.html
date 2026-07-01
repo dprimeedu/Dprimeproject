@@ -12,6 +12,16 @@
         70%{ box-shadow:0 0 0 8px rgba(22,163,74,0); }
         100%{ box-shadow:0 0 0 0 rgba(22,163,74,0); }
     }
+    /* 모의고사 셀 — 긴 제목이 잘리거나 옆 열(보기 버튼)로 넘치는 것 방지 */
+    .exam-cell-wrap{ max-width:240px; margin:0 auto; }
+    .exam-cell-row{ display:flex; gap:.25rem; align-items:stretch; min-width:0; }
+    .exam-cell-badge{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column;
+                       align-items:flex-start; text-align:left; }
+    .exam-cell-badge .exam-title,
+    .exam-cell-badge .exam-status{ display:block; width:100%;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .exam-cell-badge .exam-status{ font-size:.72rem; margin-top:2px; }
+    .exam-cell-row .btn{ flex:0 0 auto; align-self:stretch; }
 </style>
 <div class="home-wrap">
     <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -153,14 +163,15 @@
                                 {% endfor %}
                                 </div>
                             {% elif key == 'exam' and row.cells.exam.did %}
-                                <div class="d-flex flex-column gap-1" style="max-width:200px;margin:0 auto;">
+                                <div class="exam-cell-wrap d-flex flex-column gap-1">
                                 {% for s in row.cells.exam.detail %}
-                                    <div class="d-flex gap-1 align-items-stretch">
+                                    <div class="exam-cell-row">
                                     <a href="{% url 'exam:result' s.sid %}"
-                                       class="badge text-decoration-none text-start border flex-grow-1
+                                       class="badge text-decoration-none border exam-cell-badge
                                        {% if s.cls == 'release' %}bg-warning text-dark{% elif s.cls == 'wait_student' %}bg-light text-muted{% elif s.cls == 'finalize' %}bg-primary text-white{% elif s.cls == 'pending' %}bg-warning-subtle text-warning-emphasis{% elif s.cls == 'r2' %}bg-success-subtle text-success-emphasis{% elif s.cls == 'graded' %}bg-info-subtle text-info-emphasis{% else %}bg-light text-muted{% endif %}"
                                        title="{{ s.title }} — 클릭하면 채점/결과 페이지로 이동">
-                                        <span class="opacity-75">{{ s.title|truncatechars:18 }}</span> · {{ s.status }}
+                                        <span class="exam-title">{{ s.title }}</span>
+                                        <span class="exam-status opacity-75">{{ s.status }}</span>
                                     </a>
                                     {% if s.can_release %}
                                     <button type="button" class="btn btn-sm btn-warning text-dark py-0 px-2"
@@ -179,9 +190,10 @@
                                 {% endfor %}
                                 {% for a in row.cells.exam.assigned_only %}
                                 <a href="{% url 'exam:start_paper' a.paper_id %}"
-                                   class="badge text-decoration-none text-start border bg-secondary-subtle text-secondary-emphasis"
+                                   class="badge text-decoration-none border bg-secondary-subtle text-secondary-emphasis exam-cell-badge"
                                    title="{{ a.title }} — 배정만 됨 (학생 미응시)">
-                                    <i class="fas fa-circle-dot me-1"></i><span class="opacity-75">{{ a.title|truncatechars:16 }}</span> · 미응시
+                                    <span class="exam-title"><i class="fas fa-circle-dot me-1"></i>{{ a.title }}</span>
+                                    <span class="exam-status opacity-75">미응시</span>
                                 </a>
                                 {% endfor %}
                                 </div>
