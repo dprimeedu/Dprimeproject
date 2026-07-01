@@ -400,12 +400,18 @@ def board(date):
     단, 시험은 '선생님 처리 대기'(모의/유형 빨파 미공개 · 내신 미확인)는 날짜 무관 표시.
     """
     from django.db.models import Q
-    v = _bucket(VocabSession.objects.filter(started_at__date=date).select_related('unit', 'range_test'))
-    su = _bucket(SummarySession.objects.filter(started_at__date=date)
+    # 소프트-hide 반영: 관리자가 unit.is_active=False / session.closed=True / teacher_final_confirmed=True
+    # 로 처리한 항목은 오늘 세션이라도 현황판 셀에서 제외.
+    v = _bucket(VocabSession.objects.filter(started_at__date=date, unit__is_active=True)
+                .select_related('unit', 'range_test'))
+    su = _bucket(SummarySession.objects.filter(started_at__date=date, unit__is_active=True)
                  .select_related('unit').annotate(_ans=Count('blank_answers')))
-    w = _bucket(WritingSession.objects.filter(started_at__date=date).select_related('unit'))
-    e = _bucket(ExamSession.objects.filter(started_at__date=date).select_related('paper'))
-    g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
+    w = _bucket(WritingSession.objects.filter(started_at__date=date, unit__is_active=True)
+                .select_related('unit'))
+    e = _bucket(ExamSession.objects.filter(started_at__date=date, teacher_final_confirmed=False)
+                .select_related('paper'))
+    g = _bucket(GrammarSession.objects.filter(started_at__date=date, unit__is_active=True, closed=False)
+                .select_related('unit'))
 
     # 시험 — 날짜 무관 시험란 노출. 모의/유형은 '선생님 최종확인 전' 모두(공개대기/빨파채점대기/
     # 최종확인 대기 단계), 내신은 한 세트 부분입력 패턴이라 채점완료 세션을 표시하되
