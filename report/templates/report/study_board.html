@@ -12,8 +12,16 @@
         70%{ box-shadow:0 0 0 8px rgba(22,163,74,0); }
         100%{ box-shadow:0 0 0 0 rgba(22,163,74,0); }
     }
+    /* 표 전체 폭 압축 — 한 화면에 학생부터 상세까지 들어오도록 */
+    .study-board-table{ font-size:.85rem; }
+    .study-board-table th, .study-board-table td{ padding:.4rem .35rem; }
+    .study-board-table .badge{ font-size:.72rem; padding:.28rem .45rem; }
+    /* 단어 셀 — 긴 교재명·범위 축약. 오른쪽 컬럼 침범 방지 */
+    .vocab-cell-wrap{ max-width:170px; margin:0 auto; }
+    .vocab-cell-wrap .badge{ display:block; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; text-align:left; }
     /* 모의고사 셀 — 긴 제목이 잘리거나 옆 열(보기 버튼)로 넘치는 것 방지 */
-    .exam-cell-wrap{ max-width:210px; margin:0 auto; }
+    .exam-cell-wrap{ max-width:190px; margin:0 auto; }
     .exam-cell-row{ display:flex; gap:.25rem; align-items:stretch; min-width:0; }
     .exam-cell-badge{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column;
                        align-items:flex-start; text-align:left; }
@@ -80,9 +88,9 @@
         <table class="table table-sm align-middle table-hover study-board-table">
             <thead class="table-light">
                 <tr>
-                    <th style="min-width:130px;">학생</th>
+                    <th style="min-width:95px;">학생</th>
                     {% for key, label, url in subjects %}
-                    <th class="text-center" style="min-width:150px;">{{ label }}</th>
+                    <th class="text-center" style="min-width:{% if key == 'vocab' %}150{% else %}130{% endif %}px;">{{ label }}</th>
                     {% endfor %}
                     <th class="text-center col-detail">상세</th>
                 </tr>
@@ -106,22 +114,24 @@
                     <td class="text-center">
                         {% if row.cells %}
                             {% if key == 'vocab' %}
+                                <div class="vocab-cell-wrap d-flex flex-column gap-1">
                                 {% for t in row.cells.vocab.tests %}
                                 <a href="{% url 'vocab:range_test_swipe_menu' t.rt_id %}"
-                                   class="badge d-block text-start border mb-1 text-decoration-none
+                                   class="badge border text-decoration-none
                                    {% if t.ok %}bg-success-subtle text-success-emphasis{% elif t.ok == False %}bg-danger-subtle text-danger-emphasis{% else %}bg-light text-muted{% endif %}"
-                                   title="클릭 → TEST 메뉴 (전체/별표/연습)">
+                                   title="{{ t.book }} {{ t.range }} · {{ t.status }} — 클릭 → TEST 메뉴 (전체/별표/연습)">
                                     {{ t.book }} <span class="opacity-75">{{ t.range }}</span> · {{ t.status }}
                                 </a>
                                 {% endfor %}
                                 {% if row.cells.vocab.label %}
-                                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">{{ row.cells.vocab.label }}</span>
+                                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis" title="{{ row.cells.vocab.label }}">{{ row.cells.vocab.label }}</span>
                                 {% endif %}
                                 <a href="{% url 'vocab:student_ranges' row.student.id %}"
-                                   class="badge d-block text-start border bg-info-subtle text-info-emphasis text-decoration-none mt-1"
+                                   class="badge border bg-info-subtle text-info-emphasis text-decoration-none"
                                    title="클릭 → 배정된 전체 범위 중 골라 플래시카드 시험">
                                     <i class="fas fa-layer-group me-1"></i>전체 카드
                                 </a>
+                                </div>
                             {% elif key == 'summary' %}
                                 {% for t in row.cells.summary.tests %}
                                 <div class="badge d-block text-start border mb-1
