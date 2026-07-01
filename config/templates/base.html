@@ -148,6 +148,35 @@
         });
     })();
 
+    // ── 뒤로가기 링크 문맥화 ── 오늘의 학습 현황판에서 진입한 경로면
+    // 하위 페이지들의 .back-link 를 "← 오늘의 학습 현황판" 으로 자동 대체.
+    // sessionStorage 로 여러 홉(현황판 → 목록 → 상세) 을 가로질러 유지.
+    (function () {
+        const BOARD_URL = '{% url "report:study_board" %}';
+        const path = window.location.pathname;
+
+        if (path === BOARD_URL || path.startsWith(BOARD_URL)) {
+            sessionStorage.removeItem('backToBoard');
+            return;
+        }
+
+        if (document.referrer && document.referrer.indexOf(BOARD_URL) !== -1) {
+            sessionStorage.setItem('backToBoard', '1');
+        }
+
+        if (sessionStorage.getItem('backToBoard') === '1') {
+            const back = document.querySelector('.back-link');
+            if (back) {
+                back.setAttribute('href', BOARD_URL);
+                back.innerHTML = '<i class="fas fa-arrow-left me-1"></i>오늘의 학습 현황판';
+            }
+        }
+
+        // 사이드바로 다른 대분류 이동 시 문맥 해제 — 새 흐름 시작.
+        document.querySelectorAll('.sidebar-link').forEach(a =>
+            a.addEventListener('click', () => sessionStorage.removeItem('backToBoard')));
+    })();
+
     // Bootstrap 모달 aria-hidden + 포커스 충돌 경고 차단
     // (닫기 직전 모달 안에 있던 포커스를 풀어 접근성 경고 제거)
     document.addEventListener('hide.bs.modal', function (e) {
