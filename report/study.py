@@ -408,12 +408,12 @@ def board(date):
     g = _bucket(GrammarSession.objects.filter(started_at__date=date).select_related('unit'))
 
     # 시험 — 날짜 무관 시험란 노출. 모의/유형은 '선생님 최종확인 전' 모두(공개대기/빨파채점대기/
-    # 최종확인 대기 단계), 내신은 한 세트 부분입력 패턴이라 채점완료 세션을 항상 표시.
+    # 최종확인 대기 단계), 내신은 한 세트 부분입력 패턴이라 채점완료 세션을 표시하되
+    # 교사가 최종확인(teacher_final_confirmed=True)한 것은 숨김 처리(관리 소프트-hide 로도 사용).
     e_pending = defaultdict(list)
     for s in (ExamSession.objects
-              .filter(status=ExamSession.STATUS_GRADED)
-              .filter(Q(paper__source__in=['mock', 'mock_type'], teacher_final_confirmed=False)
-                      | Q(paper__source='naesin'))
+              .filter(status=ExamSession.STATUS_GRADED, teacher_final_confirmed=False)
+              .filter(paper__source__in=['mock', 'mock_type', 'naesin'])
               .select_related('paper')):
         e_pending[s.student_id].append(s)
 
