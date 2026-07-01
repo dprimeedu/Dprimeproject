@@ -40,10 +40,30 @@ PROBS.forEach((p, i) => {
     list.appendChild(div);
 });
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+
+// ── 자동 임시저장(localStorage) — 새로고침/네트워크 오류/제출실패 시에도 입력 보존.
+//    key는 세션ID 기준(문제 세트가 세션에 종속). 제출 성공 시 삭제.
+const LS_KEY = `grammar_draft_${SID}`;
+function saveDraft(){
+    const a={}; list.querySelectorAll('.g-in').forEach(i=>{ if(i.value) a[i.dataset.pid]=i.value; });
+    try{ localStorage.setItem(LS_KEY, JSON.stringify({answers:a, ts:Date.now()})); }catch(e){}
+}
+function restoreDraft(){
+    try{
+        const raw=localStorage.getItem(LS_KEY); if(!raw) return;
+        const {answers}=JSON.parse(raw)||{};
+        Object.entries(answers||{}).forEach(([pid,v])=>{
+            const inp=list.querySelector(`.g-in[data-pid="${pid}"]`); if(inp) inp.value=v;
+        });
+    }catch(e){}
+}
+
 list.querySelectorAll('.g-ok').forEach(b=>b.addEventListener('click',()=>{
-    const inp=list.querySelector(`.g-in[data-pid="${b.dataset.pid}"]`); inp.value='O'; inp.focus(); updateProg();
+    const inp=list.querySelector(`.g-in[data-pid="${b.dataset.pid}"]`); inp.value='O'; inp.focus(); updateProg(); saveDraft();
 }));
-list.querySelectorAll('.g-in').forEach(i=>i.addEventListener('input', updateProg));
+list.querySelectorAll('.g-in').forEach(i=>i.addEventListener('input', ()=>{ updateProg(); saveDraft(); }));
+restoreDraft(); updateProg();
+
 function updateProg(){
     const done=[...list.querySelectorAll('.g-in')].filter(i=>i.value.trim()).length;
     document.getElementById('gProg').textContent = `${done} / ${PROBS.length}`;
@@ -56,9 +76,16 @@ document.getElementById('gSubmit').addEventListener('click', async ()=>{
     const btn=document.getElementById('gSubmit'); btn.disabled=true; btn.textContent='채점 중…';
     try{
         const r=await fetch('{% url "grammar:submit" %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},body:JSON.stringify({session_id:SID,answers})});
+        if(!r.ok){
+            if(r.status===403) throw new Error('세션이 만료되었어요. 다시 로그인 후 재시도해주세요. (입력값은 보존됨)');
+            throw new Error(`서버 오류 (${r.status}). 잠시 후 다시 눌러주세요. (입력값은 보존됨)`);
+        }
+        const ct=r.headers.get('content-type')||'';
+        if(!ct.includes('json')) throw new Error('세션이 만료되었어요. 다시 로그인 후 재시도해주세요. (입력값은 보존됨)');
         const d=await r.json();
-        if(d.success) window.location.href=d.redirect_url; else throw new Error('실패');
-    }catch(e){ btn.disabled=false; btn.textContent='제출(자동채점)'; alert('제출 실패: '+e.message); }
+        if(d.success){ try{ localStorage.removeItem(LS_KEY); }catch(e){} window.location.href=d.redirect_url; }
+        else throw new Error('제출 실패. 잠시 후 다시 눌러주세요. (입력값은 보존됨)');
+    }catch(e){ btn.disabled=false; btn.textContent='제출(자동채점)'; alert(e.message); }
 });
 </script>
 {% endblock %}
