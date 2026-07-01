@@ -1428,37 +1428,90 @@ def _student_gate(request):
     return None
 
 
+def _lemma_candidates(w):
+    """영어 활용형(ed/ing/ies/s 등)을 원형에 가깝게 축약한 후보 리스트.
+    사전 표제어(serialize/study/run)와 매칭시켜 활용형(serialized/studied/running) 조회 성공률↑.
+    실제 lemmatizer 아님 — 규칙 기반 근사(정확성보단 재현율)."""
+    w = w.lower()
+    out = []
+    def add(x):
+        if x and x != w and x not in out and len(x) >= 2:
+            out.append(x)
+    # 복수/3인칭 s
+    if w.endswith('ies') and len(w) > 4:
+        add(w[:-3] + 'y')                # studies → study
+    if w.endswith('es') and len(w) > 3:
+        add(w[:-2])                       # washes → wash
+        if w[-3] in 'sxz' or w[-4:-2] in ('ch','sh'):
+            pass  # 위 add 로 충분
+    if w.endswith('s') and not w.endswith('ss') and len(w) > 3:
+        add(w[:-1])                       # runs → run
+    # 과거/과거분사 ed
+    if w.endswith('ied') and len(w) > 4:
+        add(w[:-3] + 'y')                # studied → study
+    if w.endswith('ed') and len(w) > 3:
+        add(w[:-2])                       # walked → walk
+        add(w[:-1])                       # loved → love / serialized → serialize
+        # 자음 중복 축약: stopped → stop
+        if len(w) > 4 and w[-3] == w[-4] and w[-3] not in 'aeiou':
+            add(w[:-3])
+    # -ing
+    if w.endswith('ing') and len(w) > 4:
+        add(w[:-3])                       # walking → walk
+        add(w[:-3] + 'e')                 # coming → come
+        if len(w) > 5 and w[-4] == w[-5] and w[-4] not in 'aeiou':
+            add(w[:-4])                   # running → run
+    # 비교급/최상급 er/est
+    if w.endswith('est') and len(w) > 4:
+        add(w[:-3])
+        add(w[:-2])                       # nicest → nice
+    if w.endswith('er') and len(w) > 3:
+        add(w[:-2])
+        add(w[:-1])                       # nicer → nice
+    return out
+
+
+def _dict_lookup_raw(key):
+    """단일 표제어 조회 (DictionaryEntry → Cache → VocabWord). 없으면 (None, None)."""
+    de = DictionaryEntry.objects.filter(key=key).first()
+    if de:
+        return de.meaning, 'book'
+    cached = DictionaryCache.objects.filter(word=key).first()
+    if cached:
+        return cached.meaning, cached.source
+    vw = (VocabWord.objects
+          .filter(word__iexact=key).exclude(meaning='')
+          .order_by('id').first())
+    if vw:
+        return vw.meaning.strip(), DictionaryCache.SRC_DB
+    return None, None
+
+
 def lookup_meaning(word):
     """영→한 사전 조회. 반환: (meaning, source).
 
-    순서: 전체 단어장 사전(DictionaryEntry) → 캐시 → 교재 단원 단어 → AI.
+    순서: 표제어 그대로(DictionaryEntry → Cache → VocabWord)
+        → 활용형 축약 재조회(serialized → serialize) → AI 폴백.
     """
     w = (word or '').strip()
     if not w:
         return '', ''
     key = w.lower()
 
-    # 1) 전체 단어장 사전 (단어장 전체 모음 — 1순위)
-    de = DictionaryEntry.objects.filter(key=key).first()
-    if de:
-        return de.meaning, 'book'
+    # 1) 표제어 그대로
+    m, src = _dict_lookup_raw(key)
+    if m is not None:
+        return m, src
 
-    # 2) 이전 조회 캐시 (AI 결과 등)
-    cached = DictionaryCache.objects.filter(word=key).first()
-    if cached:
-        return cached.meaning, cached.source
+    # 2) 활용형 축약 후 재조회 — 사전에 표제어만 있는 케이스(serialize/study/run) 커버
+    for cand in _lemma_candidates(key):
+        m, src = _dict_lookup_raw(cand)
+        if m is not None:
+            DictionaryCache.objects.get_or_create(
+                word=key, defaults={'meaning': m, 'source': src or DictionaryCache.SRC_DB})
+            return m, src
 
-    # 3) 교재 단원 단어 (대소문자 무시, 뜻 있는 것)
-    vw = (VocabWord.objects
-          .filter(word__iexact=w).exclude(meaning='')
-          .order_by('id').first())
-    if vw:
-        meaning = vw.meaning.strip()
-        DictionaryCache.objects.get_or_create(
-            word=key, defaults={'meaning': meaning, 'source': DictionaryCache.SRC_DB})
-        return meaning, DictionaryCache.SRC_DB
-
-    # AI 폴백 (지연 import — genai 미설치 환경에서도 앞단계는 동작)
+    # 3) AI 폴백 (지연 import — genai 미설치 환경에서도 앞단계는 동작)
     try:
         from writing.services.ai import translate_word_en_ko
         meaning = translate_word_en_ko(w)
@@ -1752,10 +1805,18 @@ def lookup_mock_word(grade, year, month, number, word):
         if w in k.split():
             return m, 'mockdb'
 
-    # 4) Gemini 폴백 (회차 단어DB에 빠진 단어) — 단어 기준 캐시
+    # 4) 활용형 축약 후 MockVocab 재조회 — 표제어만 등록된 케이스(serialized→serialize) 커버
+    for cand in _lemma_candidates(w):
+        for k, m in rows:
+            if k == cand or (k.split() and k.split()[0] == cand):
+                return m, 'mockdb'
+
+    # 5) 캐시 (이전 조회 결과)
     cached = DictionaryCache.objects.filter(word=w).first()
     if cached:
         return cached.meaning, cached.source
+
+    # 6) Gemini 폴백 — 실패하면 일반 사전(lookup_meaning) 체인으로 마지막 시도
     try:
         from writing.services.ai import translate_word_en_ko
         meaning = translate_word_en_ko(word)
@@ -1766,6 +1827,11 @@ def lookup_mock_word(grade, year, month, number, word):
         DictionaryCache.objects.get_or_create(
             word=w, defaults={'meaning': meaning, 'source': DictionaryCache.SRC_AI})
         return meaning, DictionaryCache.SRC_AI
+
+    # 7) 최후 폴백 — 일반 사전 체인(활용형 lemma 포함)
+    m2, src2 = lookup_meaning(word)
+    if m2:
+        return m2, src2
     return '', ''
 
 
