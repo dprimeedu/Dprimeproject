@@ -71,6 +71,14 @@
                 title="2차 오답만 보기">2차 추가정답 {{ session.correct_count2 }}/{{ round2_total }}</button>
         {% endif %}
         {% if redblue_released %}<span class="badge bg-info text-dark fs-6"><i class="fas fa-eye me-1"></i>빨파정답 공개됨</span>{% endif %}
+        {% if is_teacher and redblue_released and not session.teacher_final_confirmed %}
+            <button id="topFinalConfirmBtn" class="btn btn-sm btn-primary" data-sid="{{ session.id }}"
+                    title="학생 빨파채점 여부와 상관없이 이 시험을 마감 — 학생 홈·현황판에서 즉시 사라짐">
+                <i class="fas fa-check-double me-1"></i>확인
+            </button>
+        {% elif is_teacher and session.teacher_final_confirmed %}
+            <span class="badge bg-success fs-6"><i class="fas fa-circle-check me-1"></i>최종 확인 완료</span>
+        {% endif %}
     </div>
     {% if wrong %}
     <div class="card mb-2">
@@ -439,6 +447,10 @@
          '/training/exam/api/final-confirm/{{ session.id }}/',
          '학생의 빨파채점을 확인했나요? 최종 확인하면 학생 홈에서 이 시험이 사라집니다.',
          '확인 중...');
+    bind('topFinalConfirmBtn',
+         '/training/exam/api/final-confirm/{{ session.id }}/',
+         '이 시험을 마감할까요? 학생 홈·관리자 현황판에서 즉시 사라지고, 학생 빨파채점 여부와 상관없이 완료 처리됩니다.',
+         '처리 중...');
     {% endif %}
 })();
 </script>
