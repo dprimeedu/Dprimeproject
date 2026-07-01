@@ -130,7 +130,7 @@ def _para(runs_xml, para_pr=1, char_pr_for_seg=8, column_break=False,
             f'{runs_xml}</hp:p>')
 
 
-def _endnote_run(answer, number, char_pr=11):
+def _endnote_run(answer, number, char_pr=16):
     """
     미주(정답) run. test1.hwpx 구조를 그대로 따른다.
       <hp:run><hp:ctrl><hp:endNote number=.. instId=..>
@@ -483,10 +483,11 @@ def _derive_charpr_from_base(header_xml):
     양식 header 의 charPr 8 을 읽어 파생 charPr 정의를 만든다.
     양식의 fontRef·shadeColor 등이 정확히 일치하여 글꼴 불일치가 없다.
 
-    파생 규칙(★id = charProperties 배열 위치. 양식이 0~9 이므로 10/11/12):
+    파생 규칙(★id = charProperties 배열 위치. 양식이 0~9 이므로 10/11/12/16):
       10 = 8 + bold + textColor 파랑(#0000FF)   (날짜)
       11 = 8 + bold                             (발문)
       12 = 8 + underline BOTTOM (bold 제거)     (지문 밑줄)
+      16 = 8 + bold + height 1500 + red         (미주 참조 마커 = 문제 번호)
     """
     m = re.search(r'<hh:charPr id="8".*?</hh:charPr>', header_xml, re.S)
     if not m:
@@ -494,21 +495,27 @@ def _derive_charpr_from_base(header_xml):
     base = m.group(0)
     defs = {}
 
-    def make(new_id, bold=False, blue=False, underline=False):
+    def make(new_id, bold=False, blue=False, underline=False,
+             height=None, red=False):
         s = base.replace('id="8"', f'id="{new_id}"')
         if blue:
             s = s.replace('textColor="#000000"', 'textColor="#0000FF"')
+        if red:
+            s = s.replace('textColor="#000000"', 'textColor="#FF0000"')
         if bold and '<hh:bold/>' not in s:
             s = s.replace('<hh:underline', '<hh:bold/><hh:underline')
         elif not bold and '<hh:bold/>' in s:
             s = s.replace('<hh:bold/>', '')
         if underline:
             s = s.replace('underline type="NONE"', 'underline type="BOTTOM"')
+        if height is not None:
+            s = re.sub(r'height="\d+"', f'height="{int(height)}"', s, count=1)
         return s
 
     defs['charPr10'] = make(10, bold=True, blue=True)   # 날짜(파랑 굵게)
     defs['charPr11'] = make(11, bold=True)              # 발문(검정 굵게)
     defs['charPr12'] = make(12, underline=True)         # 지문 밑줄(굵게 X)
+    defs['charPr16'] = make(16, bold=True, red=True, height=1500)  # 미주 마커 15pt 빨강
     return defs
 
 
@@ -526,7 +533,8 @@ def _inject_styles(header_xml):
         ("borderFills", "borderFill",
          [("borderFill3", "3"), ("borderFill4", "4")]),
         ("charProperties", "charPr",
-         [("charPr10", "10"), ("charPr11", "11"), ("charPr12", "12")]),
+         [("charPr10", "10"), ("charPr11", "11"), ("charPr12", "12"),
+          ("charPr16", "16")]),
         ("paraProperties", "paraPr",
          [("paraPr13", "13"), ("paraPr14", "14")]),
     ]
