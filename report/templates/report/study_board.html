@@ -13,7 +13,7 @@
         100%{ box-shadow:0 0 0 0 rgba(22,163,74,0); }
     }
     /* 모의고사 셀 — 긴 제목이 잘리거나 옆 열(보기 버튼)로 넘치는 것 방지 */
-    .exam-cell-wrap{ max-width:240px; margin:0 auto; }
+    .exam-cell-wrap{ max-width:210px; margin:0 auto; }
     .exam-cell-row{ display:flex; gap:.25rem; align-items:stretch; min-width:0; }
     .exam-cell-badge{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column;
                        align-items:flex-start; text-align:left; }
@@ -22,6 +22,15 @@
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .exam-cell-badge .exam-status{ font-size:.72rem; margin-top:2px; }
     .exam-cell-row .btn{ flex:0 0 auto; align-self:stretch; }
+    /* '상세' 열 sticky-right — 가로 스크롤 시에도 항상 보이고 절대 안 잘림 */
+    .study-board-table th.col-detail,
+    .study-board-table td.col-detail{
+        position:sticky; right:0; z-index:2;
+        background:#fff; box-shadow:-6px 0 6px -6px rgba(0,0,0,.15);
+        min-width:76px;
+    }
+    .study-board-table thead th.col-detail{ background:#f8f9fa; }
+    .study-board-table tbody tr:hover td.col-detail{ background:#f8f9fa; }
 </style>
 <div class="home-wrap">
     <div class="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -68,14 +77,14 @@
     <form id="csrf-form" style="display:none">{% csrf_token %}</form>
 
     <div class="table-responsive">
-        <table class="table table-sm align-middle table-hover">
+        <table class="table table-sm align-middle table-hover study-board-table">
             <thead class="table-light">
                 <tr>
                     <th style="min-width:130px;">학생</th>
                     {% for key, label, url in subjects %}
                     <th class="text-center" style="min-width:150px;">{{ label }}</th>
                     {% endfor %}
-                    <th class="text-center" style="min-width:80px;">상세</th>
+                    <th class="text-center col-detail">상세</th>
                 </tr>
             </thead>
             <tbody>
@@ -205,7 +214,7 @@
                         {% endif %}
                     </td>
                     {% endfor %}
-                    <td class="text-center">
+                    <td class="text-center col-detail">
                         <a href="{% url 'report:study_report' row.student.id %}?date={{ date|date:'Y-m-d' }}"
                            class="btn btn-sm btn-outline-primary">보기</a>
                     </td>

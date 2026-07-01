@@ -27,10 +27,10 @@ from grammar.models import GrammarSession
 # (key, 라벨, 학생 홈 URL)
 SUBJECT_META = [
     ('vocab', '단어', '/training/vocab/'),
-    ('summary', '요약문', '/training/summary/'),
-    ('writing', '영작', '/training/writing/'),
-    ('grammar', '어법', '/training/grammar/'),
     ('exam', '정답입력', '/training/exam/'),
+    ('grammar', '어법', '/training/grammar/'),
+    ('writing', '영작', '/training/writing/'),
+    ('summary', '요약문', '/training/summary/'),
 ]
 
 SUBJECT_LABEL = {k: lab for k, lab, _ in SUBJECT_META}
