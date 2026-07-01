@@ -1406,6 +1406,95 @@ def import_student_mock_api(request):
 
 @csrf_exempt
 @require_POST
+def student_pending_api(request):
+    """학생별 '미응시(다음에 풀 것)' 배정 조회 — 홈페이지→xlsx 역동기화용.
+
+    body: { token, students: ['이기백', '정안나', ...] }   # students 생략 시 전체 학생.
+
+    '미응시' = ExamAssignment 있음 + 응시완료 세션이 없음
+              (또는 있어도 teacher_final_confirmed=True 로 학생 시야에서 이미 숨김 처리된 것은 완료로 간주).
+    내신은 분할 응시가 정상이라 '완료' 판정 애매 → 이 API 응답에서 제외 (모고·유형만).
+
+    응답: { success, results: { '이기백': { found, pending: [ {kind, paper_id, ...}, ... ] } } }
+      kind='round': {kind, paper_id, resolved_title, grade, year, month, assigned_at}
+      kind='type' : {kind, paper_id, resolved_title, grade, type_name, range_start, range_end, assigned_at}
+      pending 은 최근 배정 순(-assigned_at).
+    """
+    ok, reason = _check_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        want_names = [str(x).strip() for x in (data.get('students') or []) if str(x).strip()]
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+
+    User = get_user_model()
+    users_qs = User.objects.all()
+    if want_names:
+        users_qs = users_qs.filter(username__in=want_names)
+
+    # 이름 → user 매핑. 동명이인 있으면 skip 표시.
+    by_name = {}
+    for u in users_qs:
+        by_name.setdefault(u.username, []).append(u)
+
+    results = {}
+    # 요청 학생 순회 (요청이 비면 매칭된 학생 순).
+    iter_names = want_names or list(by_name.keys())
+    for name in iter_names:
+        matches = by_name.get(name, [])
+        if len(matches) == 0:
+            results[name] = {'found': False, 'reason': 'not_found', 'pending': []}
+            continue
+        if len(matches) > 1:
+            results[name] = {'found': False, 'reason': 'dup_name', 'pending': []}
+            continue
+        user = matches[0]
+
+        # student_home() 의 미응시 판정 로직과 동일: 응시 완료된 paper_id 세트를 뺀다.
+        done_paper_ids = set(
+            ExamSession.objects
+            .filter(student=user)
+            .exclude(status=ExamSession.STATUS_IN_PROGRESS)
+            .values_list('paper_id', flat=True)
+        )
+        assignments = (ExamAssignment.objects
+                       .filter(student=user)
+                       .select_related('paper')
+                       .order_by('-assigned_at'))
+        pending = []
+        for a in assignments:
+            p = a.paper
+            if p.source == ExamPaper.SOURCE_NAESIN:
+                continue   # 내신은 분할 응시 정상 → 미응시 판정 제외
+            if p.id in done_paper_ids:
+                continue
+            base = {
+                'paper_id': p.id,
+                'resolved_title': p.resolved_title,
+                'assigned_at': a.assigned_at.isoformat() if a.assigned_at else '',
+            }
+            if p.source == ExamPaper.SOURCE_MOCK:
+                base.update({'kind': 'round',
+                             'grade': p.grade, 'year': p.year, 'month': p.month})
+            elif p.source == ExamPaper.SOURCE_MOCK_TYPE:
+                base.update({'kind': 'type',
+                             'grade': p.grade,
+                             'type_name': p.category,
+                             'range_start': p.range_start,
+                             'range_end': p.range_end})
+            else:
+                continue
+            pending.append(base)
+        results[name] = {'found': True, 'pending': pending}
+
+    return JsonResponse({'success': True, 'results': results},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+@require_POST
 def import_image_api(request):
     """문항 해설 이미지 업로드 (multipart/form-data). 구글드라이브 대체 — 서버에 직접 저장.
 
