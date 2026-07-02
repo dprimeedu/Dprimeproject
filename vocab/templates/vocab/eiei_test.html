@@ -178,6 +178,8 @@ function build(){
             });
             slot.addEventListener('input', ()=>{ updateDone(); refreshBank(gi); });
             slot.addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); afterFill(slot); }});
+            // 한 번 클릭 = 글자 입력(포커스) / 두 번 클릭 = 비우기(단어를 보기로 되돌림)
+            slot.addEventListener('dblclick', ()=>{ slot.value=''; updateDone(); refreshBank(gi); setActive(slot); });
             slots.push(slot); groupSlots[gi].push(slot);
             row.appendChild(no); row.appendChild(def); row.appendChild(slot);
             gEl.appendChild(row);
