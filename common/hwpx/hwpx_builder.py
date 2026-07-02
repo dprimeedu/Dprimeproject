@@ -53,10 +53,10 @@ COL_GAP = 2268
 BODY_HEIGHT = PAGE_H - MARGIN_TB * 2 - MARGIN_HEADER - MARGIN_FOOTER  # ≈ 70016
 COL_WIDTH = (PAGE_W - MARGIN_LR * 2 - COL_GAP * (COL_COUNT - 1)) // COL_COUNT  # ≈ 25796
 
-# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 답답함 없는 가독성 우선
-# 으로 160% 통일. 페이지 밀도(여백·빈 단락)는 양식 그대로 두기로 함.
+# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 미주 마커(문제 번호)를
+# 15pt 로 키운 뒤 160%면 발문 줄이 과하게 벌어져 보여 135% 로 낮춤.
 # ★ 이 값만 바꾸면 빽빽/헐거움 조절. 150=양식 지문박스 기준, 160=양식 발문 기준.
-LINE_SPACING_PCT = 160
+LINE_SPACING_PCT = 135
 
 # 줄 높이 및 줄당 글자수(보수적 추정)
 LINE_VSIZE = 950
