@@ -234,16 +234,18 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
 
     parts = []
 
-    # 1) 발문 단락: 미주(정답) + 날짜(파랑굵게) + 발문(굵게)
+    # 1) 발문 단락: 미주(정답) + 발문(굵게) + 날짜(파랑굵게)
+    #    로컬 HWP 출력본과 동일한 배치: 미주번호 → 발문 → 날짜.
+    #    (날짜를 번호 바로 뒤에 두면 "1) [날짜] 발문" 이 되어 로컬과 달라짐)
     head_runs = ""
     if "answer" in q and q["answer"] not in (None, ""):
         head_runs += _endnote_run(q["answer"], endnote_no)
-    if q.get("date"):
-        head_runs += _run(" " + q["date"], 10)       # 파랑 굵게
     if q.get("prompt"):
         # 발문은 굵게만(밑줄 X). 원문 밑줄 마커(U+FFF0)는 제거해 통째로 굵게.
         prompt_text = q["prompt"].replace("￰", "")
         head_runs += _run(" " + prompt_text, 11)     # 검정 굵게(발문 강조)
+    if q.get("date"):
+        head_runs += _run(" " + q["date"], 10)       # 파랑 굵게
     parts.append(_para(head_runs, para_pr=head_para,
                        column_break=column_break))
 
