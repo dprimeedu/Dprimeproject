@@ -41,15 +41,16 @@ tr.wrong td { background:#fef2f2; }
     <div class="table-responsive">
         <table class="table align-middle">
             <thead class="table-light">
-                <tr><th>#</th><th>단어</th><th>학생 입력</th><th>정답 뜻</th><th class="text-center">판정</th></tr>
+                <tr><th>#</th><th>영영 뜻</th><th>단어</th><th>학생 입력</th><th style="width:120px;">정답 뜻</th><th class="text-center">판정</th></tr>
             </thead>
             <tbody>
                 {% for a in attempts %}
                 <tr data-aid="{{ a.id }}" class="{% if not a.is_correct %}wrong{% endif %}">
                     <td class="text-muted">{{ forloop.counter }}</td>
+                    <td style="font-size:.9rem;">{{ a.word.definition }}</td>
                     <td><b>{{ a.word.word }}</b></td>
                     <td class="rv-input {% if not a.input_value %}empty{% endif %}">{{ a.input_value|default:"(미입력)" }}</td>
-                    <td class="text-success">{{ a.word.meaning }}</td>
+                    <td class="text-success" style="width:120px;font-size:.82rem;">{{ a.word.meaning }}</td>
                     <td class="text-center">
                         <span class="rv-toggle">
                             <button type="button" class="o {% if a.is_correct %}on{% endif %}" data-v="1">O</button>

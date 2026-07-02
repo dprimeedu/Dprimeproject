@@ -26,6 +26,11 @@
 .ee-slot.empty { color:#cbd5e1; font-weight:400; }
 .ee-result { background:#fff; border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,.08); border:1px solid #e5e7eb; padding:2.5rem 2rem; text-align:center; }
 .ee-score { font-size:3rem; font-weight:800; color:var(--primary-color); }
+/* 2차 단어 클릭 뜻 팝업 (모의고사 빨파와 동일 형태) */
+.ee-pop { position:absolute; z-index:1000; background:#111827; color:#fff; padding:.5rem .7rem; border-radius:10px; max-width:250px; box-shadow:0 6px 20px rgba(0,0,0,.28); font-size:.92rem; line-height:1.35; }
+.ee-pop-w { font-weight:800; color:#c4b5fd; }
+.ee-pop-m { margin-top:.15rem; }
+.ee-pop-s { margin-top:.3rem; font-size:.78rem; color:#86efac; }
 </style>
 
 <div class="ee-wrap">
@@ -37,7 +42,6 @@
             <div class="ee-count">채운 <span id="eeDone">0</span> / <span id="eeTotal">{{ total }}</span></div>
         </div>
         <p class="text-muted small mb-3">영어 뜻풀이를 보고, <b>정답칸을 누른 뒤 아래 단어를 클릭</b>하면 그 단어가 채워집니다. (채운 단어를 다시 누르면 취소)</p>
-        {% if is_retry %}<div id="eeMeaning" class="alert alert-info py-2 px-3 mb-3" style="display:none;font-weight:600;"></div>{% endif %}
         <div id="eeGroups"></div>
         <div class="text-center mt-2 mb-4">
             <button class="btn btn-success btn-lg px-4" id="eeSubmit"><i class="fas fa-paper-plane me-1"></i>제출하기</button>
@@ -67,7 +71,7 @@ const IS_RETRY = {{ is_retry|yesno:"true,false" }};
 const WORD_INFO = {{ word_info_json|safe }};          // 2차: {단어: {m:뜻, id}}
 const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
 const SUBMIT_URL = '{% url "vocab:eiei_submit" %}';
-const STAR_URL = '{% url "vocab:star_toggle" %}';
+const LOOKUP_URL = '{% url "vocab:lookup_save" %}';
 
 const $ = id => document.getElementById(id);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -99,15 +103,30 @@ function fillSlot(slot, word){
     refreshBank(+slot.dataset.gi);
 }
 
-// 2차 오답 재시험 전용 — 클릭한 단어의 뜻을 보여주고 개인 플래시카드(별표)에 저장.
-function revealAndSave(word){
-    const info = WORD_INFO[word];
-    if (!info) return;
-    const md = $('eeMeaning');
-    if (md){ md.textContent = word + ' — ' + (info.m || ''); md.style.display = ''; }
-    fetch(STAR_URL, {method:'POST',
-        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
-        credentials:'same-origin', body:JSON.stringify({word_id: info.id, starred:true})}).catch(()=>{});
+// 2차 오답 재시험 전용 — 클릭한 단어의 뜻을 '팝업'으로 보여주고 개인 낱말카드에 저장(모의고사 빨파와 동일).
+const eePop = document.createElement('div'); eePop.className='ee-pop'; eePop.style.display='none';
+document.body.appendChild(eePop);
+function showPop(x, y, html){
+    eePop.innerHTML = html; eePop.style.display = 'block';
+    eePop.style.left = Math.max(8, Math.min(x, window.innerWidth - 250)) + 'px';
+    eePop.style.top = (y + 6) + 'px';
+}
+document.addEventListener('click', e=>{ if (!eePop.contains(e.target) && !e.target.classList.contains('ee-chip')) eePop.style.display='none'; });
+document.addEventListener('scroll', ()=>{ eePop.style.display='none'; }, true);
+function lookupWord(chip){
+    const info = WORD_INFO[chip.dataset.word] || {};
+    const r = chip.getBoundingClientRect();
+    const x = r.left + window.scrollX, y = r.bottom + window.scrollY;
+    showPop(x, y, `<div class="ee-pop-w">${esc(chip.dataset.word)}</div><div class="ee-pop-m">${esc(info.m || '조회 중…')}</div>`);
+    fetch(LOOKUP_URL, {method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF}, credentials:'same-origin',
+        body: JSON.stringify({word: chip.dataset.word, meaning: info.m || ''})})
+      .then(rr=>rr.json()).then(d=>{
+          let tag = '';
+          if (d.dup) tag = '<div class="ee-pop-s">이미 내 단어장에 있어요</div>';
+          else if (d.saved) tag = '<div class="ee-pop-s"><i class="fas fa-bookmark me-1"></i>내 단어장에 저장됨</div>';
+          showPop(x, y, `<div class="ee-pop-w">${esc(d.word || chip.dataset.word)}</div><div class="ee-pop-m">${esc(d.meaning || info.m || '')}</div>${tag}`);
+      }).catch(()=>{});
 }
 
 function firstEmptyInGroup(gi){ return (groupSlots[gi] || []).find(isEmpty) || null; }
@@ -155,7 +174,7 @@ function build(){
                 const target = activeSlot;   // 현재 활성(포커스)된 칸에 채움. 없으면 무시(직접 클릭 유도)
                 if (!target) return;
                 fillSlot(target, chip.dataset.word);
-                if (IS_RETRY) revealAndSave(chip.dataset.word);   // 2차: 뜻 표시 + 개인 플래시카드 저장
+                if (IS_RETRY) lookupWord(chip);   // 2차: 뜻 팝업 + 개인 낱말카드 저장 (빨파와 동일)
                 afterFill(target);
             });
             bank.appendChild(chip);

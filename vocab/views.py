@@ -2233,7 +2233,11 @@ def lookup_save_api(request):
         except (TypeError, ValueError):
             return 0
     g, y, mo, n = _int(data.get('grade')), _int(data.get('year')), _int(data.get('month')), _int(data.get('number'))
-    if g and y and mo and n:
+    provided = str(data.get('meaning', '') or '').strip()
+    if provided:
+        # 영영 시험 등 이미 뜻을 아는 경우 — 사전 조회 없이 그 뜻으로 저장(신뢰성)
+        meaning, source = provided, 'vocab'
+    elif g and y and mo and n:
         meaning, source = lookup_mock_word(g, y, mo, n, word)
     else:
         meaning, source = lookup_meaning(word)
