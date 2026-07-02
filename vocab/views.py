@@ -505,12 +505,21 @@ def eiei_test_take(request, range_test_id):
         rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index)
         .order_by('index'))
     words = [w for w in words if (w.definition or '').strip()]  # 영영 정의 있는 것만
-    import random as _r
+    # 100단어 전부가 아니라 랜덤 question_count(기본 40)개만 출제. 시간 과다 방지.
+    # (student, 범위)별 시드 고정 셔플 — 새로고침/재응시 시 같은 40개(진행 일관, grammar _student_sets 방식).
+    import random
+    import hashlib
+    count = rt.question_count or 40
+    seed = int(hashlib.md5(
+        f'{rt.student_id}-{rt.start_index}-{rt.end_index}-{count}'.encode()).hexdigest(), 16)
+    rng = random.Random(seed)
+    rng.shuffle(words)
+    words = words[:count]
     groups = []
     for gi in range(0, len(words), 10):
         chunk = words[gi:gi + 10]
         bank = [w.word for w in chunk]
-        _r.shuffle(bank)
+        rng.shuffle(bank)
         groups.append({
             'questions': [{'id': w.id, 'index': w.index,
                            'definition': w.definition} for w in chunk],  # 영영 — 한글 뜻 미노출
@@ -541,12 +550,18 @@ def eiei_submit_api(request):
     if not is_preview and rt.student_id != request.user.id:
         return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
 
-    words = list(rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index))
+    # 출제된 단어(클라이언트가 보낸 answers 키)만 채점 — 랜덤 40개만 봤으므로 범위 전체를 채점하면 안 됨.
+    wmap = {w.id: w for w in rt.unit.words.filter(
+        index__gte=rt.start_index, index__lte=rt.end_index) if (w.definition or '').strip()}
     graded = []
-    for w in words:
-        if not (w.definition or '').strip():
+    for wid, chosen in (answers or {}).items():
+        try:
+            w = wmap.get(int(wid))
+        except (TypeError, ValueError):
+            w = None
+        if w is None:
             continue
-        chosen = str(answers.get(str(w.id), answers.get(w.id, '')) or '').strip()
+        chosen = str(chosen or '').strip()
         ok = bool(grade_word(chosen, w.word))
         graded.append((w, chosen, ok))
     total = len(graded)
