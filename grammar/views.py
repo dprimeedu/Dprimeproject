@@ -281,16 +281,23 @@ def range_import_api(request):
             continue
         # source(=unit명, exam) 가 오면 그 단원에 정확히 매칭. 학교에 단원이 여러 개
         # (내신어법/2단계/3단계)일 때 엉뚱한 최신 단원에 붙는 것 방지.
+        def _norm(s):
+            return str(s).lstrip('Gg').replace(' ', '').strip()
         unit = None
         if source and source != '어법TEST':
+            # 1) 학교+파일명 정확 매칭 (내신 per-school: 같은 학교에 단원 여럿일 때 정확히)
             unit = (GrammarUnit.objects.filter(school=school, exam=source, is_active=True)
                     .order_by('-created_at').first())
             # 표기 차이 흡수: 시트 'G동백중3내신어법' ↔ 웹 '동백중3 내신어법'(앞 G·공백 제거 후 비교).
             if not unit:
-                def _norm(s):
-                    return str(s).lstrip('Gg').replace(' ', '').strip()
                 want = _norm(source)
                 unit = next((u for u in GrammarUnit.objects.filter(school=school, is_active=True)
+                             .order_by('-created_at') if _norm(u.exam) == want), None)
+            # 3) 파일명(source) 전역 매칭 — 학교 무관 공통 교재(고등어법12/34 등). 내신 종료 후
+            #    개인별 지정 어법 파일은 학교와 무관하므로 파일명만으로 단원을 찾는다.
+            if not unit:
+                want = _norm(source)
+                unit = next((u for u in GrammarUnit.objects.filter(is_active=True)
                              .order_by('-created_at') if _norm(u.exam) == want), None)
         if not unit:
             unit = GrammarUnit.objects.filter(school=school, is_active=True).order_by('-created_at').first()
