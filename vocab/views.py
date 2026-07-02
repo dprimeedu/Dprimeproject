@@ -2183,30 +2183,42 @@ def _save_found_word(student, word, meaning):
     if WordCard.objects.filter(card_set__student=student, word__iexact=word).exists():
         return {'saved': False, 'dup': True}
 
-    # 자동수집 세트 중 마지막(번호 가장 큰) — 안 찼으면 거기에, 찼으면 다음 20칸 세트로
-    s = (WordCardSet.objects
-         .filter(student=student, description=AUTO_SET_DESC)
-         .annotate(n=Count('cards'))
-         .order_by('-start_index').first())
-    new_set = False
-    if s is None or s.n >= WORDCARD_CAP:
-        start = (s.end_index + 1) if s else 1
-        s = WordCardSet.objects.create(
+    # 학생의 '모든' 세트를 번호순으로 검색 — 정원(지정 개수) 안 찬 첫 세트에 채운다.
+    # (수동으로 만든 1-20·21-40·41-60 등도 포함해 이어서 채우고, 다 차면 다음 번호 세트 생성)
+    sets = list(WordCardSet.objects
+                .filter(student=student)
+                .annotate(n=Count('cards'))
+                .order_by('start_index', 'id'))
+
+    def _cap(st):
+        if st.start_index and st.end_index and st.end_index >= st.start_index:
+            return st.end_index - st.start_index + 1
+        return WORDCARD_CAP
+
+    target, target_cap, new_set = None, WORDCARD_CAP, False
+    for st in sets:
+        c = _cap(st)
+        if st.n < c:              # 빠진(빈) 자리가 있는 세트 → 여기에 채움
+            target, target_cap = st, c
+            break
+    if target is None:            # 모든 세트가 꽉 참 → 다음 번호로 새 세트 (예: 61-80)
+        max_end = max([(st.end_index or 0) for st in sets], default=0)
+        start = max_end + 1
+        target = WordCardSet.objects.create(
             student=student, title=f'{start}-{start + WORDCARD_CAP - 1}',
             start_index=start, end_index=start + WORDCARD_CAP - 1,
-            status=WordCardSet.STATUS_PUBLISHED,   # 교사/플래시카드에서 바로 보이도록
-            description=AUTO_SET_DESC)
-        new_set = True
+            status=WordCardSet.STATUS_PUBLISHED, description=AUTO_SET_DESC)
+        target_cap, new_set = WORDCARD_CAP, True
 
-    nxt = (s.cards.aggregate(m=Max('index'))['m'] or 0) + 1
-    WordCard.objects.create(card_set=s, index=nxt, word=word, meaning=meaning)
-    count = s.cards.count()
-    full = count >= WORDCARD_CAP
-    if s.status != WordCardSet.STATUS_PUBLISHED:
-        s.status = WordCardSet.STATUS_PUBLISHED
-    s.save()   # updated_at 갱신
-    return {'saved': True, 'set_title': s.title, 'count': count,
-            'cap': WORDCARD_CAP, 'set_full': full, 'new_set': new_set}
+    nxt = (target.cards.aggregate(m=Max('index'))['m'] or 0) + 1
+    WordCard.objects.create(card_set=target, index=nxt, word=word, meaning=meaning)
+    count = target.cards.count()
+    full = count >= target_cap
+    if full and target.status != WordCardSet.STATUS_PUBLISHED:   # 지정 개수 다 차면 저장(완성)
+        target.status = WordCardSet.STATUS_PUBLISHED
+    target.save()   # updated_at 갱신
+    return {'saved': True, 'set_title': target.title, 'count': count,
+            'cap': target_cap, 'set_full': full, 'new_set': new_set}
 
 
 @login_required
