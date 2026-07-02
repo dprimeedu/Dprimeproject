@@ -30,7 +30,7 @@ from .services import (
     grade_meaning, select_test_words,
     ensure_quizlet_ranges, remove_quizlet_ranges,
     split_range_into_chunks, activate_next_range,
-    QUIZLET_SOURCE,
+    QUIZLET_SOURCE, grade_word,
 )
 
 
@@ -487,6 +487,90 @@ def range_test_start_api(request):
             for w in words
         ],
     }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+def eiei_test_take(request, range_test_id):
+    """영영 시험 — 영어 정의를 보고 단어뱅크에서 정답 단어를 골라 채운다(정의→단어).
+    활성 범위의 단어를 10개씩 그룹으로 나눠, 각 그룹마다 정답 단어들을 섞은 단어뱅크 제공."""
+    rt = get_object_or_404(
+        VocabRangeTest.objects.select_related('unit', 'student'),
+        pk=range_test_id, is_active=True,
+    )
+    if not is_teacher(request.user) and rt.student_id != request.user.id:
+        messages.error(request, '본인 시험만 응시 가능합니다.')
+        return redirect('vocab:home')
+
+    words = list(
+        rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index)
+        .order_by('index'))
+    words = [w for w in words if (w.definition or '').strip()]  # 영영 정의 있는 것만
+    import random as _r
+    groups = []
+    for gi in range(0, len(words), 10):
+        chunk = words[gi:gi + 10]
+        bank = [w.word for w in chunk]
+        _r.shuffle(bank)
+        groups.append({
+            'questions': [{'id': w.id, 'index': w.index,
+                           'definition': w.definition, 'meaning': w.meaning} for w in chunk],
+            'bank': bank,
+        })
+    return render(request, 'vocab/eiei_test.html', {
+        'rt': rt,
+        'groups_json': json.dumps(groups, ensure_ascii=False),
+        'total': len(words),
+        'is_preview': is_teacher(request.user) and rt.student_id != request.user.id,
+    })
+
+
+@login_required
+@require_POST
+def eiei_submit_api(request):
+    """영영 시험 제출 — body: {range_test_id, answers: {word_id: 고른단어}}.
+    세션 생성 + 자동채점(grade_word 정규화 일치) + 완료. 교사 프리뷰면 저장 X."""
+    try:
+        data = json.loads(request.body or '{}')
+        rt_id = int(data['range_test_id'])
+        answers = data.get('answers') or {}
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
+
+    rt = get_object_or_404(VocabRangeTest, pk=rt_id, is_active=True)
+    is_preview = is_teacher(request.user) and rt.student_id != request.user.id
+    if not is_preview and rt.student_id != request.user.id:
+        return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+    words = list(rt.unit.words.filter(index__gte=rt.start_index, index__lte=rt.end_index))
+    graded = []
+    for w in words:
+        if not (w.definition or '').strip():
+            continue
+        chosen = str(answers.get(str(w.id), answers.get(w.id, '')) or '').strip()
+        ok = bool(grade_word(chosen, w.word))
+        graded.append((w, chosen, ok))
+    total = len(graded)
+    correct = sum(1 for _, _, ok in graded if ok)
+    percent = round(correct / total * 100) if total else 0
+
+    if is_preview:
+        return JsonResponse({'success': True, 'preview': True,
+                             'correct': correct, 'total': total, 'percent': percent})
+
+    session = VocabSession.objects.create(
+        student=rt.student, unit=rt.unit, mode=VocabSession.MODE_TEST,
+        range_test=rt, total_count=total)
+    VocabAttempt.objects.bulk_create([
+        VocabAttempt(session=session, word=w, input_value=chosen, is_correct=ok,
+                     time_taken_seconds=0, score_earned=10 if ok else 0)
+        for (w, chosen, ok) in graded])
+    session.finished_at = timezone.now()
+    session.correct_count = correct
+    session.total_count = total
+    session.total_score = correct * 10
+    session.save(update_fields=['finished_at', 'correct_count', 'total_count', 'total_score'])
+    return JsonResponse({'success': True, 'correct': correct, 'total': total,
+                         'percent': percent, 'session_id': session.id})
 
 
 @login_required
@@ -1297,6 +1381,84 @@ def words_import_api(request):
         'assigned': assigned, 'assigned_many': assigned_many,
         'auto_assigned': auto_assigned,
     })
+
+
+@csrf_exempt
+@require_POST
+def wordbook_words_import_api(request):
+    """교재 단어장 콘텐츠(영영 정의 포함) upsert — 영영 시험용.
+
+    body: {token, book_title, grade?, mode?, items:[{idx, word, definition, meaning}]}
+    category=wordbook VocabUnit(title=book_title) upsert + VocabWord upsert(index 기준).
+    mode 기본 'merge'(기존 word id/오답기록 보존하며 definition 채움). 'replace' 는 전체 삭제 후 재생성.
+    """
+    from django.db import transaction as _tx
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        book_title = str(data.get('book_title', '')).strip()
+        items = data.get('items') or []
+        grade = str(data.get('grade', '기타') or '기타').strip()
+        mode = str(data.get('mode', 'merge') or 'merge').strip().lower()
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+    if not book_title or not items:
+        return JsonResponse({'success': False, 'error': 'book_title/items 필요'}, status=400)
+
+    parsed = []
+    for it in items:
+        w = str(it.get('word', '') or '').strip()
+        if not w:
+            continue
+        try:
+            idx = int(it.get('idx'))
+        except (TypeError, ValueError):
+            idx = len(parsed) + 1
+        parsed.append({
+            'index': idx, 'word': w,
+            'definition': str(it.get('definition', '') or '').strip(),
+            'meaning': str(it.get('meaning', '') or '').strip(),
+        })
+
+    with _tx.atomic():
+        unit = VocabUnit.objects.filter(
+            title=book_title, category=VocabUnit.CATEGORY_WORDBOOK).first()
+        if unit is None:
+            unit = VocabUnit.objects.create(
+                title=book_title, category=VocabUnit.CATEGORY_WORDBOOK,
+                grade=grade, is_active=True)
+        elif not unit.is_active:
+            unit.is_active = True
+            unit.save(update_fields=['is_active'])
+
+        if mode == 'replace':
+            VocabWord.objects.filter(unit=unit).delete()
+            VocabWord.objects.bulk_create([
+                VocabWord(unit=unit, index=p['index'], word=p['word'],
+                          meaning=p['meaning'], definition=p['definition']) for p in parsed])
+            created = len(parsed)
+        else:  # merge (기본) — index 기준 upsert, 기존 id/FK 보존
+            existing = {x.index: x for x in VocabWord.objects.filter(unit=unit)}
+            to_create, to_update = [], []
+            for p in parsed:
+                x = existing.get(p['index'])
+                if x is None:
+                    to_create.append(VocabWord(
+                        unit=unit, index=p['index'], word=p['word'],
+                        meaning=p['meaning'], definition=p['definition']))
+                else:
+                    x.word, x.meaning, x.definition = p['word'], p['meaning'], p['definition']
+                    to_update.append(x)
+            if to_create:
+                VocabWord.objects.bulk_create(to_create)
+            if to_update:
+                VocabWord.objects.bulk_update(to_update, ['word', 'meaning', 'definition'])
+            created = len(to_create) + len(to_update)
+
+    return JsonResponse({'success': True, 'unit_id': unit.id, 'title': book_title,
+                         'created': created}, json_dumps_params={'ensure_ascii': False})
 
 
 @csrf_exempt

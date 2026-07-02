@@ -10,6 +10,9 @@ urlpatterns = [
 
     # 학생 — 개인별 시험범위(내신단어TEST)
     path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
+    # 학생 — 영영 시험(정의→단어, 단어뱅크 tap-to-fill)
+    path('range/<int:range_test_id>/eiei/', views.eiei_test_take, name='eiei_test'),
+    path('api/eiei/submit/', views.eiei_submit_api, name='eiei_submit'),
     path('range/<int:range_test_id>/swipe-menu/', views.range_test_swipe_menu, name='range_test_swipe_menu'),
     path('range/<int:range_test_id>/swipe/', views.range_test_swipe_take, name='range_test_swipe'),
     path('api/range/swipe/submit/', views.range_test_swipe_submit_api, name='range_test_swipe_submit'),
@@ -47,6 +50,7 @@ urlpatterns = [
     path('api/range/import/', views.range_import_api, name='range_import'),
     # 교재 단어장(퀴즈렛) 순차 배정 — 단어 홈페이지 이전(단어홈페이지업로드.py)
     path('api/wordbook/assign/', views.wordbook_assign_api, name='wordbook_assign'),
+    path('api/wordbook/words/import/', views.wordbook_words_import_api, name='wordbook_words_import'),
     # 부교재 출력 → 내신단어 단어 일괄 등록 (단어 import HTTP API)
     path('api/words/import/', views.words_import_api, name='words_import'),
     path('api/range/results/', views.range_results_api, name='range_results'),

@@ -82,17 +82,20 @@
                         {% if info.quizlet_ranges %}
                         <div class="mt-1">
                             <p class="small text-muted mb-1" style="font-size:0.78rem;">
-                                <i class="fas fa-bolt me-1" style="color:#f59e0b;"></i>플래시카드 시험 (100단어 세트)
+                                <i class="fas fa-pen-to-square me-1" style="color:#16a34a;"></i>오늘 볼 단어 시험 (영영)
                             </p>
-                            <div class="quizlet-grid">
-                                {% for qr in info.quizlet_ranges %}
-                                <a href="{% url 'vocab:range_flashcard' qr.id %}"
-                                   class="btn btn-outline-warning"
-                                   title="{{ qr.start_index }}~{{ qr.end_index }}번 플래시카드 시험">
-                                    {{ qr.start_index }}-{{ qr.end_index }}
-                                </a>
-                                {% endfor %}
-                            </div>
+                            {% for qr in info.quizlet_ranges %}
+                            <a href="{% url 'vocab:eiei_test' qr.id %}"
+                               class="btn btn-success w-100 mb-1"
+                               title="{{ qr.start_index }}~{{ qr.end_index }}번 영영 시험">
+                                <i class="fas fa-pen-to-square me-1"></i>{{ qr.start_index }}-{{ qr.end_index }}번 영영 시험
+                            </a>
+                            <a href="{% url 'vocab:range_flashcard' qr.id %}"
+                               class="btn btn-outline-warning btn-sm w-100"
+                               title="{{ qr.start_index }}~{{ qr.end_index }}번 플래시카드 연습">
+                                <i class="fas fa-bolt me-1"></i>플래시카드로 미리 연습
+                            </a>
+                            {% endfor %}
                         </div>
                         {% endif %}
                     </div>

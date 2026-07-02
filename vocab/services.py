@@ -228,6 +228,18 @@ QUIZLET_SOURCE = '퀴즈렛'
 QUIZLET_SIZE = 100
 
 
+def _norm_word(s):
+    """단어 채점용 정규화 — 공백 제거 + 소문자. (구글시트 C==H 정확일치와 동치)"""
+    return (s or '').replace(' ', '').lower()
+
+
+def grade_word(student_input, answer):
+    """영영 시험 채점 — 학생이 고른 단어 == 정답 단어(정규화 후). 정답 비면 None."""
+    if not (answer or '').strip():
+        return None
+    return _norm_word(student_input) == _norm_word(answer)
+
+
 def split_range_into_chunks(start, end, size=QUIZLET_SIZE):
     """[start,end] 정수 범위를 100-경계에 맞춰 분할.
 

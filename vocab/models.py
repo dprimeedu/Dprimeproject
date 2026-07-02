@@ -66,6 +66,7 @@ class VocabWord(models.Model):
     index = models.IntegerField(verbose_name='색인')
     word = models.CharField(max_length=200, verbose_name='단어')
     meaning = models.TextField(verbose_name='해석')
+    definition = models.TextField(blank=True, default='', verbose_name='영영정의')
     sub_unit = models.CharField(max_length=100, blank=True, default='', verbose_name='단원(소단원)')
     source = models.CharField(max_length=100, blank=True, default='', verbose_name='출처')
     created_at = models.DateTimeField(auto_now_add=True)
