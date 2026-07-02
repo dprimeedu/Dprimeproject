@@ -532,6 +532,7 @@ def eiei_test_take(request, range_test_id):
         'is_preview': is_teacher(request.user) and rt.student_id != request.user.id,
         'parent_sid': '',
         'is_retry': False,
+        'word_info_json': '{}',
     })
 
 
@@ -568,6 +569,8 @@ def eiei_retry(request, session_id):
         'questions': [{'id': w.id, 'index': w.index, 'definition': w.definition} for w in words],
         'bank': bank,
     }]
+    # 2차 오답 재시험에서만: 단어 클릭 시 뜻 표시 + 개인 플래시카드(별표) 저장용 맵.
+    word_info = {w.word: {'m': w.meaning, 'id': w.id} for w in words}
     return render(request, 'vocab/eiei_test.html', {
         'rt': rt,
         'groups_json': json.dumps(groups, ensure_ascii=False),
@@ -575,6 +578,7 @@ def eiei_retry(request, session_id):
         'is_preview': is_teacher(request.user) and rt.student_id != request.user.id,
         'parent_sid': parent.id,
         'is_retry': True,
+        'word_info_json': json.dumps(word_info, ensure_ascii=False),
     })
 
 
