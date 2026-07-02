@@ -45,6 +45,8 @@ urlpatterns = [
 
     # 외부 자동화(개별단어장생성.py) 연동 — 토큰 인증
     path('api/range/import/', views.range_import_api, name='range_import'),
+    # 교재 단어장(퀴즈렛) 순차 배정 — 단어 홈페이지 이전(단어홈페이지업로드.py)
+    path('api/wordbook/assign/', views.wordbook_assign_api, name='wordbook_assign'),
     # 부교재 출력 → 내신단어 단어 일괄 등록 (단어 import HTTP API)
     path('api/words/import/', views.words_import_api, name='words_import'),
     path('api/range/results/', views.range_results_api, name='range_results'),

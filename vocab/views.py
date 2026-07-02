@@ -29,7 +29,8 @@ from member.auto_assign import auto_assign_unit
 from .services import (
     grade_meaning, select_test_words,
     ensure_quizlet_ranges, remove_quizlet_ranges,
-    split_range_into_chunks,
+    split_range_into_chunks, activate_next_range,
+    QUIZLET_SOURCE,
 )
 
 
@@ -612,6 +613,16 @@ def review_update_api(request, session_id):
             StudentWordStar.objects.get_or_create(student=session.student, word_id=wid)
     session.save(update_fields=fields)
 
+    # 순차 진행 — 퀴즈렛(교재 단어) 범위를 리뷰 확정하면 다음 청크 자동 활성화.
+    advanced = None
+    if finalize and session.range_test_id:
+        rt = session.range_test
+        if rt and (rt.source_label or '').startswith(QUIZLET_SOURCE):
+            nxt = activate_next_range(session.student, rt.unit, rt.source_label)
+            advanced = {
+                'start': nxt.start_index, 'end': nxt.end_index,
+            } if nxt else {'done': True}
+
     return JsonResponse({
         'success': True,
         'correct': session.correct_count,
@@ -619,6 +630,7 @@ def review_update_api(request, session_id):
         'percent': session.percent,
         'passed': session.passed,
         'is_reviewed': session.is_reviewed,
+        'advanced': advanced,
     })
 
 
@@ -1289,6 +1301,76 @@ def words_import_api(request):
 
 @csrf_exempt
 @require_POST
+def wordbook_assign_api(request):
+    """교재 단어장(퀴즈렛) 순차 배정 — 학생Data 기반 대량 업로드(단어 홈페이지 이전).
+
+    body: {token, items:[{name, login_id?, book_title, start?}]}
+    · book_title 로 category=wordbook VocabUnit 매칭(앞 'T' 제거/공백무시).
+    · VocabAssignment 보장 → 기존 퀴즈렛 범위 삭제 후
+      ensure_quizlet_ranges(active_start=start) 로 순차 재설정(현재 진도 청크 1개만 활성).
+      (기존 all-active 학생도 이 호출로 순차 상태로 이행됨.)
+    """
+    import re as _re
+    ok, reason = _check_api_token(request)
+    if not ok:
+        return JsonResponse({'success': False, 'error': reason}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+        items = data.get('items') or []
+    except (json.JSONDecodeError, TypeError):
+        return HttpResponseBadRequest('Invalid JSON')
+
+    User = get_user_model()
+
+    def _norm(s):
+        return _re.sub(r'\s+', '', str(s or '')).lower()
+
+    wb_units = VocabUnit.objects.filter(
+        category=VocabUnit.CATEGORY_WORDBOOK, is_active=True)
+    by_title = {_norm(u.title): u for u in wb_units}
+
+    def find_unit(book_title):
+        raw = str(book_title or '').strip()
+        cands = [raw]
+        if raw[:1] in ('T', 't'):
+            cands.append(raw[1:].strip())
+        for c in cands:
+            u = by_title.get(_norm(c))
+            if u:
+                return u
+        return None
+
+    assigned, skipped = 0, []
+    for it in items:
+        name = str(it.get('name', '')).strip()
+        login_id = str(it.get('login_id', '')).strip()
+        book_title = str(it.get('book_title', '')).strip()
+        try:
+            start = int(it.get('start')) if it.get('start') not in (None, '') else None
+        except (TypeError, ValueError):
+            start = None
+
+        student, why = _find_student(User, name, login_id)
+        if not student:
+            skipped.append(f'{name or login_id}: {why}')
+            continue
+        unit = find_unit(book_title)
+        if not unit:
+            skipped.append(f'{name}: 교재 없음({book_title})')
+            continue
+        VocabAssignment.objects.get_or_create(student=student, unit=unit)
+        remove_quizlet_ranges(student, unit)
+        ensure_quizlet_ranges(student, unit, active_start=start)
+        assigned += 1
+
+    return JsonResponse({
+        'success': True, 'assigned': assigned,
+        'skipped': skipped, 'skipped_count': len(skipped),
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@csrf_exempt
+@require_POST
 def range_import_api(request):
     """시험범위 일괄 등록 (학생관리표 '내신단어TEST' 행).
 
@@ -1387,7 +1469,10 @@ def range_results_api(request):
             'school': rt.unit.school,
             'source': rt.source_label,
             'start': rt.start_index, 'end': rt.end_index,
+            'book': rt.unit.title,
             'percent': sess.percent if sess else None,
+            'correct': sess.correct_count if sess else None,
+            'total': sess.total_count if sess else None,
             'passed': sess.passed if sess else None,
             'reviewed': sess.is_reviewed if sess else False,
             'tested_at': sess.finished_at.strftime('%Y-%m-%d %H:%M') if sess else None,

@@ -247,10 +247,15 @@ def split_range_into_chunks(start, end, size=QUIZLET_SIZE):
     return chunks
 
 
-def ensure_quizlet_ranges(student, unit, size=QUIZLET_SIZE, assigned_by=None):
+def ensure_quizlet_ranges(student, unit, size=QUIZLET_SIZE, assigned_by=None, active_start=None):
     """교재 단어장을 학생에게 배정할 때 100단어 단위 퀴즈렛 범위 생성.
 
     이미 활성 퀴즈렛 범위가 있으면 스킵(중복 방지). 반환: 생성한 세트 수.
+
+    active_start:
+      · None  → 기존 동작(모든 청크 활성). 관리자 배정 UI 등 순차 아닌 경로 호환.
+      · 정수  → **순차 모드**: active_start 가 포함된 청크 1개만 is_active=True,
+               그 앞 청크는 '이미 한 것'(비활성), 뒤 청크는 대기(비활성). 서버가 리뷰 시 다음으로 진행.
     """
     from django.db.models import Count, Max
     from .models import VocabWord, VocabRangeTest
@@ -264,18 +269,68 @@ def ensure_quizlet_ranges(student, unit, size=QUIZLET_SIZE, assigned_by=None):
     ).exists():
         return 0
 
-    rows = []
+    # 청크 목록 (start, end) 순서대로
+    chunks = []
     start = 1
     while start <= total:
         end = min(start + size - 1, total)
-        rows.append(VocabRangeTest(
-            student=student, unit=unit, start_index=start, end_index=end,
-            source_label=QUIZLET_SOURCE, question_count=min(40, end - start + 1),
-            time_limit_seconds=1200, pass_threshold=90, assigned_by=assigned_by,
-        ))
+        chunks.append((start, end))
         start = end + 1
+
+    sequential = active_start is not None
+    active_idx = 0
+    if sequential:
+        try:
+            a = int(active_start)
+        except (TypeError, ValueError):
+            a = 1
+        for i, (cs, ce) in enumerate(chunks):
+            if cs <= a <= ce:
+                active_idx = i
+                break
+
+    rows = []
+    for i, (cs, ce) in enumerate(chunks):
+        rows.append(VocabRangeTest(
+            student=student, unit=unit, start_index=cs, end_index=ce,
+            source_label=QUIZLET_SOURCE, question_count=min(40, ce - cs + 1),
+            time_limit_seconds=1200, pass_threshold=90, assigned_by=assigned_by,
+            sort_order=i,
+            is_active=(True if not sequential else (i == active_idx)),
+        ))
     VocabRangeTest.objects.bulk_create(rows)
     return len(rows)
+
+
+def activate_next_range(student, unit, source_label):
+    """순차 진행 — 현재 활성 범위를 비활성화하고 '다음 미완료 청크'를 활성화.
+
+    선생님 리뷰(is_reviewed=True) 시 호출. 다음 = start_index 오름차순 중 아직
+    완료(finished+reviewed 세션)되지 않은 첫 청크. 없으면(끝까지 다 함) None.
+    반환: 새로 활성화된 VocabRangeTest 또는 None.
+    """
+    from .models import VocabRangeTest
+
+    current = (VocabRangeTest.objects
+               .filter(student=student, unit=unit, source_label=source_label, is_active=True)
+               .order_by('start_index').first())
+    if current is None:
+        return None
+    current.is_active = False
+    current.save(update_fields=['is_active'])
+
+    nxt = None
+    for rt in (VocabRangeTest.objects
+               .filter(student=student, unit=unit, source_label=source_label,
+                       is_active=False, start_index__gt=current.start_index)
+               .order_by('start_index')):
+        if not rt.sessions.filter(finished_at__isnull=False, is_reviewed=True).exists():
+            nxt = rt
+            break
+    if nxt is not None:
+        nxt.is_active = True
+        nxt.save(update_fields=['is_active'])
+    return nxt
 
 
 def remove_quizlet_ranges(student, unit):
