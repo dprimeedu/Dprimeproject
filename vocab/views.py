@@ -560,16 +560,14 @@ def eiei_retry(request, session_id):
     import random
     import hashlib
     rng = random.Random(int(hashlib.md5(f'{parent.id}-retry'.encode()).hexdigest(), 16))
-    rng.shuffle(words)
-    groups = []
-    for gi in range(0, len(words), 10):
-        chunk = words[gi:gi + 10]
-        bank = [w.word for w in chunk]
-        rng.shuffle(bank)
-        groups.append({
-            'questions': [{'id': w.id, 'index': w.index, 'definition': w.definition} for w in chunk],
-            'bank': bank,
-        })
+    # 2차 오답은 10개씩 끊지 않고 '전부 한 그룹(한 단어뱅크)'으로 몰아서 출제.
+    words.sort(key=lambda w: w.index)      # 문제는 번호순
+    bank = [w.word for w in words]
+    rng.shuffle(bank)                       # 단어뱅크만 섞음
+    groups = [{
+        'questions': [{'id': w.id, 'index': w.index, 'definition': w.definition} for w in words],
+        'bank': bank,
+    }]
     return render(request, 'vocab/eiei_test.html', {
         'rt': rt,
         'groups_json': json.dumps(groups, ensure_ascii=False),
