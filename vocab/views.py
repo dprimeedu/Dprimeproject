@@ -530,18 +530,66 @@ def eiei_test_take(request, range_test_id):
         'groups_json': json.dumps(groups, ensure_ascii=False),
         'total': len(words),
         'is_preview': is_teacher(request.user) and rt.student_id != request.user.id,
+        'parent_sid': '',
+        'is_retry': False,
+    })
+
+
+@login_required
+def eiei_retry(request, session_id):
+    """2차(오답 재시험) — 부모 세션에서 틀린 단어만 다시 출제. 어법 start_retry 와 동일 흐름."""
+    parent = get_object_or_404(
+        VocabSession.objects.select_related('range_test', 'unit'), pk=session_id)
+    if parent.student_id != request.user.id and not is_teacher(request.user):
+        messages.error(request, '본인 세션이 아닙니다.')
+        return redirect('vocab:home')
+    rt = parent.range_test
+    if not rt:
+        messages.error(request, '시험 범위 정보가 없습니다.')
+        return redirect('vocab:home')
+    if (parent.round_no or 1) >= 2:
+        messages.info(request, '2차까지 다 풀었어요. 선생님 검수를 기다려 주세요.')
+        return redirect('vocab:eiei_test', range_test_id=rt.id)
+
+    wrong_ids = [a.word_id for a in parent.attempts.all() if not a.is_correct]
+    words = [w for w in VocabWord.objects.filter(id__in=wrong_ids)
+             if (w.definition or '').strip()]
+    if not words:
+        messages.success(request, '틀린 단어가 없어요. 다시 풀 필요가 없습니다!')
+        return redirect('vocab:home')
+    import random
+    import hashlib
+    rng = random.Random(int(hashlib.md5(f'{parent.id}-retry'.encode()).hexdigest(), 16))
+    rng.shuffle(words)
+    groups = []
+    for gi in range(0, len(words), 10):
+        chunk = words[gi:gi + 10]
+        bank = [w.word for w in chunk]
+        rng.shuffle(bank)
+        groups.append({
+            'questions': [{'id': w.id, 'index': w.index, 'definition': w.definition} for w in chunk],
+            'bank': bank,
+        })
+    return render(request, 'vocab/eiei_test.html', {
+        'rt': rt,
+        'groups_json': json.dumps(groups, ensure_ascii=False),
+        'total': len(words),
+        'is_preview': is_teacher(request.user) and rt.student_id != request.user.id,
+        'parent_sid': parent.id,
+        'is_retry': True,
     })
 
 
 @login_required
 @require_POST
 def eiei_submit_api(request):
-    """영영 시험 제출 — body: {range_test_id, answers: {word_id: 고른단어}}.
-    세션 생성 + 자동채점(grade_word 정규화 일치) + 완료. 교사 프리뷰면 저장 X."""
+    """영영 시험 제출 — body: {range_test_id, answers:{word_id:고른단어}, parent_session_id?}.
+    세션 생성 + 자동채점(grade_word 정규화 일치) + 완료. parent 있으면 2차(차시+1). 교사 프리뷰면 저장 X."""
     try:
         data = json.loads(request.body or '{}')
         rt_id = int(data['range_test_id'])
         answers = data.get('answers') or {}
+        parent_sid = data.get('parent_session_id')
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         return JsonResponse({'success': False, 'error': '잘못된 요청'}, status=400)
 
@@ -549,6 +597,13 @@ def eiei_submit_api(request):
     is_preview = is_teacher(request.user) and rt.student_id != request.user.id
     if not is_preview and rt.student_id != request.user.id:
         return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+    parent = None
+    round_no = 1
+    if parent_sid:
+        parent = VocabSession.objects.filter(pk=parent_sid, student=rt.student).first()
+        if parent:
+            round_no = (parent.round_no or 1) + 1
 
     # 출제된 단어(클라이언트가 보낸 answers 키)만 채점 — 랜덤 40개만 봤으므로 범위 전체를 채점하면 안 됨.
     wmap = {w.id: w for w in rt.unit.words.filter(
@@ -574,7 +629,7 @@ def eiei_submit_api(request):
 
     session = VocabSession.objects.create(
         student=rt.student, unit=rt.unit, mode=VocabSession.MODE_TEST,
-        range_test=rt, total_count=total)
+        range_test=rt, total_count=total, round_no=round_no, parent=parent)
     VocabAttempt.objects.bulk_create([
         VocabAttempt(session=session, word=w, input_value=chosen, is_correct=ok,
                      time_taken_seconds=0, score_earned=10 if ok else 0)
@@ -584,8 +639,12 @@ def eiei_submit_api(request):
     session.total_count = total
     session.total_score = correct * 10
     session.save(update_fields=['finished_at', 'correct_count', 'total_count', 'total_score'])
+    wrong = total - correct
+    # 오답 있고 아직 1차면 2차(오답 재시험) 가능
+    can_retry = wrong > 0 and round_no < 2
     return JsonResponse({'success': True, 'correct': correct, 'total': total,
-                         'percent': percent, 'session_id': session.id})
+                         'percent': percent, 'session_id': session.id,
+                         'wrong': wrong, 'can_retry': can_retry, 'round_no': round_no})
 
 
 @login_required

@@ -12,6 +12,7 @@ urlpatterns = [
     path('range/<int:range_test_id>/test/', views.range_test_take, name='range_test'),
     # 학생 — 영영 시험(정의→단어, 단어뱅크 tap-to-fill)
     path('range/<int:range_test_id>/eiei/', views.eiei_test_take, name='eiei_test'),
+    path('eiei/retry/<int:session_id>/', views.eiei_retry, name='eiei_retry'),
     path('api/eiei/submit/', views.eiei_submit_api, name='eiei_submit'),
     path('range/<int:range_test_id>/swipe-menu/', views.range_test_swipe_menu, name='range_test_swipe_menu'),
     path('range/<int:range_test_id>/swipe/', views.range_test_swipe_take, name='range_test_swipe'),

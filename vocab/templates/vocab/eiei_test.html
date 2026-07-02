@@ -33,7 +33,7 @@
 
     <div id="eePlay">
         <div class="ee-bar">
-            <h5 class="mb-0">📖 {{ rt.unit.title }} {{ rt.start_index }}~{{ rt.end_index }} 영영 시험</h5>
+            <h5 class="mb-0">📖 {{ rt.unit.title }} {{ rt.start_index }}~{{ rt.end_index }} 영영 시험{% if is_retry %} <span class="badge bg-danger">2차 · 오답</span>{% endif %}</h5>
             <div class="ee-count">채운 <span id="eeDone">0</span> / <span id="eeTotal">{{ total }}</span></div>
         </div>
         <p class="text-muted small mb-3">영어 뜻풀이를 보고, <b>정답칸을 누른 뒤 아래 단어를 클릭</b>하면 그 단어가 채워집니다. (채운 단어를 다시 누르면 취소)</p>
@@ -47,8 +47,11 @@
         <div style="font-size:2.5rem;">✅</div>
         <h4 class="mt-2">시험이 제출되었습니다</h4>
         <div class="ee-score mt-2"><span id="eePct">0</span>점 <small class="text-muted" style="font-size:1rem;">(자동채점, 잠정)</small></div>
-        <p class="text-muted mt-2">선생님 검수 후 최종 점수가 확정되고, 다음 범위가 열립니다.</p>
-        <a class="btn btn-primary mt-2" href="{% url 'vocab:home' %}">단어훈련 홈으로</a>
+        <p class="text-muted mt-2" id="eeResultMsg">선생님 검수 후 최종 점수가 확정되고, 다음 범위가 열립니다.</p>
+        <div class="mt-2">
+            <a class="btn btn-danger me-2" id="eeRetry" style="display:none;" href="#"><i class="fas fa-rotate-left me-1"></i>틀린 단어 다시 풀기 (2차)</a>
+            <a class="btn btn-primary" href="{% url 'vocab:home' %}">단어훈련 홈으로</a>
+        </div>
     </div>
 </div>
 
@@ -58,6 +61,7 @@
 const RT_ID = {{ rt.id }};
 const IS_PREVIEW = {{ is_preview|yesno:"true,false" }};
 const GROUPS = {{ groups_json|safe }};
+const PARENT_SID = {{ parent_sid|default:"null" }};   // 2차면 부모 세션 id, 1차면 null
 const CSRF = document.querySelector('input[name=csrfmiddlewaretoken]')?.value || '';
 const SUBMIT_URL = '{% url "vocab:eiei_submit" %}';
 
@@ -179,13 +183,19 @@ async function submit(){
     try {
         const r = await fetch(SUBMIT_URL, {method:'POST',
             headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
-            credentials:'same-origin', body:JSON.stringify({range_test_id:RT_ID, answers})});
+            credentials:'same-origin', body:JSON.stringify({range_test_id:RT_ID, answers, parent_session_id:PARENT_SID})});
         d = await r.json();
     } catch(e){ alert('제출 실패: '+e.message); $('eeSubmit').disabled=false; return; }
     if (!d.success){ alert(d.error||'제출 실패'); $('eeSubmit').disabled=false; return; }
     $('eePlay').style.display='none';
     $('eeResult').style.display='';
     $('eePct').textContent = (d.percent!=null) ? d.percent : '-';
+    if (d.can_retry){
+        const rb = $('eeRetry');
+        rb.href = '/training/vocab/eiei/retry/' + d.session_id + '/';
+        rb.style.display = '';
+        $('eeResultMsg').textContent = `틀린 ${d.wrong}개를 2차로 다시 풀어 주세요. 이후 선생님 검수 후 다음 범위가 열립니다.`;
+    }
 }
 
 $('eeSubmit').addEventListener('click', submit);

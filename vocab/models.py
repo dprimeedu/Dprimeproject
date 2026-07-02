@@ -210,6 +210,12 @@ class VocabSession(models.Model):
         VocabRangeTest, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='sessions', verbose_name='시험 범위',
     )
+    # 차시(1차→2차 오답재시험) — 어법과 동일 흐름. 2차는 부모의 오답 단어만.
+    round_no = models.IntegerField(default=1, verbose_name='차시')
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='retries', verbose_name='이전 차시',
+    )
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 

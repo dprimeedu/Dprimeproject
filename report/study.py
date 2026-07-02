@@ -161,14 +161,36 @@ def _vocab_cell(sessions):
     tests = [s for s in finished if s.mode == VocabSession.MODE_TEST]
     pcts = [s.percent for s in finished if s.total_count]
     best = max(pcts) if pcts else None
+    # 검수용 상세 — 범위(range)별 '최신 차시' 시험 세션. 링크 → vocab review_detail(검수).
+    # 어법과 동일: 제출·검수대기 / 검수완료 상태 칩, 클릭하면 검수 페이지로.
+    by_rt = {}
+    for s in tests:
+        if not s.range_test_id:
+            continue
+        cur = by_rt.get(s.range_test_id)
+        if cur is None or (s.round_no or 1, s.started_at) > (cur.round_no or 1, cur.started_at):
+            by_rt[s.range_test_id] = s
+    review_detail = []
+    review_pending = 0
+    for s in sorted(by_rt.values(), key=lambda x: x.started_at):
+        rd = s.round_no or 1
+        if s.is_reviewed:
+            st, cls = f'{rd}차 검수완료·{s.percent}점', 'graded'
+        else:
+            st, cls = f'{rd}차 제출·검수대기', 'pending'
+            review_pending += 1
+        rng = (f'{s.range_test.start_index}~{s.range_test.end_index}'
+               if s.range_test else '')
+        review_detail.append({'range': rng, 'status': st, 'cls': cls,
+                              'sid': s.id, 'link': True})
     parts = [f'{len(sessions)}회']
     if tests:
         parts.append(f'시험 {len(tests)}')
     if best is not None:
         parts.append(f'최고 {best}점')
     return {'did': True, 'n': len(sessions), 'done': len(finished),
-            'tests': len(tests), 'best': best, 'pending': 0,
-            'label': ' · '.join(parts)}
+            'tests': len(tests), 'best': best, 'pending': review_pending,
+            'review_detail': review_detail, 'label': ' · '.join(parts)}
 
 
 def _summary_cell(sessions):

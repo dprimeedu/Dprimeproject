@@ -126,6 +126,14 @@
                                 {% if row.cells.vocab.label %}
                                     <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis" title="{{ row.cells.vocab.label }}">{{ row.cells.vocab.label }}</span>
                                 {% endif %}
+                                {% for c in row.cells.vocab.review_detail %}
+                                    <a href="{% url 'vocab:review_detail' c.sid %}"
+                                       class="badge text-decoration-none text-start border
+                                       {% if c.cls == 'pending' %}bg-warning text-dark{% elif c.cls == 'graded' %}bg-success-subtle text-success-emphasis{% else %}bg-light text-muted{% endif %}"
+                                       title="{{ c.range }} · {{ c.status }} — 클릭 → 검수">
+                                        <span class="opacity-75">{{ c.range }}</span> · {{ c.status }}
+                                    </a>
+                                {% endfor %}
                                 </div>
                             {% elif key == 'summary' %}
                                 {% for t in row.cells.summary.tests %}
