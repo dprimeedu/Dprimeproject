@@ -53,10 +53,15 @@ COL_GAP = 2268
 BODY_HEIGHT = PAGE_H - MARGIN_TB * 2 - MARGIN_HEADER - MARGIN_FOOTER  # ≈ 70016
 COL_WIDTH = (PAGE_W - MARGIN_LR * 2 - COL_GAP * (COL_COUNT - 1)) // COL_COUNT  # ≈ 25796
 
-# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 미주 마커(문제 번호)를
-# 15pt 로 키운 뒤 160%면 발문 줄이 과하게 벌어져 보여 135% 로 낮춤.
+# 줄간격(%). 양식 기본은 발문/선택지 160%·지문박스 150%. 답답함 없는 가독성 우선
+# 으로 160% 통일. 페이지 밀도(여백·빈 단락)는 양식 그대로 두기로 함.
 # ★ 이 값만 바꾸면 빽빽/헐거움 조절. 150=양식 지문박스 기준, 160=양식 발문 기준.
-LINE_SPACING_PCT = 135
+LINE_SPACING_PCT = 160
+
+# 발문(문제 번호 + 발문 텍스트) 단락만 별도 줄간격. 미주 마커를 15pt 로 키워
+# 160%면 발문 줄이 과하게 벌어져 보이므로 발문 줄만 135% 로 낮춘다.
+# (지문 박스·선택지는 LINE_SPACING_PCT=160 그대로)
+HEAD_SPACING_PCT = 135
 
 # 줄 높이 및 줄당 글자수(보수적 추정)
 LINE_VSIZE = 950
@@ -199,7 +204,7 @@ class _ColumnTracker:
 # 문제 블록 생성
 # ---------------------------------------------------------------------------
 def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
-                         head_para=1, box_keep=13):
+                         head_para=1, box_keep=13, prompt_para=None):
     """
     하나의 문제(dict)를 단락 XML 문자열로 변환.
     q = {
@@ -246,7 +251,8 @@ def build_question_block(q, tracker, endnote_no, force_newcol_if_overflow=True,
         head_runs += _run(" " + prompt_text, 11)     # 검정 굵게(발문 강조)
     if q.get("date"):
         head_runs += _run(" " + q["date"], 10)       # 파랑 굵게
-    parts.append(_para(head_runs, para_pr=head_para,
+    # 발문 줄만 prompt_para(135%)로. 없으면 head_para(160%)로 폴백.
+    parts.append(_para(head_runs, para_pr=(prompt_para or head_para),
                        column_break=column_break))
 
     # 1-2) 발문과 박스 사이 간격(= Enter 한 번).
@@ -331,6 +337,11 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # 발문↔지문박스만 묶는 keepWithNext 단락(복제)을 추가하고 그 id 를 받는다.
     header_xml, HEAD_PARA = _inject_keepnext_para(header_xml)
 
+    # 발문(문제 번호+발문) 전용 keepWithNext 단락 — HEAD_PARA 와 별개로 하나 더
+    # 복제한다. 이 단락에만 HEAD_SPACING_PCT(135%)를 줘 발문 줄만 촘촘하게.
+    # (HEAD_PARA 는 발문↔박스 빈줄·짧은보기 묶기용으로 160% 유지)
+    header_xml, PROMPT_PARA = _inject_keepnext_para(header_xml)
+
     # 박스(paraPr 13)의 keepWithNext 변형 — 연결어/연결사처럼 '박스↔보기'가 다음
     # 쪽으로 쪼개지면 안 되는 짧은-보기 유형에서 박스+보기를 한 묶음으로 유지한다.
     header_xml, BOX_KEEP = _inject_keepnext_clone(header_xml, 13)
@@ -339,6 +350,9 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # → 한 단에 문제가 더 들어가 페이지가 덜 헐거워진다(추정 LINES_PER_COL 과 일치).
     header_xml = _set_para_spacing(header_xml, (0, 1, 13, 14, HEAD_PARA, BOX_KEEP),
                                    LINE_SPACING_PCT)
+    # 발문 단락만 135% (미주 15pt 로 벌어져 보이는 것 방지)
+    if PROMPT_PARA != HEAD_PARA:
+        header_xml = _set_para_spacing(header_xml, (PROMPT_PARA,), HEAD_SPACING_PCT)
 
     # 박스(지문) 단락이 단/쪽 경계에서 중간에 잘리지 않게 keepLines=1.
     # (keepWithNext 는 주지 않는다 → 박스↔선택지는 자유롭게 흐름/편집 가능)
@@ -352,6 +366,9 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # 같은 쪼개짐 방지.
     header_xml = _set_para_keep(header_xml, HEAD_PARA,
                                 keep_lines=True, keep_with_next=True)
+    if PROMPT_PARA != HEAD_PARA:
+        header_xml = _set_para_keep(header_xml, PROMPT_PARA,
+                                    keep_lines=True, keep_with_next=True)
 
     files["Contents/header.xml"] = header_xml.encode("utf-8")
 
@@ -381,7 +398,8 @@ def build_hwpx(template_path, output_path, header_text, questions,
     for q in questions:
         has_ans = "answer" in q and q["answer"] not in (None, "")
         blocks.append(build_question_block(q, tracker, endnote_no,
-                                           head_para=HEAD_PARA, box_keep=BOX_KEEP))
+                                           head_para=HEAD_PARA, box_keep=BOX_KEEP,
+                                           prompt_para=PROMPT_PARA))
         if has_ans:
             endnote_no += 1
     blocks = "".join(blocks)
@@ -409,7 +427,8 @@ def build_hwpx(template_path, output_path, header_text, questions,
     # 하나로 렌더링된다 → 1번 문제 앞 '엔터'처럼 보임. 이를 없애기 위해 첫 문제의
     # 발문 단락을 별도 단락으로 두지 않고 캐리어 단락 안에 합쳐 넣는다(머리말 그림은
     # 여백 영역에 그대로, 첫 본문 줄부터 1번 발문이 시작).
-    sec = _insert_blocks_after_carrier(sec, first_p_end, blocks)
+    sec = _insert_blocks_after_carrier(sec, first_p_end, blocks,
+                                       prompt_para=PROMPT_PARA)
 
     files["Contents/section0.xml"] = sec.encode("utf-8")
 
@@ -446,9 +465,13 @@ def _replace_header(sec, old_text, new_text):
     return sec[:p_start] + new_para + sec[p_end:]
 
 
-def _insert_blocks_after_carrier(sec, first_p_end, blocks):
+def _insert_blocks_after_carrier(sec, first_p_end, blocks, prompt_para=None):
     """본문 문제 블록을 캐리어 단락 뒤에 삽입하되, 첫 문제의 발문 단락은
     캐리어 단락 안으로 합쳐 1번 문제 앞의 빈 줄('엔터')을 없앤다.
+
+    prompt_para : 발문 전용 paraPr id. 주면 병합된 캐리어(=1번 발문)의
+                  paraPrIDRef 를 이 값으로 바꿔 1번 발문도 135% 줄간격을 받는다.
+                  (안 주면 캐리어 원래 paraPr 유지)
 
     sec         : section0.xml 문자열
     first_p_end : 캐리어 단락(</hp:header> 이후 첫 최상위 단락)의 </hp:p> 끝 위치
@@ -477,7 +500,17 @@ def _insert_blocks_after_carrier(sec, first_p_end, blocks):
     cut = carrier.rfind(CLOSE)
     merged_carrier = carrier[:cut] + head_runs + carrier[cut:]
 
-    return sec[:carrier_start] + merged_carrier + rest_blocks + sec[first_p_end:]
+    result = sec[:carrier_start] + merged_carrier + rest_blocks + sec[first_p_end:]
+
+    # 1번 발문은 secPr 캐리어(=섹션의 첫 최상위 단락)에 병합되므로, 그 단락의
+    # paraPrIDRef 를 발문 전용 paraPr(prompt_para, 135%)로 바꿔야 1번 발문도
+    # 135% 를 받는다. (carrier_start 는 중첩 머리말을 잡을 수 있어, 최종 문자열의
+    # '첫 <hp:p>' = 진짜 캐리어 에 직접 적용한다.)
+    if prompt_para is not None:
+        result = re.sub(r'(<hp:p\b[^>]*?\bparaPrIDRef=")\d+(")',
+                        r'\g<1>%d\g<2>' % prompt_para, result, count=1)
+
+    return result
 
 
 def _derive_charpr_from_base(header_xml):
