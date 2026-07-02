@@ -513,7 +513,7 @@ def eiei_test_take(request, range_test_id):
         _r.shuffle(bank)
         groups.append({
             'questions': [{'id': w.id, 'index': w.index,
-                           'definition': w.definition, 'meaning': w.meaning} for w in chunk],
+                           'definition': w.definition} for w in chunk],  # 영영 — 한글 뜻 미노출
             'bank': bank,
         })
     return render(request, 'vocab/eiei_test.html', {

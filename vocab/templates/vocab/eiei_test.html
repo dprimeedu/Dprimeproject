@@ -125,8 +125,8 @@ function build(){
             const row = document.createElement('div'); row.className='ee-q';
             const no = document.createElement('div'); no.className='ee-qno'; no.textContent=q.index;
             const def = document.createElement('div'); def.className='ee-def';
-            def.innerHTML = `<div class="def">${esc(q.definition)}</div>` +
-                            (q.meaning ? `<div class="mean">${esc(q.meaning)}</div>` : '');
+            // 영영 시험 — 영어 정의만 표시(한글 뜻 노출 안 함).
+            def.innerHTML = `<div class="def">${esc(q.definition)}</div>`;
             const slot = document.createElement('div');
             slot.className='ee-slot empty'; slot.textContent='단어 선택';
             slot.dataset.qid=q.id; slot.dataset.word='';
