@@ -19,9 +19,10 @@
 .ee-def { flex:1; }
 .ee-def .def { font-size:1.02rem; color:#111; line-height:1.45; }
 .ee-def .mean { font-size:.82rem; color:#9ca3af; margin-top:.15rem; }
-.ee-slot { min-width:130px; min-height:2.1rem; padding:.35rem .6rem; border:2px solid #e5e7eb; border-radius:9px;
-    background:#fff; cursor:pointer; font-size:1rem; font-weight:700; color:#7c3aed; text-align:center; }
-.ee-slot.active { border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,.15); }
+.ee-slot { width:150px; min-height:2.1rem; padding:.35rem .6rem; border:2px solid #e5e7eb; border-radius:9px;
+    background:#fff; font-size:1rem; font-weight:700; color:#7c3aed; text-align:center; }
+.ee-slot::placeholder { color:#cbd5e1; font-weight:400; }
+.ee-slot:focus, .ee-slot.active { outline:none; border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,.15); }
 .ee-slot.empty { color:#cbd5e1; font-weight:400; }
 .ee-result { background:#fff; border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,.08); border:1px solid #e5e7eb; padding:2.5rem 2rem; text-align:center; }
 .ee-score { font-size:3rem; font-weight:800; color:var(--primary-color); }
@@ -66,42 +67,41 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;',
 let activeSlot = null;
 const slots = [];          // 모든 정답칸
 const groupEls = [];       // 그룹 DOM
-const groupSlots = [];     // [[slot,...], ...] 그룹별 정답칸
+const groupSlots = [];     // [[input,...], ...] 그룹별 정답칸(입력)
+const groupChips = [];     // [[chip,...], ...] 그룹별 단어뱅크 칩
+
+function norm(s){ return String(s==null?'':s).replace(/\s/g,'').toLowerCase(); }
+function isEmpty(s){ return !s.value.trim(); }
 
 function setActive(slot){
-    if (activeSlot) activeSlot.classList.remove('active');
+    if (activeSlot && activeSlot !== slot) activeSlot.classList.remove('active');
     activeSlot = slot;
-    if (slot) slot.classList.add('active');
+    if (slot){ slot.classList.add('active'); try { slot.focus({preventScroll:true}); } catch(e){ try{ slot.focus(); }catch(_){} } }
 }
 
-function clearSlot(slot){
-    if (slot._chip){ slot._chip.classList.remove('used'); slot._chip = null; }
-    slot.dataset.word = '';
-    slot.textContent = '단어 선택';
-    slot.classList.add('empty');
+// 단어뱅크 '사용됨' 표시 — 그 그룹의 칸에 그 단어가 (입력이든 클릭이든) 들어가 있으면 흐리게
+function refreshBank(gi){
+    const vals = new Set((groupSlots[gi]||[]).map(s=>norm(s.value)).filter(Boolean));
+    (groupChips[gi]||[]).forEach(c => c.classList.toggle('used', vals.has(norm(c.dataset.word))));
+}
+
+function fillSlot(slot, word){
+    slot.value = word;
     updateDone();
+    refreshBank(+slot.dataset.gi);
 }
 
-function fillSlot(slot, chip){
-    if (slot.dataset.word) clearSlot(slot);   // 기존 값 되돌림
-    slot.dataset.word = chip.dataset.word;
-    slot.textContent = chip.dataset.word;
-    slot.classList.remove('empty');
-    slot._chip = chip;
-    chip.classList.add('used');
-    updateDone();
-}
+function firstEmptyInGroup(gi){ return (groupSlots[gi] || []).find(isEmpty) || null; }
+function groupDone(gi){ const g = groupSlots[gi] || []; return g.length > 0 && g.every(s => !isEmpty(s)); }
+function updateDone(){ $('eeDone').textContent = slots.filter(s => !isEmpty(s)).length; }
 
-function firstEmptyInGroup(gi){ return (groupSlots[gi] || []).find(s => !s.dataset.word) || null; }
-function groupDone(gi){ const g = groupSlots[gi] || []; return g.length > 0 && g.every(s => s.dataset.word); }
-function firstEmptyFrom(gi){
-    for (let g=gi; g<groupSlots.length; g++){ const e=firstEmptyInGroup(g); if(e) return e; }
-    for (let g=0; g<gi; g++){ const e=firstEmptyInGroup(g); if(e) return e; }
+// 방금 채운 칸 '아래'의 다음 빈칸 (건너뛴 위 칸은 자동 활성화 X)
+function nextEmptyBelow(slot){
+    const arr = groupSlots[+slot.dataset.gi] || [];
+    const p = arr.indexOf(slot);
+    for (let i=p+1; i<arr.length; i++){ if(isEmpty(arr[i])) return arr[i]; }
     return null;
 }
-function updateDone(){ $('eeDone').textContent = slots.filter(s=>s.dataset.word).length; }
-
-// 채운 뒤 다음 진행 — 같은 그룹 안 다음 빈칸으로, 그룹 다 채우면 다음 그룹으로 자동 스크롤
 function afterFill(slot){
     const gi = +slot.dataset.gi;
     if (groupDone(gi)){
@@ -112,16 +112,17 @@ function afterFill(slot){
             setActive(null);
             $('eeSubmit').scrollIntoView({behavior:'smooth', block:'center'});
         }
-    } else {
-        setActive(firstEmptyInGroup(gi));
+        return;
     }
+    // 방금 채운 칸 '아래'의 다음 빈칸으로만 이동. 건너뛴(위) 빈칸은 자동 활성화 X — 학생이 직접 클릭해야 함.
+    setActive(nextEmptyBelow(slot));
 }
 
 function build(){
     const host = $('eeGroups');
     GROUPS.forEach((g, gi) => {
         const gEl = document.createElement('div'); gEl.className='ee-group';
-        groupEls.push(gEl); groupSlots.push([]);
+        groupEls.push(gEl); groupSlots.push([]); groupChips.push([]);
         // 단어뱅크 (그룹 상단 sticky)
         const bank = document.createElement('div'); bank.className='ee-bank';
         const gt = document.createElement('div'); gt.className='ee-gtitle';
@@ -129,15 +130,16 @@ function build(){
         g.bank.forEach(w => {
             const chip = document.createElement('div');
             chip.className='ee-chip'; chip.dataset.word=w; chip.dataset.gi=gi; chip.textContent=w;
+            chip.addEventListener('mousedown', e=> e.preventDefault());  // 클릭 시 입력칸 포커스 유지
             chip.addEventListener('click', ()=>{
                 if (chip.classList.contains('used')) return;
-                let target = activeSlot;
-                if (!target || target.dataset.word) target = firstEmptyInGroup(gi) || firstEmptyFrom(gi);
+                const target = activeSlot;   // 현재 활성(포커스)된 칸에 채움. 없으면 무시(직접 클릭 유도)
                 if (!target) return;
-                fillSlot(target, chip);
+                fillSlot(target, chip.dataset.word);
                 afterFill(target);
             });
             bank.appendChild(chip);
+            groupChips[gi].push(chip);
         });
         gEl.appendChild(gt); gEl.appendChild(bank);
         // 문제
@@ -146,13 +148,16 @@ function build(){
             const no = document.createElement('div'); no.className='ee-qno'; no.textContent=q.index;
             const def = document.createElement('div'); def.className='ee-def';
             def.innerHTML = `<div class="def">${esc(q.definition)}</div>`;  // 영영 — 영어 정의만
-            const slot = document.createElement('div');
-            slot.className='ee-slot empty'; slot.textContent='단어 선택';
-            slot.dataset.qid=q.id; slot.dataset.word=''; slot.dataset.gi=gi;
-            slot.addEventListener('click', ()=>{
-                if (slot.dataset.word){ clearSlot(slot); }
-                setActive(slot);
+            const slot = document.createElement('input');
+            slot.type='text'; slot.className='ee-slot'; slot.placeholder='입력 / 선택';
+            slot.autocomplete='off'; slot.setAttribute('autocapitalize','off'); slot.spellcheck=false;
+            slot.dataset.qid=q.id; slot.dataset.gi=gi;
+            slot.addEventListener('focus', ()=>{
+                if (activeSlot && activeSlot !== slot) activeSlot.classList.remove('active');
+                activeSlot = slot; slot.classList.add('active');
             });
+            slot.addEventListener('input', ()=>{ updateDone(); refreshBank(gi); });
+            slot.addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); afterFill(slot); }});
             slots.push(slot); groupSlots[gi].push(slot);
             row.appendChild(no); row.appendChild(def); row.appendChild(slot);
             gEl.appendChild(row);
@@ -165,8 +170,8 @@ function build(){
 
 async function submit(){
     const answers = {};
-    slots.forEach(s => { answers[s.dataset.qid] = s.dataset.word || ''; });
-    const blank = slots.filter(s=>!s.dataset.word).length;
+    slots.forEach(s => { answers[s.dataset.qid] = s.value.trim(); });
+    const blank = slots.filter(s => !s.value.trim()).length;
     const msg = blank>0 ? `아직 ${blank}개 비어 있습니다. 제출할까요?` : '제출할까요?';
     if (!confirm(msg)) return;
     $('eeSubmit').disabled = true;
