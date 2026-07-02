@@ -725,15 +725,20 @@ def review_detail(request, session_id):
 def review_update_api(request, session_id):
     """검수 반영 — 단어별 정오 뒤집기 + 점수 재계산 + 검수 완료.
 
-    body: {flips: {attempt_id: bool}, finalize: bool}
+    body: {flips: {attempt_id: bool}, finalize: bool, action: 'complete'|'retest'}
+      · complete(기본) : 검수 확정 + 다음 범위(단어장) 자동 활성 → 학생 홈에서 이 범위 사라짐
+      · retest         : 검수 확정하되 진행 안 함 → 같은 범위가 활성 유지, 학생이 다시 응시
     """
     session = get_object_or_404(VocabSession, pk=session_id, mode=VocabSession.MODE_TEST)
     try:
         data = json.loads(request.body or '{}')
         flips = data.get('flips') or {}
         finalize = bool(data.get('finalize'))
+        action = str(data.get('action') or '').strip().lower()   # 'complete' | 'retest'
     except (json.JSONDecodeError, TypeError):
         return HttpResponseBadRequest('Invalid')
+    if action in ('complete', 'retest'):
+        finalize = True
 
     attempts = {a.id: a for a in session.attempts.select_related('word')}
     changed = []
@@ -769,9 +774,11 @@ def review_update_api(request, session_id):
             StudentWordStar.objects.get_or_create(student=session.student, word_id=wid)
     session.save(update_fields=fields)
 
-    # 순차 진행 — 퀴즈렛(교재 단어) 범위를 리뷰 확정하면 다음 청크 자동 활성화.
+    # 완료 → 퀴즈렛(교재 단어) 다음 청크 자동 활성화. 재시험 → 진행 안 함(같은 범위 유지).
     advanced = None
-    if finalize and session.range_test_id:
+    if action == 'retest':
+        advanced = {'retest': True}   # 범위 그대로 활성 유지 → 학생이 같은 범위 다시 응시
+    elif finalize and session.range_test_id:
         rt = session.range_test
         if rt and (rt.source_label or '').startswith(QUIZLET_SOURCE):
             nxt = activate_next_range(session.student, rt.unit, rt.source_label)

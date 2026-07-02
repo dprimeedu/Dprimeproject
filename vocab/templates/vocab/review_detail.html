@@ -63,10 +63,14 @@ tr.wrong td { background:#fef2f2; }
     </div>
 
     <div class="text-center my-3">
-        <button class="btn btn-success btn-lg px-4" id="rvSave">
-            <i class="fas fa-check-double me-1"></i>검수 완료 저장
+        <button class="btn btn-success btn-lg px-4 me-2" id="rvComplete">
+            <i class="fas fa-check-double me-1"></i>완료 (다음 단어장으로)
         </button>
-        {% if session.is_reviewed %}<span class="ms-2 badge bg-success">검수 완료됨 (재저장 가능)</span>{% endif %}
+        <button class="btn btn-warning btn-lg px-4" id="rvRetest">
+            <i class="fas fa-rotate-left me-1"></i>재시험 (같은 범위 다시)
+        </button>
+        {% if session.is_reviewed %}<span class="ms-2 badge bg-success">검수됨 (재처리 가능)</span>{% endif %}
+        <p class="text-muted small mt-2 mb-0">완료 = 학생 화면에서 사라지고 다음 단어장으로 · 재시험 = 같은 범위를 학생이 한 번 더 응시</p>
     </div>
 </div>
 
@@ -123,15 +127,25 @@ async function api(url, body) {
     return r.json();
 }
 
-$('rvSave').addEventListener('click', async () => {
-    $('rvSave').disabled = true;
+async function doReview(action){
+    const btns = [$('rvComplete'), $('rvRetest')];
+    btns.forEach(b => b && (b.disabled = true));
     let d;
-    try { d = await api(UPDATE_URL, { flips: collectFlips(), finalize: true }); }
-    catch(e){ alert('저장 실패: '+e.message); $('rvSave').disabled=false; return; }
-    if (!d.success){ alert(d.error||'저장 실패'); $('rvSave').disabled=false; return; }
-    alert(`검수 완료! ${d.percent}점 — ${d.passed ? '합격' : '재시험'}`);
+    try { d = await api(UPDATE_URL, { flips: collectFlips(), finalize: true, action }); }
+    catch(e){ alert('저장 실패: '+e.message); btns.forEach(b => b && (b.disabled = false)); return; }
+    if (!d.success){ alert(d.error||'저장 실패'); btns.forEach(b => b && (b.disabled = false)); return; }
+    if (action === 'retest'){
+        alert(`재시험 처리 완료 — 같은 범위를 학생이 다시 응시합니다. (${d.percent}점)`);
+    } else {
+        let adv = '';
+        if (d.advanced && d.advanced.start != null) adv = ` 다음 범위 ${d.advanced.start}~${d.advanced.end} 이 열렸습니다.`;
+        else if (d.advanced && d.advanced.done) adv = ' (마지막 범위였습니다.)';
+        alert(`완료 — 학생 화면에서 이 범위가 사라집니다.${adv} (${d.percent}점)`);
+    }
     location.href = '{% url "vocab:review_list" %}';
-});
+}
+$('rvComplete').addEventListener('click', ()=>doReview('complete'));
+$('rvRetest').addEventListener('click', ()=>doReview('retest'));
 
 {% if session.range_test %}
 $('rvThSave').addEventListener('click', async () => {
