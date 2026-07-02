@@ -1500,9 +1500,17 @@ def wordbook_words_import_api(request):
             'meaning': str(it.get('meaning', '') or '').strip(),
         })
 
+    import re as _re
+    def _ntitle(s):
+        return _re.sub(r'\s+', '', str(s or '')).lower()
     with _tx.atomic():
-        unit = VocabUnit.objects.filter(
-            title=book_title, category=VocabUnit.CATEGORY_WORDBOOK).first()
+        # 배정(wordbook_assign)과 동일하게 '정규화(공백제거·소문자)' 매칭 — 공백 차이로 중복 단원 생성 방지.
+        want = _ntitle(book_title)
+        unit = None
+        for u in VocabUnit.objects.filter(category=VocabUnit.CATEGORY_WORDBOOK):
+            if _ntitle(u.title) == want:
+                unit = u
+                break
         if unit is None:
             unit = VocabUnit.objects.create(
                 title=book_title, category=VocabUnit.CATEGORY_WORDBOOK,
