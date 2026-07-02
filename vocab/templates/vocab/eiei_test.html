@@ -103,7 +103,7 @@ function fillSlot(slot, word){
     refreshBank(+slot.dataset.gi);
 }
 
-// 2차 오답 재시험 전용 — 클릭한 단어의 뜻을 '팝업'으로 보여주고 개인 낱말카드에 저장(모의고사 빨파와 동일).
+// 뜻 팝업 (모의고사 빨파와 동일 형태)
 const eePop = document.createElement('div'); eePop.className='ee-pop'; eePop.style.display='none';
 document.body.appendChild(eePop);
 function showPop(x, y, html){
@@ -111,22 +111,56 @@ function showPop(x, y, html){
     eePop.style.left = Math.max(8, Math.min(x, window.innerWidth - 250)) + 'px';
     eePop.style.top = (y + 6) + 'px';
 }
-document.addEventListener('click', e=>{ if (!eePop.contains(e.target) && !e.target.classList.contains('ee-chip')) eePop.style.display='none'; });
+document.addEventListener('click', e=>{ if (!eePop.contains(e.target)) eePop.style.display='none'; });
 document.addEventListener('scroll', ()=>{ eePop.style.display='none'; }, true);
-function lookupWord(chip){
-    const info = WORD_INFO[chip.dataset.word] || {};
-    const r = chip.getBoundingClientRect();
-    const x = r.left + window.scrollX, y = r.bottom + window.scrollY;
-    showPop(x, y, `<div class="ee-pop-w">${esc(chip.dataset.word)}</div><div class="ee-pop-m">${esc(info.m || '조회 중…')}</div>`);
-    fetch(LOOKUP_URL, {method:'POST',
-        headers:{'Content-Type':'application/json','X-CSRFToken':CSRF}, credentials:'same-origin',
-        body: JSON.stringify({word: chip.dataset.word, meaning: info.m || ''})})
-      .then(rr=>rr.json()).then(d=>{
-          let tag = '';
-          if (d.dup) tag = '<div class="ee-pop-s">이미 내 단어장에 있어요</div>';
-          else if (d.saved) tag = '<div class="ee-pop-s"><i class="fas fa-bookmark me-1"></i>내 단어장에 저장됨</div>';
-          showPop(x, y, `<div class="ee-pop-w">${esc(d.word || chip.dataset.word)}</div><div class="ee-pop-m">${esc(d.meaning || info.m || '')}</div>${tag}`);
-      }).catch(()=>{});
+
+// 2차만 — 영영 '정의' 안의 영어 단어를 클릭하면 사전 뜻 팝업 + 개인 낱말카드 저장(빨파 코드와 동일).
+// 단어뱅크(정답)는 건드리지 않음(학생이 외워온 단어라 한글 안 보여줌).
+const isW = c => /[A-Za-z'\-]/.test(c || '');
+function caretFromPoint(x, y){
+    if (document.caretRangeFromPoint){ const r=document.caretRangeFromPoint(x,y); return r?{node:r.startContainer,off:r.startOffset}:null; }
+    if (document.caretPositionFromPoint){ const p=document.caretPositionFromPoint(x,y); return p?{node:p.offsetNode,off:p.offset}:null; }
+    return null;
+}
+function wordAt(node, off){
+    if (!node || node.nodeType !== 3) return null;
+    const t = node.textContent; let s=off, e=off;
+    if (s >= t.length) s = e = t.length - 1;
+    if (s < 0) return null;
+    if (!isW(t[s]) && s>0 && isW(t[s-1])) { s = e = s-1; }
+    if (!isW(t[s])) return null;
+    while (s>0 && isW(t[s-1])) s--;
+    while (e<t.length && isW(t[e])) e++;
+    const m = t.slice(s,e).match(/[A-Za-z][A-Za-z'\-]*/);
+    if (!m) return null;
+    const rr = document.createRange(); rr.setStart(node,s); rr.setEnd(node,e);
+    return { word: m[0], rect: rr.getBoundingClientRect() };
+}
+function initDefLookup(){
+    const host = $('eeGroups');
+    host.addEventListener('click', function(e){
+        const defEl = e.target.closest('.def'); if (!defEl) return;
+        const c = caretFromPoint(e.clientX, e.clientY); if (!c) return;
+        const hit = wordAt(c.node, c.off); if (!hit) return;
+        e.stopPropagation();
+        const word = hit.word;
+        const x = hit.rect.left + window.scrollX, y = hit.rect.bottom + window.scrollY;
+        showPop(x, y, `<div class="ee-pop-w">${esc(word)}</div><div class="ee-pop-m">조회 중…</div>`);
+        fetch(LOOKUP_URL, {method:'POST',
+            headers:{'Content-Type':'application/json','X-CSRFToken':CSRF}, credentials:'same-origin',
+            body: JSON.stringify({word})})
+          .then(rr=>rr.json()).then(d=>{
+              if (d.success && d.meaning){
+                  let tag='';
+                  if (d.dup) tag = '<div class="ee-pop-s">이미 내 단어장에 있어요</div>';
+                  else if (d.saved) tag = '<div class="ee-pop-s"><i class="fas fa-bookmark me-1"></i>내 단어장에 저장됨</div>';
+                  showPop(x, y, `<div class="ee-pop-w">${esc(d.word||word)}</div><div class="ee-pop-m">${esc(d.meaning)}</div>${tag}`);
+              } else {
+                  showPop(x, y, `<div class="ee-pop-w">${esc(word)}</div><div class="ee-pop-m" style="color:#9ca3af;">뜻을 찾지 못했어요</div>`);
+              }
+          }).catch(()=>{});
+    });
+    host.querySelectorAll('.def').forEach(el=>{ el.style.cursor='pointer'; });
 }
 
 function firstEmptyInGroup(gi){ return (groupSlots[gi] || []).find(isEmpty) || null; }
@@ -174,7 +208,6 @@ function build(){
                 const target = activeSlot;   // 현재 활성(포커스)된 칸에 채움. 없으면 무시(직접 클릭 유도)
                 if (!target) return;
                 fillSlot(target, chip.dataset.word);
-                if (IS_RETRY) lookupWord(chip);   // 2차: 뜻 팝업 + 개인 낱말카드 저장 (빨파와 동일)
                 afterFill(target);
             });
             bank.appendChild(chip);
@@ -237,5 +270,6 @@ async function submit(){
 
 $('eeSubmit').addEventListener('click', submit);
 build();
+if (IS_RETRY) initDefLookup();   // 2차: 정의 단어 클릭 → 뜻 + 낱말카드 저장
 </script>
 {% endblock %}
