@@ -105,6 +105,18 @@ const $ = id => document.getElementById(id);
 let cards = [];     // [{word, meaning}]
 let titleAuto = (SET.title === (SET.start_index + '-' + SET.end_index));
 let publishing = false;
+let promptedComplete = false;
+
+// 모든 카드(단어+뜻)가 다 채워지면 자동으로 "완성! 만들까요?" 확인창 → 만들기 실행.
+function allFilled(){
+    return cards.length > 0 && cards.every(c => (c.word||'').trim() && (c.meaning||'').trim());
+}
+function checkComplete(){
+    if (!allFilled()) { promptedComplete = false; return; }   // 빈 칸 생기면 다시 물어볼 수 있게
+    if (promptedComplete || publishing) return;
+    promptedComplete = true;
+    if (confirm('단어장 완성! 만들까요?')) publish();
+}
 
 // 초기 카드 구성
 if (SAVED_CARDS && SAVED_CARDS.length) {
@@ -161,7 +173,7 @@ function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'
 function bindCardEvents() {
     document.querySelectorAll('.wc-word').forEach(inp => {
         const idx = +inp.dataset.idx;
-        inp.addEventListener('input', () => { cards[idx].word = inp.value; scheduleSave(); });
+        inp.addEventListener('input', () => { cards[idx].word = inp.value; scheduleSave(); checkComplete(); });
         inp.addEventListener('change', () => lookupWord(idx));       // blur
         inp.addEventListener('keydown', e => {
             if (e.key === 'Enter') { e.preventDefault(); lookupWord(idx);
@@ -170,7 +182,7 @@ function bindCardEvents() {
     });
     document.querySelectorAll('.wc-meaning').forEach(inp => {
         const idx = +inp.dataset.idx;
-        inp.addEventListener('input', () => { cards[idx].meaning = inp.value; scheduleSave(); });
+        inp.addEventListener('input', () => { cards[idx].meaning = inp.value; scheduleSave(); checkComplete(); });
     });
     document.querySelectorAll('[data-del]').forEach(btn => {
         btn.addEventListener('click', () => { removeCard(+btn.dataset.del); });
@@ -199,6 +211,7 @@ async function lookupWord(idx) {
             // 빈 meaning 으로 먼저 저장돼 페이지 이탈 시 영구히 빈 채 남는 문제 방지.
             if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
             save('draft');
+            checkComplete();   // 자동 채움으로 마지막 칸이 차면 완성 확인창
         }
     } catch (e) { /* 네트워크 실패 무시 — 직접 입력 가능 */ }
     if (wrap) wrap.classList.remove('loading');

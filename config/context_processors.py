@@ -20,7 +20,14 @@ def pending_badges(request):
     except Exception:
         return {}
 
-    summary_pending = grammar_pending = exam_pending = 0
+    summary_pending = grammar_pending = exam_pending = vocab_pending = 0
+    try:
+        from vocab.models import VocabSession
+        vocab_pending = VocabSession.objects.filter(
+            mode=VocabSession.MODE_TEST, finished_at__isnull=False,
+            is_reviewed=False).count()
+    except Exception:
+        pass
     try:
         from summary.models import SummarySession
         summary_pending = SummarySession.objects.filter(
@@ -41,6 +48,7 @@ def pending_badges(request):
         pass
 
     return {
+        'vocab_pending': vocab_pending,
         'summary_pending': summary_pending,
         'grammar_pending': grammar_pending,
         'exam_pending': exam_pending,

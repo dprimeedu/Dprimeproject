@@ -59,8 +59,14 @@
         </div>
     </div>
 
-    {% if summary_pending or grammar_pending or exam_pending %}
+    {% if vocab_pending or summary_pending or grammar_pending or exam_pending %}
     <div class="d-flex gap-2 flex-wrap mb-3" aria-label="채점 대기 요약">
+        {% if vocab_pending %}
+        <a href="{% url 'vocab:review_list' %}" class="badge text-decoration-none bg-warning text-dark fs-6 px-3 py-2"
+           title="단어 검수대기 — 전체 학생 누적">
+            <i class="fas fa-spell-check me-1"></i>단어 검수대기 <strong>{{ vocab_pending }}</strong>
+        </a>
+        {% endif %}
         {% if summary_pending %}
         <a href="{% url 'summary:grade_list' %}" class="badge text-decoration-none bg-warning text-dark fs-6 px-3 py-2"
            title="요약문 채점대기 — 전체 학생 누적">
