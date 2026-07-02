@@ -506,20 +506,16 @@ def eiei_test_take(request, range_test_id):
         .order_by('index'))
     words = [w for w in words if (w.definition or '').strip()]  # 영영 정의 있는 것만
     # 100단어 전부가 아니라 랜덤 question_count(기본 40)개만 출제. 시간 과다 방지.
-    # (student, 범위)별 시드 고정 셔플 — 새로고침/재응시 시 같은 40개(진행 일관, grammar _student_sets 방식).
+    # 매 응시(재응시/다시 클릭)마다 순서·선택을 새로 섞는다(시드 고정 안 함).
     import random
-    import hashlib
     count = rt.question_count or 40
-    seed = int(hashlib.md5(
-        f'{rt.student_id}-{rt.start_index}-{rt.end_index}-{count}'.encode()).hexdigest(), 16)
-    rng = random.Random(seed)
-    rng.shuffle(words)
+    random.shuffle(words)
     words = words[:count]
     groups = []
     for gi in range(0, len(words), 10):
         chunk = words[gi:gi + 10]
         bank = [w.word for w in chunk]
-        rng.shuffle(bank)
+        random.shuffle(bank)
         groups.append({
             'questions': [{'id': w.id, 'index': w.index,
                            'definition': w.definition} for w in chunk],  # 영영 — 한글 뜻 미노출
@@ -559,12 +555,11 @@ def eiei_retry(request, session_id):
         messages.success(request, '틀린 단어가 없어요. 다시 풀 필요가 없습니다!')
         return redirect('vocab:home')
     import random
-    import hashlib
-    rng = random.Random(int(hashlib.md5(f'{parent.id}-retry'.encode()).hexdigest(), 16))
     # 2차 오답은 10개씩 끊지 않고 '전부 한 그룹(한 단어뱅크)'으로 몰아서 출제.
-    words.sort(key=lambda w: w.index)      # 문제는 번호순
+    # 재시험/다시 클릭 시마다 문제 순서·단어뱅크를 새로 섞는다(시드 고정 안 함).
+    random.shuffle(words)                   # 문제 순서 매번 새로
     bank = [w.word for w in words]
-    rng.shuffle(bank)                       # 단어뱅크만 섞음
+    random.shuffle(bank)                    # 단어뱅크 따로 섞음
     groups = [{
         'questions': [{'id': w.id, 'index': w.index, 'definition': w.definition} for w in words],
         'bank': bank,
