@@ -130,7 +130,7 @@ def _para(runs_xml, para_pr=1, char_pr_for_seg=8, column_break=False,
             f'{runs_xml}</hp:p>')
 
 
-def _endnote_run(answer, number, char_pr=16):
+def _endnote_run(answer, number, char_pr=13):
     """
     미주(정답) run. test1.hwpx 구조를 그대로 따른다.
       <hp:run><hp:ctrl><hp:endNote number=.. instId=..>
@@ -483,11 +483,15 @@ def _derive_charpr_from_base(header_xml):
     양식 header 의 charPr 8 을 읽어 파생 charPr 정의를 만든다.
     양식의 fontRef·shadeColor 등이 정확히 일치하여 글꼴 불일치가 없다.
 
-    파생 규칙(★id = charProperties 배열 위치. 양식이 0~9 이므로 10/11/12/16):
+    파생 규칙(★id = charProperties 배열 위치. 양식이 0~9 이므로 10/11/12/13):
       10 = 8 + bold + textColor 파랑(#0000FF)   (날짜)
       11 = 8 + bold                             (발문)
       12 = 8 + underline BOTTOM (bold 제거)     (지문 밑줄)
-      16 = 8 + bold + height 1500 + red         (미주 참조 마커 = 문제 번호)
+      13 = 8 + bold + height 1500 + red         (미주 참조 마커 = 문제 번호)
+
+    ★주의: 한/글은 charPrIDRef 를 배열 '위치'로 해석한다. 미주 마커를 id 16
+      으로 두면 배열엔 0~12 다음 '위치 13' 에 들어가므로(=id 와 위치 불일치)
+      IDRef 16 이 범위를 벗어나 색/크기가 적용되지 않는다. 반드시 연속 위치(13).
     """
     m = re.search(r'<hh:charPr id="8".*?</hh:charPr>', header_xml, re.S)
     if not m:
@@ -515,7 +519,7 @@ def _derive_charpr_from_base(header_xml):
     defs['charPr10'] = make(10, bold=True, blue=True)   # 날짜(파랑 굵게)
     defs['charPr11'] = make(11, bold=True)              # 발문(검정 굵게)
     defs['charPr12'] = make(12, underline=True)         # 지문 밑줄(굵게 X)
-    defs['charPr16'] = make(16, bold=True, red=True, height=1500)  # 미주 마커 15pt 빨강
+    defs['charPr13'] = make(13, bold=True, red=True, height=1500)  # 미주 마커 15pt 빨강
     return defs
 
 
@@ -534,7 +538,7 @@ def _inject_styles(header_xml):
          [("borderFill3", "3"), ("borderFill4", "4")]),
         ("charProperties", "charPr",
          [("charPr10", "10"), ("charPr11", "11"), ("charPr12", "12"),
-          ("charPr16", "16")]),
+          ("charPr13", "13")]),
         ("paraProperties", "paraPr",
          [("paraPr13", "13"), ("paraPr14", "14")]),
     ]
